@@ -140,6 +140,15 @@ sent, which is what `[ImageN]` refers to).
 **There is no stored order.** A selection comes back in name order — stable,
 so two calls agree, which is all a payload needs from it.
 
+**Send only the references that match the angle being drawn.** A profile
+shot wants the profile face reference and the profile body reference, and
+nothing else: adding the front-face reference to that set pulled the result
+frontal and lost the nose (measured 2026-09-18). More references are not more
+identity; the ones facing the wrong way argue with the ones facing the right
+way, and the model splits the difference. `--pick-tag` with the angle's tag
+is how the selection says so — which is what the angle tags on each image
+are for.
+
 **Describe every image you add.** An undescribed image is invisible to whoever
 chooses the set, so it may as well not be there:
 
@@ -460,6 +469,35 @@ Four failure shapes worth knowing, because none is obvious from reading the text
 - **State the numbers you have.** `identity.height_read` is usually the only
   proportion given as a figure, and a figure on a plain backdrop has no scale of
   its own. Adjectives lose to an angle image; a stated height does not.
+
+### A body angle needs a real full-length photograph, not a paragraph
+
+A body template renders the build from prose — the labelled lines under
+`body:` and `identity.height_read` — and a head-and-shoulders reference pool
+gives it nothing to check the prose against. So the figure comes back at the
+model's default proportions: long-limbed, small-headed, the shoulders as wide
+as the words allow. Four rounds of rewording ("6 feet", "compact", "a normal
+adult head", "do not shrink the head") each moved it a little and none fixed
+it, because the model had no picture of the person's actual proportions.
+
+What fixed it was **binding a real head-to-feet photograph** — clothed is
+fine, leaning is fine, a phone snap against a wall is fine — and telling the
+prompt to take *overall proportions* from that image and the face from the
+rest. One run. So a character whose seed pool holds no full-length photograph
+cannot have its body angles rendered reliably; ask for one before the standard
+set, and tag it `body, full-body` so `--pick-tag` finds it.
+
+Two things that follow:
+
+- **A hand-crafted physique image is not a proportion reference.** A cropped
+  torso shot — even a very good one — says nothing about leg length or head
+  size, and the model fills those in at its defaults. Bind it *for the
+  physique* and a real full-length photo *for the proportions*, and say which
+  is which by position.
+- **Drop the build prose once the images carry it.** A body description in the
+  prompt argues with the photograph; when the reference set has real full-length
+  material, the body templates' `{character.1.build.body}` block is worth
+  removing from the run rather than tuning.
 
 ### Making a matched pair without a second render
 

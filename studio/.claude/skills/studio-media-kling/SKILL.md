@@ -45,11 +45,25 @@ The family:
 | `mode` | `standard` = 720p · `pro` = 1080p · `4k`. |
 | `aspect_ratio` | `16:9` · `9:16` · `1:1`. **Required only when there is no start frame.** |
 | `duration` | 3–15 seconds. |
-| `generate_audio` | Default false. Mutually exclusive with a reference video. |
+| `generate_audio` | Default false. Mutually exclusive with a reference video. **On, it invents speech** unless a `dialogue` list gives it lines — see below. |
 
 **No `seed` and no `negative_prompt`.** Negative direction goes in the prompt
 text; `--engine kling-replicate` folds it in. With no seed, holding the prompt
 byte-identical is the only reproducibility lever — see the locked template below.
+
+**Audio is either directed or invented.** With `generate_audio: true` and a
+`dialogue` list, Kling lip-syncs two short lines well in an 8 s clip under a
+slow push-in. With `generate_audio: true` and no lines it invents dialogue —
+on a kiss it did so even with `avoid` naming talking, speaking and dialogue,
+and `avoid` is folded into the prompt, so nothing stronger exists here. A
+clip that must be silent is `generate_audio: false`, with sound added in
+post; Veo's real `negative_prompt` is the only field that suppresses speech
+without switching audio off.
+
+**Kling renders a kiss between two adults** — no refusal across several
+runs, from a start frame with `reference_images`. The map across every
+engine, and what each refuses, is on
+[`studio-media-scene`](../studio-media-scene/SKILL.md#what-each-engine-will-actually-render--contact-between-two-people).
 
 ### Cost
 
@@ -361,3 +375,10 @@ frame, `mode: standard`, `generate_audio: true` throughout (15 s + 10 s + 10 s +
   rewordings and with the contradiction named in `negative`. Settle that kind of
   geometry in a **still** first — the model is not going to hold a pose that
   fights itself.
+- **What the start frame hides, the model invents.** A seated man whose shorts
+  were under the desk stood up in jeans — here once and on Wan 3.0 twice, and
+  no wording held the wardrobe. A seed must *show* what has to survive, and a
+  beat that must land somewhere exact is pinned by an end still, not prose —
+  [`studio-media-scene`](../studio-media-scene/SKILL.md#the-end-frame-is-where-control-lives).
+  Here that costs the reference list (an end frame caps the request at two
+  images), so bracket on Kling only when the two frames already say everything.

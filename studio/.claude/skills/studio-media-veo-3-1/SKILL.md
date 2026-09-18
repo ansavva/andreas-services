@@ -180,7 +180,17 @@ passes through to the Replicate `input` unchanged and the endpoint resolves to
 `google/veo-3.1`. This is also the first registry entry to use the
 `negative`-as-parameter path, and it routes correctly.
 
-**No paid render has been made on this model here.** Every behavioural claim above
-comes from the live schema or the README. The first real run should test the
-reference-image trap directly — three references at 16:9 + 8s, then the same
-three at 9:16 — and the finding belongs in this section.
+**Paid renders, 2026-09-18, image-to-video on prod** — the first here, and
+what they settled:
+
+- **It renders a kiss between two adults**, where Seedance 2.5, fal's Wan 3.0
+  and OpenRouter's Wan 3.0 all refuse. The map is on
+  [`studio-media-scene`](../studio-media-scene/SKILL.md#what-each-engine-will-actually-render--contact-between-two-people).
+- **Same-sex intimacy came back with the wrong dynamic twice**, and faces
+  drifted in a push-in close-up — two rolls, not a rule, but read the result
+  for both before cutting it in.
+- **`negative_prompt` is real and it works** — naming dialogue there
+  suppressed speech, which no other engine's prompt-folded `avoid` manages.
+
+The reference-image trap is still untested — three references at 16:9 + 8s,
+then the same three at 9:16 — and that finding belongs here too.

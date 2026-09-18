@@ -73,3 +73,23 @@ the bible's index says what each image shows. `--character` on its own sends the
 character's `default_set`, and REFUSES rather than truncating if a selection
 exceeds the 14 cap. That matters on a
 large one.
+
+## Re-posing one figure — the first link of a two-person edit
+
+This is the model that moves a figure without redrawing it: from the
+single-figure base still, "reproduce it exactly … change only his pose", and
+at `safety_filter_level: block_only_high` it re-poses a shirtless figure
+without complaint where Sunburst returns `E005`. It re-poses **one** figure
+per run — two at once blend or get flagged on every model — so the second
+person is added afterwards by a Sunburst edit. The chain is in
+[`studio-media-image`](../studio-media-image/SKILL.md#re-pose-one-person-per-generation).
+
+```bash
+studio run --model nano-banana-pro --project <project> \
+  --input <N> --aspect-ratio match_input_image --name repose \
+  --extra '{"resolution":"2K","safety_filter_level":"block_only_high"}' \
+  --prompt "Reproduce the image exactly … change only his pose: …"
+```
+
+`resolution: "2K"` is the default and the seed-quality lever before a video
+engine; a still that came back soft was rendered at `1K`, so read the payload.

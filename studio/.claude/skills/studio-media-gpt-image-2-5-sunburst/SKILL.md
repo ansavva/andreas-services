@@ -78,6 +78,32 @@ studio run --model gpt-image-2.5-sunburst --project <project> \
   --prompt "Change only the lighting to soft coastal daylight; preserve the face, pose and clothing."
 ```
 
+**The lock cuts both ways.** Told "make the head larger, do not narrow the
+shoulders", it made the head slightly larger and left the shoulders exactly
+where they were — so a head-to-shoulder *ratio* barely moved, because a ratio
+is two things and only one was named. An edit here changes what it is told
+and freezes the rest; a relationship between two parts of the figure is not a
+thing it can adjust. Regenerate instead, with the edited frame as a physique
+reference and a real full-length photograph as the proportion reference — see
+[`studio-media-image`](../studio-media-image/SKILL.md).
+
+## Adding a second character to a frame
+
+This is the model for the second link of the two-character chain in
+[`studio-media-image`](../studio-media-image/SKILL.md#two-characters-in-one-frame--one-at-a-time-never-both-at-once):
+the first character's finished frame goes first as the edit target, the second
+character's face references follow, and the prompt says *add* a second person
+in the empty space, *keep everything else exactly as it is*, and that the new
+person is *the man in the remaining images, and ONLY him*. The first figure
+survives pixel-for-pixel; the only face drawn is the second's. Generating both
+in one run instead blends them.
+
+```bash
+studio run --model gpt-image-2.5-sunburst --project <project> \
+  --image-run <project>/latest --character <name-2> --pick-tag default,face \
+  --aspect-ratio 3:2 --prompt-file step2.txt
+```
+
 ## Character frames — same fidelity, different default
 
 References are held at high fidelity automatically, as on `gpt-image-2`, so a
@@ -117,7 +143,17 @@ studio convert --run <project>/latest#1 --for kling --add-input <project>
 - **The bill was $0.25 for a draft.** `quality` was `auto` — something set it
   in `--extra`. The registry default is `medium`; drafts want `low`.
 - **Soft detail on a final.** Step `quality` up; `xhigh` and `max` exist for
-  exactly this and nothing else.
+  exactly this and nothing else. A seed bound for a video engine wants `high`
+  at least — the clip inherits the still's softness and adds nothing back.
+- **`E005` on an edit.** Moderation, not the payload. Measured 2026-09-18: it
+  flags an edit that re-poses a shirtless man together with a second man
+  ("eyes locked, a foot apart"), and refuses a kiss still outright. Nothing
+  billed. Re-pose one figure at a time — the first alone on
+  [`nano-banana-pro`](../studio-media-nano-banana-pro/SKILL.md), the second
+  added here — and for a kiss still use
+  [`seedream-5-pro`](../studio-media-seedream-5-pro/SKILL.md); the chain and
+  the map are in
+  [`studio-media-image`](../studio-media-image/SKILL.md#re-pose-one-person-per-generation).
 - **A 4K size came back odd.** Sizes above 2560x1440 are experimental per the
   schema. Render at `2048x…` and enlarge with
   [`image-upscale`](../studio-media-image-upscale/SKILL.md).

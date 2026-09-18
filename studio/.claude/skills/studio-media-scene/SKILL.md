@@ -14,7 +14,7 @@ The family:
 - **`studio-media-scene`** (this) — many clips → one continuous piece.
 - **`studio-media-s3`** — `studio frames` pulls the handoff frame and the
   verification grid; `studio scenes` is the scene store.
-- **`studio-media-kling`** / **`studio-media-seedance`** / **`studio-media-seedance-2-5`** — render each clip.
+- **`studio-media-kling`** / **`studio-media-seedance`** / **`studio-media-seedance-2-5`** / **`studio-media-wan-3-0-i2v`** — render each clip.
 
 ## Pre-flight — settle it before anything renders
 
@@ -166,6 +166,33 @@ So "start plus six references" is a Kling sentence, not a general one. The
 submit path resolves every payload against the model it names and refuses what
 would be dropped, before anything bills.
 
+### What each engine will actually render — contact between two people
+
+Measured 2026-09-18 on prod, several runs per engine: **a kiss between two
+adults**, from a start frame that already showed it. Moderation is per engine,
+and most of it costs nothing — a refusal lands before the render or after it,
+and nothing is billed either way.
+
+| engine | a kiss | signature | billed |
+|---|---|---|---|
+| `kling` | **renders it** — no refusal across several runs, start frame + `reference_images` | its one fault: with `generate_audio: true` it invents dialogue even when `avoid` lists talking, speaking, dialogue. Set `generate_audio: false` and add sound in post | yes |
+| `wan-3.0-i2v` (fal) | **refused at submit** | HTTP `422` on `body.prompt` for the wording; with the word removed, `422` on `body` — the prompt and image together | no |
+| `wan-3.0-openrouter` | accepts the submit, renders, then **fails at Alibaba's output checker** | `Green net check failed for image (output): Output data may contain inappropriate content.` | no |
+| `seedance-2.5` | **refused** — a fully clothed kiss too, and a start frame that is already a kiss still | `E005 The input or output was flagged as sensitive` | no |
+| `veo-3.1` | **renders it** | same-sex intimacy came back with the wrong dynamic twice; faces drifted in a push-in close-up. Its `negative_prompt` is real — the only engine with one — and it does suppress dialogue | yes |
+| `wan-2.6-i2v` (Runpod) | **renders anything** — `enable_safety_checker: false`, and a real `negative_prompt` | the motion is flat: the kiss lands at 2 s and holds static; skin reads plastic next to Wan 3.0; silent output | yes |
+
+Shirtless massage and other contact clips pass on fal's Wan 3.0; the line is
+the kiss. Each engine's page carries its own row in one line.
+
+The same line runs through the image engines, where the seed is made.
+`gpt-image-2.5-sunburst` flags (`E005`) an edit that re-poses a shirtless man
+together with a second man — "eyes locked, a foot apart" — and refuses a kiss
+still. `seedream-5-pro` renders a kiss still: "kissing on the lips" passes,
+clothed or shirtless, where "French kiss" / "open-mouthed" wording was
+refused. `nano-banana-pro` at `safety_filter_level: block_only_high` re-poses
+a shirtless figure without complaint.
+
 ## The loop
 
 Per clip, and only two steps bill.
@@ -221,6 +248,31 @@ A still composed for the same moment differs from that frame in a hundred small
 ways, all of which read as a jump. So after clip 1 the handoff frame opens each
 clip, and the seed is a reference — still steering where the scene goes, no
 longer breaking the join.
+
+### The end frame is where control lives
+
+Every clip that went wrong on 2026-09-18 was a beat with no still pinning it.
+A seated man whose shorts were hidden under the desk stood up in invented
+jeans — on Wan 3.0 twice and Kling once. "He is shorter" in prose did nothing
+until a reference still showed the two heights side by side. A whistle told to
+go on the floor went on the desk. Prose loses to what the model can see, and
+where it sees nothing it invents. Three rules:
+
+- **A seed must SHOW the wardrobe that has to survive.** A garment the frame
+  hides is a garment the model redraws the moment it comes into view. Render
+  the seed with the shorts in shot, or accept whatever stands up.
+- **Height and proportion between two people come from a still, never from
+  prose.** A reference or end frame that shows the difference holds it; a
+  sentence does not, however many times it is reworded.
+- **Describe the end frame accurately.** A prompt that said "arms hanging in
+  a V" against an end still with the arms raised behind the head made the
+  model jerk the arms up in the last half-second to reach the still. The still
+  wins, so the prompt's last line says what the still shows.
+
+So a beat that must land somewhere exact is a bracketed clip, and the still
+that pins it is made first, where it costs cents and can be looked at.
+[`studio-media-wan-3-0-i2v`](../studio-media-wan-3-0-i2v/SKILL.md) is the
+engine that takes both frames without dropping anything else.
 
 ## Continuity — what to hold, what to change
 
@@ -332,6 +384,11 @@ scene's `output` names the newest and `cuts` lists the rest, newest first — so
 two takes of one scene can be put side by side, which is the thing re-cutting is
 for. `studio scenes outputs <project>/<name>` lists every cut, and one not
 worth keeping is deletable like any other file.
+
+**`cuts` never holds the current take.** `studio scenes show` straight after
+an assemble lists the new file under `output` only; it joins `cuts` when the
+next assemble displaces it. Observed three times and read as a lag — it is the
+design. The newest cut is `output`; `cuts` is what it replaced.
 
 No cut yet? `studio scenes assemble <project>/<name> --shot <runref> --shot
 <runref>` orders the cut first, then stitches — so "just stitch these three

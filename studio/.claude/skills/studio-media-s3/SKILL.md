@@ -182,6 +182,9 @@ studio runs find --character <name>               # across every project
 studio runs edit <project>/latest                 # a DRAFT's prompt, params and images
                                                   # — show it again before sending
 studio runs delete <project>/latest              # keeps the folder; --files delete removes it
+studio runs discard <project>/latest             # a DRAFT only, folder deleted; refuses anything
+                                                  # sent ("is succeeded and has been submitted;
+                                                  # use runs delete") — a run sent from the app included
 studio faststart                                 # index every clip for the browser, on the worker;
                                                   # the backfill, once per library, safe to repeat
 studio runs faststart <project>                  # the older sweep: one project's run outputs, via the API
