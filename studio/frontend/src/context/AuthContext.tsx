@@ -25,6 +25,7 @@ import {
   login as redirectToHostedSignIn,
   logout as redirectToHostedSignOut,
   refreshTokens,
+  SESSION_ENDED_EVENT,
 } from "../auth/oauth";
 
 interface AuthContextValue {
@@ -69,6 +70,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     refresh();
+  }, [configured, refresh]);
+
+  // A session that ends mid-page — the refresh behind a 401 failed and the
+  // store was cleared — is re-read here, so `authenticated` drops and the
+  // gate sends the tab to sign in with the address it is on. Without this the
+  // tree kept the answer it read at mount and the page sat on an error.
+  useEffect(() => {
+    if (!configured) return;
+    window.addEventListener(SESSION_ENDED_EVENT, refresh);
+    return () => window.removeEventListener(SESSION_ENDED_EVENT, refresh);
   }, [configured, refresh]);
 
   const value = useMemo<AuthContextValue>(

@@ -6,8 +6,10 @@ import { useShellSidebar } from "../../context/SidebarContext";
  * The frame both viewers sit in — the opened run and the open file.
  *
  * **One box, sized to the window and nothing else.** It hangs under the
- * header and stops short of the create sheet's handle, so the picture gets
- * every pixel between the two and nothing lands under either. Below `md` it
+ * header — and under the create sheet when one has been called up, which is
+ * `--sheet-h`, published by the shell's `SheetSlot` and `0` otherwise — so
+ * the picture gets every pixel between the two and nothing lands under
+ * either. Below `md` it
  * is a column that scrolls — stage, rail, strip — and from `md` a row that
  * does not, with the stage taking the width. The children are the three
  * pieces in that order; the frame places them.
@@ -67,8 +69,8 @@ export function ViewerFrame({
         // position classes on one element cost.
         className={`fixed inset-x-0 ${lifted ? "z-50" : "z-20"} flex flex-col overflow-y-auto bg-bg md:left-16 md:flex-row md:overflow-hidden ${className}`}
         style={{
-          top: "var(--header-h)",
-          height: "calc(100dvh - var(--header-h))",
+          top: "calc(var(--header-h) + var(--sheet-h, 0px))",
+          height: "calc(100dvh - var(--header-h) - var(--sheet-h, 0px))",
           ...style,
         }}
       >

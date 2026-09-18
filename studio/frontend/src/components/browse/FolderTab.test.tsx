@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigationType } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { FolderListing } from "../../types";
@@ -38,10 +38,19 @@ function listing(overrides: Partial<FolderListing> = {}): FolderListing {
   };
 }
 
-/** Reports `location.search`, so a test can assert `fsort` landed in the URL. */
+/**
+ * Reports `location.search` and the history's depth, so a test can assert
+ * `fsort` landed in the URL — and whether a folder was pushed or replaced.
+ */
 function SearchProbe() {
   const location = useLocation();
-  return <span data-testid="search">{location.search}</span>;
+  const navigation = useNavigationType();
+  return (
+    <>
+      <span data-testid="search">{location.search}</span>
+      <span data-testid="navigation">{navigation}</span>
+    </>
+  );
 }
 
 function open(initial = "/c/char-root-1?tab=files") {
@@ -103,6 +112,29 @@ it("draws the trail once there is somewhere above to go", async () => {
   // folder is stored under — see `boundaryLabel`.
   expect(trail.textContent).toContain("jason");
   expect(trail.textContent).toContain("reference");
+});
+
+it("entering a folder is a history entry; sorting is not", async () => {
+  open();
+  // The row's own button, not the `⋮` beside it, which also carries the name.
+  fireEvent.click(await screen.findByTitle("reference"));
+
+  await waitFor(() =>
+    expect(screen.getByTestId("search")).toHaveProperty(
+      "textContent",
+      "?tab=files&folder=node-ref",
+    ),
+  );
+  // PUSH, so back climbs out one folder at a time. It was `replace`, and back
+  // out of a character's subfolder landed on the characters list.
+  expect(screen.getByTestId("navigation").textContent).toBe("PUSH");
+
+  fireEvent.click(screen.getByRole("combobox", { name: "Sort order" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Name A–Z" }));
+  await waitFor(() =>
+    expect(screen.getByTestId("search").textContent).toContain("fsort=name"),
+  );
+  expect(screen.getByTestId("navigation").textContent).toBe("REPLACE");
 });
 
 it("sort is URL state, namespaced as fsort", async () => {

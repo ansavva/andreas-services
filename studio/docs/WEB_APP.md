@@ -708,7 +708,11 @@ page and a plain textarea over its literal bytes, and never offers fields.
   reference or a tile calls it up (`summoned` in the context; `SheetSlot`
   in `AppLayout`), and × or Escape puts it away again: that screen is a
   fixed-height viewer, and a sheet over it covered the filmstrip and the
-  transport with nothing able to scroll them back. Then the chip row (`CreateChips`):
+  transport with nothing able to scroll them back. **Called up, it is
+  static there too**: the slot publishes its height as `--sheet-h` and
+  `ViewerFrame` starts under it, so the viewer shrinks to fit rather than
+  being covered — it floated over the picture and the aside's actions
+  before. Then the chip row (`CreateChips`):
   the model, opening `ModelList` (search + notes, one kind at a time), and one
   chip per input the model has out of a fixed six — aspect ratio, resolution,
   duration, quality, outputs, audio — each a glyph and a value opening a

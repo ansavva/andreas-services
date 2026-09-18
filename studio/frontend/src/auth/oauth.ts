@@ -23,6 +23,8 @@ const VERIFIER_KEY = "studio.oauth.verifier";
 const STATE_KEY = "studio.oauth.state";
 const RETURN_TO_KEY = "studio.oauth.returnTo";
 const TOKENS_KEY = "studio.auth.tokens";
+/** Fired on `window` when a refresh fails and the store is cleared — see `refreshTokens`. */
+export const SESSION_ENDED_EVENT = "studio:session-ended";
 
 /**
  * The path Cognito redirects back to, registered character for character in
@@ -387,6 +389,14 @@ export function refreshTokens(): Promise<StoredTokens> {
       // sign-out elsewhere, or one past its 30 days. Keeping it would retry
       // forever on every request.
       clearTokens();
+      // **And say so, because nothing else will.** The store is emptied here
+      // but the React tree read it at mount and still believes it is signed
+      // in, so a pasted link opened after the 30 days showed "Could not load
+      // your libraries — Your session has expired" and stopped: no button, no
+      // redirect, a reload the only way out. `AuthContext` listens for this
+      // and drops `authenticated`, which sends the gate to the hosted page
+      // with the address it was on — so the link opens on the far side.
+      window.dispatchEvent(new Event(SESSION_ENDED_EVENT));
       throw err;
     } finally {
       inflight = null;

@@ -19,16 +19,18 @@ import { FolderBrowser, type BrowserNav } from "./FolderBrowser";
  */
 
 /**
- * A browser driven by component state rather than by the URL — the Files tab.
+ * A browser driven by the URL's query rather than its path — the Files tab.
  *
- * The address bar is spent on the entity, so navigating a subfolder inside a tab
- * cannot touch it: doing so would replace the page you are standing on, and
- * browser-back out of three subfolders would walk back through a character page
- * three times.
+ * The address bar's path is spent on the entity, so the folder rides in
+ * `?folder=`, and **each folder entered is a history entry.** It was `replace`
+ * — the worry was back walking through the character page three times — but
+ * what that bought was back out of three subfolders landing on the characters
+ * LIST, past the character, which is not what back means in a file browser.
+ * The entries are all the same page at different folders, and back climbs
+ * them one at a time like `/f/<id>` does.
  *
- * What is given up is that a folder inside a tab is not linkable. That is the
- * right trade in one direction only, and it is why `/f/<id>` still exists and the
- * tab does not replace it: a *link* to a folder is a link to the browser.
+ * `/f/<id>` still exists and the tab does not replace it: a *link* to a folder
+ * is a link to the browser.
  */
 function useLocalBrowserNav(rootId: string, param = "folder"): BrowserNav {
   const navigate = useNavigate();
@@ -38,7 +40,7 @@ function useLocalBrowserNav(rootId: string, param = "folder"): BrowserNav {
   // subtree into the other on a tab switch, leaving a browser standing
   // somewhere it cannot show. The default is the name Files has always used,
   // so its links still work.
-  const [folderParam, setFolderParam] = useSearchParamState(param, "");
+  const [folderParam, setFolderParam] = useSearchParamState(param, "", { push: true });
   // `fsort`, namespaced, because this shares a URL with the entity page's own
   // params (`tab`, and RunsTable's `status`/`character`/`model`/`since`) — a
   // bare `sort` would collide the moment either grows one.
@@ -66,11 +68,11 @@ function useLocalBrowserNav(rootId: string, param = "folder"): BrowserNav {
       folder,
       sort,
       setSort: setSortParam,
-      goToFolder: (id: FolderId) => {
+      goToFolder: (id: FolderId, options?: { replace?: boolean }) => {
         // `null` is the *library* root, which a scoped browser has no way to
         // show and no business showing — the boundary crumb is this entity's
         // root, so that is where "up from the top" lands.
-        setFolderParam(id === null || id === rootId ? "" : id);
+        setFolderParam(id === null || id === rootId ? "" : id, options);
       },
       folderHref,
       // **Opening a file leaves the tab, and that is the right trade now.** The

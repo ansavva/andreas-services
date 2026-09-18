@@ -130,11 +130,30 @@ it("removes a run from the cut without refetching", async () => {
   expect(await screen.findByText("Nothing in the cut yet.")).toBeTruthy();
 });
 
-it("leads with the take, and marks earlier ones", async () => {
+it("leads with the latest take, one at a time, and a tab per earlier one", async () => {
   draw(record({ output: asset("node-take"), cuts: [asset("node-earlier")], status: "assembled" }));
 
   expect(await screen.findByText("Takes")).toBeTruthy();
-  expect(screen.getByText("earlier")).toBeTruthy();
+  // Newest first, numbered from the total; the latest is the one drawn.
+  const tabs = screen.getAllByRole("tab");
+  expect(tabs.map((tab) => tab.textContent)).toEqual(["Take 2latest", "Take 1"]);
+  expect(screen.queryByText("earlier")).toBeNull();
+  // The tile opens the viewer over the scene's takes, as a real link.
+  const open = screen.getByRole("link", { name: "Open node-take.mp4" }) as HTMLAnchorElement;
+  expect(open.getAttribute("href")).toBe(`/o/node-take?in=scene%3A${ID}`);
+
+  // An earlier take is picked from the strip and marked as earlier.
+  fireEvent.click(tabs[1]!);
+  expect(await screen.findByText("earlier")).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Open node-earlier.mp4" })).toBeTruthy();
+  expect(screen.queryByRole("link", { name: "Open node-take.mp4" })).toBeNull();
+});
+
+it("draws a single take with no strip", async () => {
+  draw(record({ output: asset("node-take"), status: "assembled" }));
+
+  expect(await screen.findByText("The take")).toBeTruthy();
+  expect(screen.queryAllByRole("tab")).toHaveLength(0);
 });
 
 it("deletes from the page bar and lands on the project", async () => {

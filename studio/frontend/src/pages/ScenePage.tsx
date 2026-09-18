@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Badge, Button, Text, useToast } from "@ansavva/design-system";
+import { Badge, Button, Tabs, Text, useToast } from "@ansavva/design-system";
 
 import { deleteScene, getScene, setSceneRuns } from "../apis/studio";
 import { Backlinks } from "../components/common/Backlinks";
@@ -17,7 +17,7 @@ import { OutputPanel } from "../components/media/OutputPanel";
 import { RunFeed } from "../components/project/RunFeed";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import { useResource } from "../hooks/useResource";
-import type { SceneCut, SceneRecord } from "../types";
+import type { RunAsset, SceneCut, SceneRecord } from "../types";
 import { formatDate } from "../utils/format";
 import { moviePath, objectPath, projectPath, runPath } from "../utils/location";
 
@@ -147,29 +147,15 @@ export function ScenePage() {
       />
 
       {/* **The take leads, at full width.** It IS the scene — everything
-          below is an account of how it was made. Every cut, newest first:
-          assembling is not a one-shot act, and comparing two takes is the
-          reason for re-cutting. */}
+          below is an account of how it was made. */}
       {hasCut && (
-        <section className="flex flex-col gap-3">
-          <Text variant="title" className="border-b border-line pb-2">
-            {(data.cuts ?? []).length > 0 ? "Takes" : "The take"}
-          </Text>
-          <div className="flex flex-col gap-3">
-            {[
-              ...(data.output ? [{ asset: data.output, current: true }] : []),
-              ...(data.cuts ?? []).map((asset) => ({ asset, current: false })),
-            ].map(({ asset, current }) => (
-              <OutputPanel
-                key={asset.node}
-                asset={asset}
-                sole={(data.cuts ?? []).length === 0}
-                to={objectPath(asset.node, { in: "scene", id: sceneId })}
-                badge={!current && <Badge intent="neutral">earlier</Badge>}
-              />
-            ))}
-          </div>
-        </section>
+        <Takes
+          takes={[
+            ...(data.output ? [data.output] : []),
+            ...(data.cuts ?? []),
+          ]}
+          sceneId={sceneId}
+        />
       )}
 
       <section className="flex flex-col gap-3">
@@ -215,6 +201,68 @@ export function ScenePage() {
 
       <Backlinks label="Cut into" links={data.movies} to={moviePath} />
     </>
+  );
+}
+
+/**
+ * Every take of the scene, one at a time, newest first.
+ *
+ * **One tile and a strip of tabs, where every take was stacked.** Assembling
+ * is not a one-shot act, and comparing two takes is the reason for re-cutting
+ * — so every cut is kept and shown. They were laid down the page in a column,
+ * each at full width, and a scene cut thirteen times was thirteen screens of
+ * video before the cut itself. The strip names them by number, the latest
+ * first and marked, and the tile below is whichever one is picked. Local
+ * state rather than the URL: which earlier take is up is not a place a link
+ * should name, and the viewer — which the tile opens — is where the takes
+ * are stepped through with the arrow keys.
+ *
+ * One take draws no strip: a strip of one tab is a heading that can be
+ * pressed.
+ */
+function Takes({ takes, sceneId }: { takes: RunAsset[]; sceneId: string }) {
+  const [picked, setPicked] = useState(takes[0]?.node ?? "");
+  const shown = takes.find((take) => take.node === picked) ?? takes[0];
+  if (!shown) return null;
+  // `takes[0]` is the current one (`output`), the rest are `cuts`, newest
+  // first — so the number counts down from the total, and the top is the
+  // latest.
+  const numberOf = (index: number) => takes.length - index;
+  const current = shown.node === takes[0]?.node;
+  return (
+    <section className="flex flex-col gap-3">
+      <Text variant="title" className="border-b border-line pb-2">
+        {takes.length > 1 ? "Takes" : "The take"}
+      </Text>
+      {/* `defaultValue` as well as `value`, which the package requires even
+          when controlled — the same note `CharacterPage` carries. Scrolls
+          rather than wraps: a strip that grows a second row draws a second
+          underline, and that reads as two strips. */}
+      <Tabs.Root value={shown.node} defaultValue={shown.node} onValueChange={setPicked}>
+        {takes.length > 1 && (
+          <Tabs.List className="overflow-x-auto border-b border-line" aria-label="Takes">
+            {takes.map((take, index) => (
+              <Tabs.Tab key={take.node} value={take.node} className="whitespace-nowrap">
+                Take {numberOf(index)}
+                {index === 0 && (
+                  <Badge intent="neutral" className="ml-2">
+                    latest
+                  </Badge>
+                )}
+              </Tabs.Tab>
+            ))}
+          </Tabs.List>
+        )}
+        <Tabs.Panel value={shown.node} className="pt-3">
+          <OutputPanel
+            asset={shown}
+            sole
+            to={objectPath(shown.node, { in: "scene", id: sceneId })}
+            badge={!current && <Badge intent="neutral">earlier</Badge>}
+          />
+        </Tabs.Panel>
+      </Tabs.Root>
+    </section>
   );
 }
 
