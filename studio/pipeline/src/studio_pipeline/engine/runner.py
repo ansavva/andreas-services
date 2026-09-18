@@ -68,7 +68,7 @@ def cmd_models(ctx, json_):
     if json_:
         print(json.dumps(entries, indent=2))
         return 0
-    for kind in ("image", "video"):
+    for kind in ("image", "video", "training"):
         rows = {k: v for k, v in entries.items() if v.get("kind") == kind}
         if not rows:
             continue
