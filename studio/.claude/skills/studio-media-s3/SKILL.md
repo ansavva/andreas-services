@@ -176,7 +176,7 @@ studio convert --run <project>/latest#1 --for kling --add-input <project>
 
 # Runs: history, chaining, and keepers
 studio runs list <project> --character <name>
-studio runs show <project>/latest
+studio runs show <project>/latest                # its record, with `ui`: the run's page in the web app
 studio runs outputs <project>/latest --presign    # feed into the next render
 studio runs find --character <name>               # across every project
 studio runs edit <project>/latest                 # a DRAFT's prompt, params and images
@@ -209,9 +209,13 @@ studio phrasebook show --model <model key>
 studio scenes new <project> --name <name> --run <project>/latest
 studio scenes add <project>/<name> <project>/latest
 studio scenes frames <project>/<name> --args --max 7   # the cut's start frames
-studio scenes assemble <project>/<name>
+studio scenes assemble <project>/<name>          # prints `ui:` — the scene's page, where the cut is watched
 studio scenes list <project>
-studio scenes show <project>/latest
+studio scenes show <project>/latest              # the record, with `ui`: the scene's page in the web app
+
+# Every command above that prints a run or scene id prints its web link too —
+# `ui:  https://…` for a person, a `"ui"` field in JSON. The link is the profile's
+# `web_url`; `studio profile show` says where it came from.
 
 # Movies: cut scenes into one piece
 studio movies new <project> --name <name> \

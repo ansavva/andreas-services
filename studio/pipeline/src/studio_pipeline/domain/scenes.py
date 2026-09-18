@@ -106,6 +106,7 @@ import json
 
 import click
 
+from studio_pipeline import links as LINKS  # noqa: E402
 from studio_pipeline.adapters import api, entities, store  # noqa: E402
 from studio_pipeline.errors import die  # noqa: E402
 from studio_pipeline import errors  # noqa: E402
@@ -386,6 +387,11 @@ def assemble(record: dict, refs: tuple[str, ...] = (),
     parts = [RENDER.part(clips[run_id], run=run_id) for run_id in cut]
     for n, run_id in enumerate(cut, 1):
         print(f"  shot {n}: {run_id}")
+    # The cut lands on the scene — `output` on its record — so the scene page
+    # is where it is watched; each shot's run page is one click down from it.
+    scene_link = LINKS.scene(record)
+    if scene_link:
+        print(LINKS.ui_line(scene_link, indent="  "))
 
     result = RENDER.submit("assemble", {"target": record["id"], "parts": parts,
                                         "characters": sorted(characters)},
@@ -424,6 +430,9 @@ def cut_lines(record: dict) -> list[str]:
         clip = (row.get("output") or {}).get("name") or "-"
         out.append(f"  {n:>2}  {row['id']}  {(row.get('status') or '?'):<10} "
                    f"{(row.get('model') or ''):<28} {clip}")
+    link = LINKS.scene(record)
+    if link:
+        out.append(LINKS.ui_line(link, indent="  "))
     return out
 
 
@@ -471,7 +480,8 @@ def do_list(project):
 @errors.reports(api.ApiError)
 def do_show(ref, project):
     """One scene's record: its cut as rows, its frames, the movies above it."""
-    print(json.dumps(resolve_scene(ref, project), indent=2))
+    record = resolve_scene(ref, project)
+    print(json.dumps(LINKS.with_ui(record, LINKS.scene(record)), indent=2))
 
 
 @main.command("add")
@@ -540,9 +550,10 @@ def do_frames(ref, args, max_, project):
 def do_assemble(ref, dest, project, shot):
     """Cut the scene's runs into one continuous take."""
     record = assemble(resolve_scene(ref, project), shot, dest)
-    print(json.dumps({"scene": record["id"], "name": record.get("name"),
-                      "output": record.get("output"),
-                      "stitch": record.get("stitch")}, indent=2))
+    print(json.dumps(LINKS.with_ui({"scene": record["id"], "name": record.get("name"),
+                                    "output": record.get("output"),
+                                    "stitch": record.get("stitch")},
+                                   LINKS.scene(record)), indent=2))
 
 
 @main.command("outputs")

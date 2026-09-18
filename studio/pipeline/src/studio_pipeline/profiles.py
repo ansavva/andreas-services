@@ -28,8 +28,16 @@ the profile names are chosen to match what is already on disk.
 
 **Nothing secret goes in `config`.** Every value in it is a resource name or an
 id: the same five `dev-up.sh` exports into a shell, and the same ones sitting
-unencrypted in SSM under `/studio/prod/`. Passwords stay in `<profile>.env` at
-mode 600. `REPLICATE_API_TOKEN` is not a profile field and this package never
+unencrypted in SSM under `/studio/prod/`. Plus one that selects nothing:
+`web_url`, the app showing the same library, so a command that prints a run id
+can print where to look at it. **It is derived, not looked up** — the app's
+domain is a local in `infra/envs/prod/main.tf`, neither a Terraform output nor
+an SSM parameter — by the naming this service uses: `studio-api.<host>` →
+`studio.<host>` for a deployed API, and a loopback API → `localhost:5173`, the
+Vite port in the root CLAUDE.md's dev-ports table. A profile synced before the
+field existed derives it the same way at read time, and `studio profile show`
+says `derived from api_url`. `STUDIO_WEB_URL` overrides it like any field.
+Passwords stay in `<profile>.env` at mode 600. `REPLICATE_API_TOKEN` is not a profile field and this package never
 reads it: the provider credential is the API's — an SSM SecureString in prod,
 `~/.config/andreas-services/studio/dev.env` for a local API under `dev-up.sh`.
 
@@ -92,7 +100,8 @@ META_SECTION = "studio"
 
 DEFAULT_PROFILE = "dev"
 
-#: The five values that decide which stack an invocation talks to, and the
+#: The five values that decide which stack an invocation talks to — and a sixth,
+#: `web_url`, that decides nothing and only says where to look — with the
 #: environment variable each has always been spelled as. The env names are not
 #: an implementation detail — `dev-up.sh`, `backend/tests/integration/conftest.py`
 #: and the Lambda's own configuration all use them, so they stay the fallback
@@ -103,7 +112,13 @@ FIELDS = (
     "cognito_client_id",
     "s3_bucket",
     "catalog_table",
+    "web_url",
 )
+
+#: The one field that selects nothing: the web app showing this stack's
+#: library. Derived from `api_url` when nothing supplies it — see the module
+#: docstring — so a profile written before the field existed still resolves.
+WEB_FIELD = "web_url"
 
 ENV_VAR = {
     "api_url": "STUDIO_API_URL",
@@ -111,7 +126,32 @@ ENV_VAR = {
     "cognito_client_id": "STUDIO_COGNITO_CLIENT_ID",
     "s3_bucket": "STUDIO_S3_BUCKET",
     "catalog_table": "STUDIO_CATALOG_TABLE",
+    "web_url": "STUDIO_WEB_URL",
 }
+
+#: The Vite port `dev-up.sh` tries first — the root CLAUDE.md's dev-ports
+#: table. The fallbacks (5178–5180) are not guessed at: a link to the wrong one
+#: is worse than a link to the first, which is right almost always.
+DEV_WEB_URL = "http://localhost:5173"
+
+
+def derive_web_url(api_url: str) -> str:
+    """The web app in front of an API, by the naming this service uses.
+
+    `https://studio-api.<host>` → `https://studio.<host>`; a loopback API on
+    any port → `DEV_WEB_URL`. Anything else is unknown, and an empty string is
+    the honest answer: no link beats a wrong one.
+    """
+    url = (api_url or "").strip().rstrip("/")
+    if not url:
+        return ""
+    scheme, _, rest = url.partition("://")
+    host = rest.split("/", 1)[0]
+    if host.rsplit(":", 1)[0] in ("localhost", "127.0.0.1", "[::1]"):
+        return DEV_WEB_URL
+    if host.startswith("studio-api."):
+        return f"{scheme or 'https'}://studio.{host[len('studio-api.'):]}"
+    return ""
 
 #: Set by the root group's `--profile`, which also reads `STUDIO_PROFILE`.
 #: Module state rather than a Click context object because `value()` is called
@@ -263,6 +303,8 @@ def resolve(field: str) -> tuple[str, str]:
 
     if _selected:
         _warn_if_overriding(name, field, from_profile, from_env)
+        if not from_profile and field == WEB_FIELD:
+            return _derived_web_url()
         return from_profile, f"profile {name}"
 
     if from_env:
@@ -272,7 +314,15 @@ def resolve(field: str) -> tuple[str, str]:
     legacy = _legacy(field)
     if legacy:
         return legacy, "dev.env"
+    if field == WEB_FIELD:
+        return _derived_web_url()
     return "", "unset"
+
+
+def _derived_web_url() -> tuple[str, str]:
+    """`web_url` when nothing stored one: from whatever `api_url` resolved to."""
+    derived = derive_web_url(resolve("api_url")[0])
+    return (derived, "derived from api_url") if derived else ("", "unset")
 
 
 def _warn_if_overriding(name: str, field: str, from_profile: str, from_env: str) -> None:
@@ -398,6 +448,7 @@ def sync_dev(*, api_url: str = DEV_API_URL) -> dict:
 
     values = {
         "api_url": api_url,
+        "web_url": derive_web_url(api_url),
         "cognito_user_pool_id": out("cognito_user_pool_id"),
         "cognito_client_id": out("cognito_user_pool_client_id"),
         "s3_bucket": out("media_bucket_name"),
@@ -433,6 +484,10 @@ def sync_prod() -> dict:
 
     values = {
         "api_url": found.get("api-domain", ""),
+        # Not under /studio/prod/ and not a Terraform output — the app domain is
+        # a local in `infra/envs/prod/main.tf` — so it is derived by the naming
+        # rule the module docstring states rather than read.
+        "web_url": derive_web_url(found.get("api-domain", "")),
         "cognito_user_pool_id": found.get("cognito-user-pool-id", ""),
         "cognito_client_id": found.get("cognito-client-id", ""),
         "s3_bucket": found.get("media-bucket", ""),

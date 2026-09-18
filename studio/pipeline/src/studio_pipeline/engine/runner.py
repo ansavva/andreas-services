@@ -33,6 +33,7 @@ from types import SimpleNamespace
 
 import click
 
+from studio_pipeline import links as LINKS
 from studio_pipeline.domain import projects as PROJ
 from studio_pipeline.domain import scenes as SCENES
 from studio_pipeline.domain import runs as R
@@ -405,10 +406,12 @@ def cmd_run(**options):
         except SUB.SubmitError as e:
             die(str(e))
         _refuse_a_duplicate(record, args)
-        print(SUB.render(entry, record["id"], payload, bindings, args.json_))
+        link = LINKS.run(record)
+        print(SUB.render(entry, record["id"], payload, bindings, args.json_, ui=link))
         print(f"\ndraft {record['id']} — nothing submitted, nothing billed.\n"
               f"       submit it:   studio runs submit {record['id']}\n"
-              f"       discard it:  studio runs discard {record['id']}",
+              f"       discard it:  studio runs discard {record['id']}"
+              + (f"\n       ui:          {link}" if link else ""),
               file=sys.stderr)
         return 0
 

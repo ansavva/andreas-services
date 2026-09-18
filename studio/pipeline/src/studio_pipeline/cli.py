@@ -116,7 +116,7 @@ the ones already recorded.
     envvar="STUDIO_PROFILE",
     metavar="NAME",
     help="The environment to talk to (dev, prod, …). Overrides STUDIO_API_URL "
-         "and the other four variables — see `studio profile show`.",
+         "and the other STUDIO_* targeting variables — see `studio profile show`.",
 )
 @click.version_option(package_name="studio-pipeline", prog_name="studio")
 def main(profile_name: str | None) -> None:

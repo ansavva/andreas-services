@@ -173,6 +173,9 @@ studio/pipeline/
         ├── profiles.py            NAMED ENVIRONMENTS — which stack answers.
         │                          One resolver behind all five targeting
         │                          values; `--profile` selects, `dev` by default.
+        │                          Plus `web_url`, derived from the API host.
+        ├── links.py               the web app's address for a run, a scene, a
+        │                          project — `ui:` lines and `"ui"` fields
         ├── __init__.py            STUDIO_DIR, DEV_ENV_FILE, ENV_FILE, env_value
         │
         ├── adapters/              THE OUTSIDE WORLD — everything with a side effect
@@ -644,7 +647,14 @@ there and named in a `_Grouped.SECTIONS` list, or it never appears in
 targeting values, the file they live in, and the order they resolve in. Read its
 docstring before changing anything that reads a bucket, a table, an API URL or
 a pool id: the resolution order is not symmetric, and both directions are
-deliberate.
+deliberate. It also carries `web_url`, the app in front of that API — **derived
+from the API host** (`studio-api.<host>` → `studio.<host>`, loopback →
+`localhost:5173`) because the app domain is neither a Terraform output nor an
+SSM parameter. **`links.py` turns that into an address** for a run
+(`/p/<project>/r/<run>`), a scene (`/s/<scene>`) or a project, mirroring
+`frontend/src/utils/location.ts`; every command that prints a run or scene id
+prints the link through it — a `ui:` line on stderr for a person, a `"ui"` field
+in a JSON document — and prints nothing when the profile has no web app.
 
 **`adapters/` — the outside world.** Nothing here knows about characters, runs
 or projects.

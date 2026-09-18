@@ -56,6 +56,7 @@ import pathlib
 import sys
 import time
 
+from studio_pipeline import links as LINKS
 from studio_pipeline.adapters import api
 from studio_pipeline.adapters import entities
 from studio_pipeline.adapters import store
@@ -576,7 +577,8 @@ def predictions_endpoint(model: str) -> str:
     return REPLICATE_PREDICTIONS.format(model=model)
 
 
-def render(entry: dict, run: str, payload: dict, bindings: dict, as_json: bool) -> str:
+def render(entry: dict, run: str, payload: dict, bindings: dict, as_json: bool,
+           ui: str = "") -> str:
     """The two-document payload render, or raw JSON for machines.
 
     **Hard rule #2's surface.** Image inputs appear as what will be signed into
@@ -588,13 +590,16 @@ def render(entry: dict, run: str, payload: dict, bindings: dict, as_json: bool) 
     the name is what makes the payload checkable, and the id is what the record
     will hold and what a follow-up command takes. `--json` keeps bare ids,
     because its consumer is a machine that wants the identity and not the label.
+
+    `ui` is the draft's address in the app; the JSON carries it as a field and
+    the human render leaves it to the caller's trailer, beside `submit it:`.
     """
     endpoint = predictions_endpoint(entry["model"])
     if as_json:
-        return json.dumps({
+        return json.dumps(LINKS.with_ui({
             "run": run, "model": entry["model"], "endpoint": endpoint,
             "input": payload, "bindings": bindings,
-        }, indent=2, ensure_ascii=False)
+        }, ui), indent=2, ensure_ascii=False)
     readable = {
         field: ([_label(one) for one in value] if isinstance(value, list)
                 else _label(value))
@@ -799,7 +804,10 @@ def submit(entry: dict, record: dict, payload: dict, bindings: dict,
     d = defaults(kind)
     project = args.project          # the project record, resolved by the caller
     run_id = record["id"]
+    link = LINKS.run({**record, "project": record.get("project") or project["id"]})
     print(f"run {run_id}  (in {project['name']})", file=sys.stderr)
+    if link:
+        print(LINKS.ui_line(link), file=sys.stderr)
 
     try:
         sent = entities.submit_run(run_id)
@@ -819,8 +827,9 @@ def submit(entry: dict, record: dict, payload: dict, bindings: dict,
           file=sys.stderr)
 
     if not (d["always_poll"] or getattr(args, "poll", False)):
-        print(json.dumps({"run": run_id, "id": prediction, "status": sent.get("status")},
-                         indent=2))
+        print(json.dumps(LINKS.with_ui(
+            {"run": run_id, "id": prediction, "status": sent.get("status")}, link),
+            indent=2))
         print(f"not waiting — the run closes on its own. Watch it with: "
               f"studio runs show {run_id}", file=sys.stderr)
         return sent
@@ -835,10 +844,12 @@ def submit(entry: dict, record: dict, payload: dict, bindings: dict,
     if getattr(args, "dest", None):
         _save_local(closed, args.dest)
 
-    print(json.dumps({
+    print(json.dumps(LINKS.with_ui({
         "run": run_id, "runref": f"{run_id}#1", "model": entry["model"],
         "status": "succeeded", "outputs": outputs,
-    }, indent=2))
+    }, link), indent=2))
+    if link:
+        print(LINKS.ui_line(link), file=sys.stderr)
     return closed
 
 
