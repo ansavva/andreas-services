@@ -190,6 +190,9 @@ Each is documented where it belongs; recognising them mid-workflow matters here:
 | `E006` | Shot durations must sum to `duration` | Guarded locally before submitting |
 | Start frame rejected | `.webp` into Kling | Step 5 |
 | Output looks identical to input | The edit was buried under preservation wording | Lead with the change; keep "keep unchanged" short |
+| `E005 … flagged as sensitive`, a `422` on `body.prompt`, `Green net check failed` | Moderation, per engine, and it moves: a kiss between two adults is refused by Seedance 2.5 and both Wan 3.0 routes, rendered by Kling and Veo | Nothing billed. Change engine, not wording — the map is on [`studio-media-scene`](../studio-media-scene/SKILL.md#what-each-engine-will-actually-render--contact-between-two-people), the image side in [`studio-media-image`](../studio-media-image/SKILL.md#what-the-image-engines-refuse) |
+| `403 User is locked. Reason: TOP_UP` | fal's balance, not the payload; the run is `failed` | Top up, then the same command with `--again` — a failed run is not resubmittable ([`studio-media-core`](../studio-media-core/SKILL.md#a-failed-run-is-redrafted-not-resubmitted)) |
+| A garment changes when the subject stands; a placement or a height in prose is ignored | The frame did not show it, so the model invented it | Pin it with a still — the seed shows the wardrobe, an end frame shows where things land ([`studio-media-scene`](../studio-media-scene/SKILL.md#the-end-frame-is-where-control-lives)) |
 
 ## When NOT to use this skill
 

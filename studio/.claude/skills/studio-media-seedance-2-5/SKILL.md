@@ -116,6 +116,11 @@ is exactly what `studio-media-prompt` emits. For dialogue:
 - **A 3 s draft refused.** The floor is 4 s on this model.
 - **Bill four times what was expected.** A reference video was bound; the
   `video_in` tier applies to the whole render.
+- **`E005 The input or output was flagged as sensitive`.** A kiss between two
+  adults — fully clothed too, and with a start frame that is already a kiss
+  still. Not billed, and no wording gets past it. Kling and Veo render the
+  same clip; the map is on
+  [`studio-media-scene`](../studio-media-scene/SKILL.md#what-each-engine-will-actually-render--contact-between-two-people).
 
 ## Formats and caps
 

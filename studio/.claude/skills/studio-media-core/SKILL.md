@@ -202,6 +202,20 @@ recorded on the run, so a second machine and a colleague are caught, not only
 the same machine submitting twice. An
 unsubmitted draft never counts: repeating a `--dry-run` is ordinary.
 
+### A failed run is redrafted, not resubmitted
+
+A run the provider refused is `failed`, and **a failed run cannot be sent
+again**: `studio runs submit <run>` refuses it — `is failed, not a draft` —
+because submit takes drafts only. And the guard above counts a failed run as
+a submission, so the same command that made it is refused too, with the
+failed run named: `this exact payload was already submitted … (failed)`.
+Nothing was billed either time. The way through is the same command with
+`--again`, which drafts and sends a fresh run of the identical payload.
+
+Measured 2026-09-18 on fal: `403 User is locked. Reason: TOP_UP` /
+`Exhausted balance` — the account, not the payload; nothing billed, the run
+`failed`, and `--again` after the top-up was the whole fix.
+
 **An `owner/name` that is not a registry key runs off the live schema.** Trying
 a model before onboarding it had no supported path, so a four-way upscaler
 comparison ran three of them straight against the provider — no validation, no

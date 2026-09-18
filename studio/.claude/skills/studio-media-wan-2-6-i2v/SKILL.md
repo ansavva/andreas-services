@@ -63,6 +63,17 @@ re-describes the still's contents spends its words on what the model can
 see, and a prompt that contradicts them — a different wardrobe, a different
 setting — asks for a clip that drifts off its own first frame.
 
+## What it renders that the others refuse — and how it looks
+
+With `enable_safety_checker: false` this engine **renders anything**, and it
+has a real `negative_prompt` — so a kiss between two adults, which fal's and
+OpenRouter's Wan 3.0 and Seedance 2.5 all refuse, renders here. Measured
+2026-09-18: the motion is flat — the kiss lands at 2 s and then holds static
+for the rest of the clip — skin reads plastic next to Wan 3.0, and the output
+is silent. It is the fallback for a contact beat no other engine will pass,
+not the first choice. The map across every engine is on
+[`studio-media-scene`](../studio-media-scene/SKILL.md#what-each-engine-will-actually-render--contact-between-two-people).
+
 ## What it is for, and what it is not
 
 **For:** the frame-first workflow — a still rendered on-model by an image

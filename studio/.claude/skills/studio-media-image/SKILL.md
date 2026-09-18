@@ -266,3 +266,57 @@ output re-entering as identity input, which compounds drift. A frame pulled off
 a run belongs in the **project's** input pool; promoting one into a character is
 a deliberate curation decision, and it should be described in the bible when it
 happens — copy it into the character and tag it (`studio describe <node> --tag default --tag face`).
+
+## Re-pose one person per generation
+
+A two-person frame is built one identity per run — one figure rendered alone,
+the second added by a Sunburst edit that holds the first pixel-for-pixel. The
+same rule holds when the frame exists and a figure has to **move**: an edit
+that re-poses two people at once either blends them or is flagged (Sunburst
+returned `E005` on "eyes locked, a foot apart" with a shirtless figure in the
+frame). Measured 2026-09-18. The chain that works:
+
+1. **Re-pose the first figure alone**, on `nano-banana-pro`, from the
+   single-figure base still — "reproduce it exactly … change only his pose".
+   `safety_filter_level: block_only_high` re-poses a shirtless figure without
+   complaint.
+2. **Add the second figure with Sunburst**, that character's references after
+   the edit target, the prompt saying the first figure and everything else
+   stay exactly as they are.
+
+```bash
+studio run --model nano-banana-pro --project <project> \
+  --input <N> --aspect-ratio match_input_image --name repose-step1 \
+  --prompt "Reproduce the image exactly … change only his pose: …"
+
+studio run --model gpt-image-2.5-sunburst --project <project> \
+  --image-run <project>/latest --character <name-2> --pick-tag default,face \
+  --name repose-step2 --prompt-file step2.txt
+```
+
+**Pass only the references that match the target angle.** Redrawing a
+character in profile wants the profile face reference and the profile body
+reference, and nothing else: adding the front-face reference pulled the result
+frontal and lost the nose. `--pick-tag` with the angle's tag is the selector;
+`--character` alone sends the whole `default` set.
+
+## Seed quality before a video engine
+
+Two levers at generation time, and one after. `nano-banana-pro` takes
+`resolution: "2K"` (its default — check the payload, `1K` is the soft one);
+Sunburst takes `quality: "high"` for the frame that ships (`medium` is the
+registry default, priced per tier). Everything else is
+[`studio-media-image-upscale`](../studio-media-image-upscale/SKILL.md) on the
+finished still. A video engine inherits the seed's softness and never adds
+detail back.
+
+## What the image engines refuse
+
+The line is a kiss, and it sits in different places per engine — measured
+2026-09-18. `gpt-image-2.5-sunburst` refuses a kiss still, and flags an edit
+that re-poses a shirtless man together with a second man (`E005`).
+`seedream-5-pro` renders one: "kissing on the lips" passes, clothed or
+shirtless, where "French kiss" / "open-mouthed" wording was refused.
+`nano-banana-pro` at `block_only_high` re-poses a shirtless figure. The
+video side of the same map is on
+[`studio-media-scene`](../studio-media-scene/SKILL.md#what-each-engine-will-actually-render--contact-between-two-people).

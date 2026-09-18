@@ -116,3 +116,8 @@ studio convert --run <project>/latest#1 --for seedream-5-pro --add-input <projec
   Check the payload before blaming the model.
 - **A prompt refused before submit.** It is over 4000 characters — trim it;
   nothing is sent.
+- **A kiss still refused.** The wording, not the subject. Measured
+  2026-09-18: "French kiss" / "open-mouthed" was refused; "kissing on the
+  lips" renders, clothed or shirtless — which makes this the image engine for
+  a kiss still, where Sunburst refuses one outright. The map is in
+  [`studio-media-image`](../studio-media-image/SKILL.md#what-the-image-engines-refuse).

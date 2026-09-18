@@ -140,6 +140,15 @@ sent, which is what `[ImageN]` refers to).
 **There is no stored order.** A selection comes back in name order — stable,
 so two calls agree, which is all a payload needs from it.
 
+**Send only the references that match the angle being drawn.** A profile
+shot wants the profile face reference and the profile body reference, and
+nothing else: adding the front-face reference to that set pulled the result
+frontal and lost the nose (measured 2026-09-18). More references are not more
+identity; the ones facing the wrong way argue with the ones facing the right
+way, and the model splits the difference. `--pick-tag` with the angle's tag
+is how the selection says so — which is what the angle tags on each image
+are for.
+
 **Describe every image you add.** An undescribed image is invisible to whoever
 chooses the set, so it may as well not be there:
 
