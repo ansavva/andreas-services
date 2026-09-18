@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { Badge, Text, type BadgeIntent } from "@ansavva/design-system";
 
+import type { Poster } from "../../types";
 import { MediaThumb } from "../media/MediaThumb";
 
 /** A status word, with the colour it carries when the caller knows one. */
@@ -18,7 +19,7 @@ export type RowBadge = string | { label: string; intent?: BadgeIntent };
  * folders have no picture and are not missing one, so they bring an icon.
  */
 type RowThumb =
-  | { node: string; url: string; isVideo?: boolean }
+  | { node: string; url: string; isVideo?: boolean; poster?: Poster | null }
   | { placeholder: string }
   | { icon: ReactNode };
 
@@ -131,6 +132,7 @@ export function EntityRow({
           url={thumb.url}
           name=""
           isVideo={thumb.isVideo}
+          poster={thumb.poster}
           aspect="auto"
           className="size-14 shrink-0 border border-line"
         />

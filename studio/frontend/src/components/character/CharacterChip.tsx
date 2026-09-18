@@ -26,6 +26,7 @@ export function CharacterAvatar({ hero, name }: { hero: HeroImage | null; name: 
       <MediaThumb
         nodeId={hero.node}
         url={hero.url}
+        poster={hero.poster}
         name={name}
         isVideo={false}
         aspect="square"

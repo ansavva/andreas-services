@@ -619,15 +619,12 @@ def _limit(raw) -> int:
 
 def _thumbs(window: list[dict]) -> None:
     """The plain listing's one asset: the first output, signed, in place."""
-    thumbs = catalog.records(
+    thumbs = support.with_posters(catalog.records(
         [run["thumb"] for run in window if isinstance(run.get("thumb"), str)]
-    )
+    ))
     for run in window:
-        node = thumbs.get(run.get("thumb") or "")
-        if node and node.get("blob_key"):
-            run["thumb"] = {"node": node["node_id"], "url": s3.presign(node["blob_key"])}
-        elif "thumb" in run:
-            run["thumb"] = None
+        if "thumb" in run:
+            run["thumb"] = support.hero(thumbs.get(run.get("thumb") or ""), thumbs)
 
 
 # ─────────────────────────── the feed projection ───────────────────────────
@@ -764,7 +761,7 @@ def _feed_row(row: dict, record: dict, send_entries: list[dict], nodes: dict) ->
         {**entry,
          "source": entry.get("source")
          or _source_for(entry["node"], nodes.get(entry["node"])),
-         **support.asset(entry["node"], nodes.get(entry["node"]))}
+         **support.asset(entry["node"], nodes.get(entry["node"]), nodes)}
         for entry in send_entries
     ]
     outputs = [support.asset(node_id, nodes.get(node_id), nodes)
@@ -803,7 +800,11 @@ def _feed_row(row: dict, record: dict, send_entries: list[dict], nodes: dict) ->
         "cast": cast,
         "sends": sends,
         "outputs": outputs,
-        "thumb": {"node": first["node"], "url": first["url"]} if first else None,
+        # The first output's pointer, poster included — the lightbox's strip
+        # draws `thumb` and must not draw the original beside tiles that do not.
+        "thumb": ({"node": first["node"], "url": first["url"],
+                   **({"poster": first["poster"]} if first.get("poster") else {})}
+                  if first else None),
     }
 
 
@@ -974,7 +975,7 @@ def view(record: dict, send_entries: list[dict] | None = None) -> dict:
                  # and this fills in what only the catalog knows.
                  "source": entry.get("source")
                  or _source_for(entry["node"], nodes.get(entry["node"])),
-                 **support.asset(entry["node"], nodes.get(entry["node"]))}
+                 **support.asset(entry["node"], nodes.get(entry["node"]), nodes)}
                 for entry in send_entries
             ],
             # Derived from the sends rather than stored, so the two cannot

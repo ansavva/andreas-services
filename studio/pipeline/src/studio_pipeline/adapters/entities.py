@@ -662,6 +662,12 @@ def create_render(kind: str, params: dict) -> dict:
     return api.post("/api/renders", {"kind": kind, "params": params})
 
 
+def sweep_posters() -> dict:
+    """`POST /api/posters` — 202; a poster queued for every media file lacking
+    one. `{queued: [ids], skipped: n, truncated: bool}`."""
+    return api.post("/api/posters", {})
+
+
 def get_render(render_id: str) -> dict:
     """One render job row: `queued` / `running` / `succeeded` / `failed`."""
     return api.get(f"/api/renders/{render_id}")

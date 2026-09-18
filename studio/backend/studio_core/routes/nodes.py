@@ -51,7 +51,7 @@ from studio_core.clients.aws import s3
 from studio_core.errors import NotFoundError, ValidationError
 from studio_core.media import faststart
 from studio_core.routes import support
-from studio_core.services import browse, catalog, manage
+from studio_core.services import browse, catalog, manage, render
 
 logger = logging.getLogger(__name__)
 
@@ -609,6 +609,12 @@ def confirm_upload(node_id: str):
         content_type=metadata.get("ContentType"),
         checksum=s3.content_hash(metadata),
     )
+    # An upload is where the heavy files come from — a phone photo, a PNG
+    # with alpha — so this is the path that most needs a poster. Best effort:
+    # the bytes have landed and the row says so, and no poster queue may turn
+    # that into a failure.
+    if render.wants_poster(updated):
+        render.queue_poster(updated["lib"], node_id)
     return jsonify(support.view(updated)), 200
 
 

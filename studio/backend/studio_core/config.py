@@ -311,6 +311,19 @@ def max_feed_rows():
     return int(os.environ.get("STUDIO_MAX_FEED_ROWS", "50"))
 
 
+def max_poster_sweep():
+    """How many media rows one `POST /api/posters` will walk queueing posters.
+
+    A sweep is one person's maintenance call over a whole library — the
+    backfill for files stored before the service made posters at ingest — and
+    it reads `by-recent` newest-first with no cursor, so a cap it hits leaves
+    the oldest rows unreached; the answer says `truncated` when that happens.
+    Five times the reel's cap by default: enough for every library that exists,
+    and each row is a few hundred bytes.
+    """
+    return int(os.environ.get("STUDIO_MAX_POSTER_SWEEP", "10000"))
+
+
 def max_search_scan():
     """How many runs one `GET /api/runs?q=` call will read looking for a match.
 

@@ -60,7 +60,7 @@ export function EntityCard({ name, hero, counts, to }: Props) {
     >
       <span className="size-16 shrink-0 overflow-hidden border border-line bg-surface-alt">
         {hero ? (
-          <MediaThumb nodeId={hero.node} url={hero.url} name="" aspect="auto" />
+          <MediaThumb nodeId={hero.node} url={hero.url} poster={hero.poster} name="" aspect="auto" />
         ) : (
           <span className="flex h-full w-full items-center justify-center font-heading text-xl text-muted">
             {name.slice(0, 1).toUpperCase()}

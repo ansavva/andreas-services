@@ -100,6 +100,7 @@ export function MoviePage() {
             <MediaThumb
               nodeId={data.output.node}
               url={data.output.url}
+              poster={data.output.poster}
               name={data.output.name}
               isVideo
               aspect="video"

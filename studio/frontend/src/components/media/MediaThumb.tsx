@@ -131,19 +131,29 @@ interface Props {
    */
   autoplay?: boolean;
   /**
-   * A clip's still, made by the render worker off its first frame, and the
-   * clip's length. **With a poster the clip loads nothing until it plays.**
+   * The small still the render worker made for this file — off a clip's
+   * first frame, or a picture scaled down to 640 across — and, for a clip,
+   * its length. **With a poster the tile loads nothing else.**
    *
-   * Without one, a tile draws its own poster off the clip's metadata —
-   * `preload="metadata"` — and in Chrome that reads the clip nearly whole:
-   * measured at ~6 MB per tile, ~290 MB for a wall of forty-eight, and
-   * every other request on the page queued behind it. With one, the still
-   * is drawn as an `<img>` under the `<video>`, the video is
+   * For a clip: without one, a tile draws its own poster off the clip's
+   * metadata — `preload="metadata"` — and in Chrome that reads the clip
+   * nearly whole: measured at ~6 MB per tile, ~290 MB for a wall of
+   * forty-eight, and every other request on the page queued behind it. With
+   * one, the still is drawn as an `<img>` under the `<video>`, the video is
    * `preload="none"` and costs nothing until a hover or an autoplay slot
    * calls `play()`, and the badge reads `duration` off the record instead
-   * of the metadata it no longer loads. A poster whose signature has died
-   * re-signs like any other picture; one that is gone for good falls back
-   * to the clip's metadata, so the tile is never blank.
+   * of the metadata it no longer loads.
+   *
+   * For a still: without one, a tile draws the original — a 0.4 MB JPEG for
+   * a run's output, 2–8 MB for an uploaded PNG or a phone photo — at 80 CSS
+   * pixels across. A feed of twenty runs was a hundred megabytes of
+   * thumbnails, arriving six at a time over HTTP/1.1 to S3. The poster is
+   * 30–80 KB. The original is still what the viewer opens and what a drag
+   * carries: this is a picture of the file, not the file.
+   *
+   * A poster whose signature has died re-signs like any other picture; one
+   * that is gone for good falls back to the file itself — the clip's
+   * metadata, the still's original — so the tile is never blank.
    */
   poster?: Poster | null;
   duration?: number | null;
@@ -263,9 +273,42 @@ export function MediaThumb({
   const isVideo = isVideoProp ?? looksLikeVideo(name, url);
   const { src, failed, onError } = useSignedSrc(nodeId, url);
   // The still, re-signed on its own node. `still.failed` is also `true` when
-  // there is no poster at all, which is the one "fall back to the clip" flag.
+  // there is no poster at all, which is the one "fall back to the file" flag.
   const still = useSignedSrc(poster?.node ?? "", poster?.url);
-  const hasPoster = isVideo && !still.failed;
+  const hasPoster = !still.failed;
+
+  /**
+   * What the `<img>` is showing — the poster while there is one, the
+   * original once there is not — and whether it has arrived.
+   *
+   * **A tile says it is loading.** It used to be the box's plain fill until
+   * the picture popped in, which on a slow connection reads as nothing
+   * happening; a feed of thumbnails filling one at a time over a minute had
+   * no sign that any were on their way. The box shimmers — the same sweep a
+   * run in flight draws — until the picture's `load` fires, then the picture
+   * fades over it. `loaded` resets whenever the source changes, so a re-sign
+   * or a fallback shimmers again rather than showing the old frame's box as
+   * done.
+   */
+  const shown = isVideo ? (hasPoster ? still.src : undefined) : hasPoster ? still.src : src;
+  const [loaded, setLoaded] = useState(false);
+  const picture = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    setLoaded(false);
+    // A picture the browser already holds can complete before the listener
+    // is on; `complete` with a size is the load event this would have missed.
+    const element = picture.current;
+    if (element && element.complete && element.naturalWidth > 0) setLoaded(true);
+  }, [shown]);
+  const onPictureError = useCallback(() => {
+    // The poster first: one re-sign, then the file itself. A poster that is
+    // gone leaves `still.failed`, `shown` becomes the original, and an error
+    // on THAT re-signs the original. (A clip with no poster draws no `<img>`,
+    // so the second branch is only ever a still.)
+    if (hasPoster) still.onError();
+    else onError();
+  }, [hasPoster, onError, still]);
+  const loading = !failed && shown !== undefined && !loaded;
 
   /**
    * The drag starts on this box, not on the `<img>` inside it.
@@ -379,6 +422,9 @@ export function MediaThumb({
   }, [autoplay, failed, isVideo, near, src]);
 
   const media = `h-full w-full ${FITS[fit]} ${dimmed ? "opacity-75" : ""} ${mediaClassName}`;
+  // Over the shimmer once it has arrived. `opacity-75` for a dimmed tile is
+  // on `media`; this one only hides a picture that is not there yet.
+  const fade = `transition-opacity duration-300 ${loaded ? "" : "opacity-0"}`;
 
   return (
     <span
@@ -392,7 +438,8 @@ export function MediaThumb({
       }}
       draggable={draggable || undefined}
       onDragStart={draggable ? onDragStart : undefined}
-      className={`relative block overflow-hidden bg-surface-alt ${ratio ? "" : ASPECTS[aspect]} ${className}`}
+      className={`relative block overflow-hidden bg-surface-alt ${loading ? "studio-shimmer" : ""} ${ratio ? "" : ASPECTS[aspect]} ${className}`}
+      data-loading={loading || undefined}
       style={ratio ? { aspectRatio: ratio } : undefined}
     >
       {failed ? (
@@ -405,14 +452,16 @@ export function MediaThumb({
               plays, at which point the video's frames draw over it. */}
           {hasPoster && (
             <img
-              src={still.src}
+              ref={picture}
+              src={shown}
               alt=""
-              onError={still.onError}
+              onLoad={() => setLoaded(true)}
+              onError={onPictureError}
               loading="lazy"
               decoding="async"
               draggable={false}
               data-testid="poster"
-              className={`absolute inset-0 ${media}`}
+              className={`absolute inset-0 ${media} ${fade}`}
             />
           )}
           <video
@@ -439,7 +488,10 @@ export function MediaThumb({
         </>
       ) : (
         <img
-          src={src}
+          ref={picture}
+          src={shown}
+          onLoad={() => setLoaded(true)}
+          data-testid={hasPoster ? "poster" : undefined}
           // **Decorative, deliberately.** Every one of these sits inside a
           // control that is already labelled — a button with the file's name as
           // its `title`, a row that spells it out beside the picture. An `alt`
@@ -449,11 +501,11 @@ export function MediaThumb({
           // with. Empty alt keeps the thumbnail out of the name and leaves it
           // `role="presentation"`, which is what it is.
           alt=""
-          onError={onError}
+          onError={onPictureError}
           loading="lazy"
           decoding="async"
           draggable={false}
-          className={media}
+          className={`${media} ${fade}`}
         />
       )}
 

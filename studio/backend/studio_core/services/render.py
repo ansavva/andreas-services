@@ -75,7 +75,7 @@ from studio_core.clients.aws import s3, sqs
 from studio_core.errors import ConfigError, NotFoundError, UpstreamError, ValidationError
 from studio_core.media import sheet as sheets
 from studio_core.media import workspace
-from studio_core.services import catalog, generate
+from studio_core.services import catalog, generate, keys
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +87,9 @@ KIND_FRAME = "frame"
 KIND_GRID = "grid"
 #: A labelled grid of existing images — a character pool, or a scene's board.
 KIND_SHEET = "sheet"
-#: A still off a clip's first frame, stored beside it, hidden, and linked —
-#: what a tile draws so it need not load the clip. `catalog.link_poster`.
+#: A still stored beside a media file, hidden, and linked — what a tile draws
+#: so it need not load the file. Off a clip's first frame, or a still scaled
+#: down; `catalog.link_poster` either way.
 KIND_POSTER = "poster"
 
 KINDS = frozenset({KIND_ASSEMBLE, KIND_FRAME, KIND_GRID, KIND_SHEET, KIND_POSTER})
@@ -185,7 +186,7 @@ def _validated(kind: str, params: dict, lib: str) -> dict:
     if kind == KIND_POSTER:
         node = params.get("node")
         if not isinstance(node, str):
-            raise ValidationError("poster needs a `node` naming one video")
+            raise ValidationError("poster needs a `node` naming one image or video")
         return {"node": node}
 
     if kind in (KIND_FRAME, KIND_GRID):
@@ -262,6 +263,75 @@ def enqueue(lib: str, kind: str, params: dict) -> dict:
         raise UpstreamError("Could not enqueue the render") from exc
     logger.info("Queued render %s (%s) for %s", record["id"], kind, lib)
     return record
+
+
+#: The kinds of file a tile draws, and so the kinds that get a poster.
+POSTER_KINDS = frozenset({"image", "video"})
+
+
+def wants_poster(record: dict) -> bool:
+    """Whether this node is one a tile would draw and a poster would serve.
+
+    A media file with bytes behind it and no poster yet. Not a poster itself
+    — `poster_of` is the derivative's own mark, and a poster of a poster is
+    the recursion the sweep must never start — and not a placeholder upload
+    whose bytes never came.
+    """
+    if record.get("kind") != catalog.KIND_FILE or not record.get("blob_key"):
+        return False
+    if record.get("poster") or record.get("poster_of"):
+        return False
+    if "size" not in record:
+        return False  # `browse.is_abandoned_upload`: a key promised, no bytes
+    return keys.kind(record.get("name") or "") in POSTER_KINDS
+
+
+def queue_poster(lib: str, node_id: str) -> bool:
+    """Ask the worker for a still for one node. **Best effort, by contract.**
+
+    Every caller is on a path that has just stored something a person asked
+    for — a run closing, an upload confirmed, a frame grabbed — and none of
+    them may fail because a poster could not be queued: a stack with no render
+    queue (a dev machine that has not provisioned one), or SQS refusing, is a
+    poster missing — the tile draws the original, as every tile did before
+    posters — and never a run that fails to close or an upload that reports a
+    failure over bytes that landed. Returns whether a job was queued.
+    """
+    try:
+        enqueue(lib, KIND_POSTER, {"node": node_id})
+    except Exception as exc:  # noqa: BLE001 — see the docstring
+        logger.warning("No poster queued for %s: %s", node_id, exc)
+        return False
+    return True
+
+
+def sweep_posters(lib: str) -> dict:
+    """Queue a poster for every media file in a library that has none.
+
+    **The backfill**, and idempotent: a node already covered is a read, not a
+    job, so this is safe to run over a whole library as often as wanted. It
+    walks `by-recent`, which holds exactly the images and videos and nothing
+    else, so a library of folders and documents costs nothing to skip.
+
+    Returns what it queued and what it passed over, so the caller can say how
+    much work was handed to the worker — nothing here waits for it.
+    """
+    if not config.render_queue_url():
+        # Refused once, up front, rather than swallowed per row by
+        # `queue_poster` — a person asked for this sweep and is owed the
+        # sentence, not two thousand warnings in a log.
+        raise ConfigError(
+            "This environment has no render queue — STUDIO_RENDER_QUEUE_URL is unset. "
+            "Prod and a per-machine dev stack both set it; CI deliberately does not.")
+    records, truncated = catalog.recent(lib, config.max_poster_sweep())
+    queued, skipped = [], 0
+    for record in records:
+        if not wants_poster(record):
+            skipped += 1
+            continue
+        if queue_poster(lib, record["node_id"]):
+            queued.append(record["node_id"])
+    return {"queued": queued, "skipped": skipped, "truncated": truncated}
 
 
 # ─────────────────────────────── the worker ───────────────────────────────
@@ -359,7 +429,7 @@ def _pull(space: workspace.Workspace, node_id: str, local_name: str) -> str:
     return path
 
 
-def _store(dest_folder: str, name: str, path: str) -> dict:
+def _store(dest_folder: str, name: str, path: str, *, poster: bool = True) -> dict:
     """Put a produced file in the library under `dest_folder`. -> an asset pointer.
 
     **`create_numbered`, not `create_node`**, for the reason
@@ -368,15 +438,21 @@ def _store(dest_folder: str, name: str, path: str) -> dict:
     on a filename. The numbered form lands `sheet (2).png` beside a stray from
     the first attempt — one tidyable orphan instead of a job that can never
     finish.
+
+    **What lands here gets a poster queued, like any other media file** — a
+    grabbed frame, a contact grid and a sheet are all drawn in tiles. `poster=
+    False` is for the one job whose output IS a poster.
     """
     content_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
     node = catalog.create_numbered(dest_folder, name, catalog.KIND_FILE)
     s3.put_file(node["blob_key"], path, content_type)
     metadata = s3.head(node["blob_key"])
-    catalog.set_blob(node["node_id"], node["blob_key"],
-                     size=metadata.get("ContentLength", 0),
-                     content_type=metadata.get("ContentType") or content_type,
-                     checksum=s3.content_hash(metadata))
+    stored = catalog.set_blob(node["node_id"], node["blob_key"],
+                              size=metadata.get("ContentLength", 0),
+                              content_type=metadata.get("ContentType") or content_type,
+                              checksum=s3.content_hash(metadata))
+    if poster and wants_poster(stored):
+        queue_poster(stored["lib"], node["node_id"])
     return {"node": node["node_id"], "name": node["name"],
             "size": metadata.get("ContentLength", 0), "content_type": content_type}
 
@@ -508,38 +584,60 @@ def _frame(params: dict) -> dict:
 
 
 def _poster(params: dict) -> dict:
-    """The first frame of one clip, as a JPEG beside it, linked as its poster.
+    """A small still beside one media file, linked as its poster.
 
-    **Idempotent, and cheaply so.** A clip that already points at a still
-    that exists is answered from the row without pulling the clip — the
-    backfill runs this over whole projects, and a second pass must cost
-    reads, not renders. `ffmpeg.duration` is read while the clip is on disk,
+    Off a clip's first frame, or a still scaled down to the same width — one
+    job, because one tile draws both and the tile is what this is for. What
+    a still's poster saves is `media/imaging.poster`'s measurement; what a
+    clip's saves is `media/faststart.py`'s.
+
+    **Idempotent, and cheaply so.** A file that already points at a still
+    that exists is answered from the row without pulling the file — the
+    backfill runs this over whole libraries, and a second pass must cost
+    reads, not renders. `ffmpeg.duration` is read while a clip is on disk,
     because the tile that draws the poster no longer loads the metadata the
     badge used to come from.
 
-    Stored in the clip's own folder rather than a `derived/` beside it:
+    Stored in the file's own folder rather than a `derived/` beside it:
     `poster_of` keeps it out of every listing, so there is nothing for a
-    folder to organise, and a clip moved or copied is not separated from a
+    folder to organise, and a file moved or copied is not separated from a
     sibling folder it never knew about.
-    """
-    from studio_core.media import ffmpeg
 
-    clip = _blob(params["node"])
-    if clip.get("poster"):
-        existing = catalog.records([clip["poster"]]).get(clip["poster"])
+    **A poster never gets a poster.** The derivative carries `poster_of`, and
+    a job naming one is refused for good rather than left to recurse.
+    """
+    from studio_core.media import ffmpeg, imaging
+
+    source_node = _blob(params["node"])
+    if source_node.get("poster_of"):
+        raise RenderError(f"{source_node['node_id']} is a poster already")
+    if source_node.get("poster"):
+        existing = catalog.records([source_node["poster"]]).get(source_node["poster"])
         if existing and existing.get("blob_key"):
             return {"poster": {"node": existing["node_id"], "name": existing["name"]},
                     "existing": True}
 
+    kind = keys.kind(source_node.get("name") or "")
+    if kind not in POSTER_KINDS:
+        raise RenderError(f"{source_node['node_id']} is not an image or a video")
+
+    seconds = None
     with workspace.Workspace(prefix="poster-") as space:
-        space.reserve(_declared([{"node": clip["node_id"]}]), factor=1)
-        source = _pull(space, clip["node_id"], "source" + _ext(clip["node_id"]))
-        seconds = ffmpeg.duration(source)
-        stem = os.path.splitext(clip["name"])[0]
-        local = ffmpeg.poster(source, space.at("out", f"{stem}.poster.jpg"))
-        stored = _store(clip["parent_id"], f"{stem}.poster.jpg", local)
-    catalog.link_poster(clip["node_id"], stored["node"], duration=seconds)
-    return {"poster": stored, "duration": seconds}
+        space.reserve(_declared([{"node": source_node["node_id"]}]), factor=1)
+        source = _pull(space, source_node["node_id"], "source" + _ext(source_node["node_id"]))
+        stem = os.path.splitext(source_node["name"])[0]
+        if kind == "video":
+            seconds = ffmpeg.duration(source)
+            local = ffmpeg.poster(source, space.at("out", f"{stem}.poster.jpg"))
+        else:
+            local = imaging.poster(source, space.at("out", f"{stem}.poster"))
+        stored = _store(source_node["parent_id"], os.path.basename(local), local,
+                        poster=False)
+    catalog.link_poster(source_node["node_id"], stored["node"], duration=seconds)
+    result = {"poster": stored}
+    if seconds is not None:
+        result["duration"] = seconds
+    return result
 
 
 def _grid(params: dict) -> dict:

@@ -596,6 +596,7 @@ class FakeApi:
             (r"/api/movies/([^/]+)", self._r_movie),
             (r"/api/renders", self._r_renders),
             (r"/api/renders/([^/]+)", self._r_render),
+            (r"/api/posters", self._r_posters),
             (r"/api/images/convert", self._r_image_convert),
             (r"/api/images/crop", self._r_image_crop),
             (r"/api/phrasebook", self._r_phrasebook),
@@ -1990,6 +1991,29 @@ class FakeApi:
             raise
         row.update({"status": "succeeded", "updated": _now()})
         return row
+
+    def _r_posters(self, method, body, params):
+        """`POST /api/posters` — every media file lacking a poster gets one,
+        here at once rather than on a queue: a hidden still beside it, linked
+        both ways, so a second sweep finds nothing to do."""
+        if method != "POST":
+            raise FakeError(405, method)
+        queued, skipped = [], 0
+        for record in list(self.nodes.values()):
+            if record.get("kind") != "file" or record.get("poster") or record.get("poster_of"):
+                skipped += 1
+                continue
+            if self._entry_kind(record) not in self.MEDIA_KINDS:
+                skipped += 1
+                continue
+            stem = record["name"].rsplit(".", 1)[0]
+            still = self.put_file(record["parent_id"],
+                                  _unique_file(self, record["parent_id"], f"{stem}.poster.jpg"),
+                                  b"poster")
+            still["poster_of"] = record["id"]
+            record["poster"] = still["id"]
+            queued.append(record["id"])
+        return {"queued": queued, "skipped": skipped, "truncated": False}
 
     def _r_render(self, method, body, params, render_id):
         if method != "GET":

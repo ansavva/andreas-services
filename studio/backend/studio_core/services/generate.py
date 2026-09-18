@@ -596,22 +596,19 @@ def _store_output(record: dict, folder_id: str, url: str, name: str) -> str:
 
 
 def _queue_posters(record: dict, outputs: list[str]) -> None:
-    """Ask the render worker for a still per clip, so a tile need not load it.
+    """Ask the render worker for a poster per output, so a tile need not load it.
+
+    **Every output, still or clip.** Stills were skipped at first — "a still
+    is its own poster" — and the feed drew each one whole: a 0.4 MB JPEG per
+    tile at best, and the references a run was sent, uploaded phone photos and
+    multi-megabyte PNGs, at worst. `media/imaging.poster` has the sizes.
 
     **Best effort, and it must be.** This runs inside the close of a paid
-    run: a stack with no render queue (a dev machine that has not provisioned
-    one), or SQS refusing, is a poster missing — the tile falls back to the
-    clip's own metadata, as every tile did before posters — and never a run
-    that fails to close. Only clips are queued; a still is its own poster.
+    run, and `render.queue_poster` says why nothing here may raise.
     """
-    if record.get("kind") != "video":
-        return
     from studio_core.services import render  # circular at import time; not at call time
     for node_id in outputs:
-        try:
-            render.enqueue(record["lib"], render.KIND_POSTER, {"node": node_id})
-        except Exception as exc:  # noqa: BLE001 — see the docstring
-            logger.warning("No poster queued for %s: %s", node_id, exc)
+        render.queue_poster(record["lib"], node_id)
 
 
 def _output_names(record: dict, urls: list[str]) -> list[str]:

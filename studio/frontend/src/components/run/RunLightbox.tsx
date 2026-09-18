@@ -1144,6 +1144,7 @@ function RunStrip({
                 <MediaThumb
                   nodeId={thumb.node}
                   url={thumb.url}
+                  poster={thumb.poster}
                   name={row.outputs[0]?.name ?? row.id}
                   isVideo={row.kind === "video"}
                   aspect="square"

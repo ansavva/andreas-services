@@ -84,6 +84,7 @@ export function OutputPanel({
           <MediaThumb
             nodeId={asset.node}
             url={asset.url}
+            poster={asset.poster}
             name={asset.name}
             aspect={sole ? "auto" : "square"}
             fit="contain"

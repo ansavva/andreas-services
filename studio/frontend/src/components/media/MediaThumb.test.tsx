@@ -1,7 +1,10 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { getAsset } from "../../apis/studio";
 import { AUTOPLAY_BUDGET, MediaThumb } from "./MediaThumb";
+
+vi.mock("../../apis/studio", () => ({ getAsset: vi.fn() }));
 
 afterEach(cleanup);
 
@@ -202,5 +205,92 @@ describe("a clip with a poster", () => {
     expect(screen.queryByTestId("poster")).toBeNull();
     expect(document.querySelector("video")!.getAttribute("preload")).toBe("metadata");
     expect(screen.getByText("video")).toBeTruthy();
+  });
+});
+
+/**
+ * A still with a poster draws the poster, never the original — the original
+ * is 0.4 to 8 MB and the tile is 80 pixels across. The original stays what a
+ * drag carries, because the sheet wants the file, not a picture of it.
+ */
+describe("a still with a poster", () => {
+  it("draws the small still and drags the original", () => {
+    render(
+      <MediaThumb
+        nodeId="node-1"
+        url="https://example.invalid/a.png"
+        name="a.png"
+        poster={{ node: "node-p", url: "https://example.invalid/a.poster.jpg" }}
+      />,
+    );
+    const img = screen.getByRole("presentation") as HTMLImageElement;
+    expect(img.src).toBe("https://example.invalid/a.poster.jpg");
+    expect(document.querySelector("video")).toBeNull();
+    const box = img.parentElement!;
+    expect(JSON.parse(drag(box).get("application/x-studio-node")!)).toMatchObject({
+      node: "node-1",
+      url: "https://example.invalid/a.png",
+    });
+  });
+
+  it("without one, draws the original, as before", () => {
+    render(<MediaThumb nodeId="node-1" url="https://example.invalid/a.png" name="a.png" />);
+    const img = screen.getByRole("presentation") as HTMLImageElement;
+    expect(img.src).toBe("https://example.invalid/a.png");
+  });
+
+  it("a poster that is gone for good falls back to the original", async () => {
+    const signed = vi.mocked(getAsset);
+    // The re-sign of the poster fails too: nothing stands behind it any more.
+    signed.mockRejectedValueOnce(new Error("gone"));
+    render(
+      <MediaThumb
+        nodeId="node-1"
+        url="https://example.invalid/a.png"
+        name="a.png"
+        poster={{ node: "node-p", url: "https://example.invalid/a.poster.jpg" }}
+      />,
+    );
+    const img = screen.getByRole("presentation") as HTMLImageElement;
+    fireEvent.error(img);
+    await act(async () => {});
+    expect(signed).toHaveBeenCalledWith("node-p");
+    expect(img.src).toBe("https://example.invalid/a.png");
+    expect(screen.queryByText("Unavailable")).toBeNull();
+  });
+});
+
+/**
+ * A tile says it is loading. The box shimmers until the picture's `load`
+ * fires, and the picture is hidden until then — on a slow connection a feed
+ * of grey boxes with no motion read as nothing happening.
+ */
+describe("while a picture loads", () => {
+  it("the box shimmers and the picture is hidden, then the picture shows", () => {
+    render(<MediaThumb nodeId="node-1" url="https://example.invalid/a.png" name="a.png" />);
+    const img = screen.getByRole("presentation");
+    const box = img.parentElement!;
+    expect(box.className).toContain("studio-shimmer");
+    expect(box.getAttribute("data-loading")).toBe("true");
+    expect(img.className).toContain("opacity-0");
+
+    fireEvent.load(img);
+
+    expect(box.className).not.toContain("studio-shimmer");
+    expect(box.getAttribute("data-loading")).toBeNull();
+    expect(img.className).not.toContain("opacity-0");
+  });
+
+  it("a clip with no poster does not shimmer — there is no picture on its way", () => {
+    render(<MediaThumb nodeId="node-1" url="https://example.invalid/a.mp4" isVideo />);
+    const box = document.querySelector("video")!.parentElement!;
+    expect(box.className).not.toContain("studio-shimmer");
+  });
+
+  it("an unavailable tile does not shimmer either", () => {
+    render(<MediaThumb nodeId="node-1" url={null} name="a.png" />);
+    expect(screen.getByText("Unavailable").parentElement!.className).not.toContain(
+      "studio-shimmer",
+    );
   });
 });
