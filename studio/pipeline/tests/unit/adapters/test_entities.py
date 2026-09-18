@@ -135,6 +135,9 @@ WIRE_SURFACE = {
     # The backfill behind `studio posters`: a poster queued for every image
     # and video in the library that has none. New files get one at ingest.
     "/api/posters",
+    # And its clip half, `studio faststart`: `moov` moved in front of `mdat`
+    # on the worker, for every clip not yet marked.
+    "/api/faststarts",
     # the two operations that are NOT on that queue. Both are sub-second on a
     # single image, so a queue round trip would cost more than the work — see
     # `backend/studio_core/routes/images.py`.

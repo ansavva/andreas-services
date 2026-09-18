@@ -573,7 +573,8 @@ def _store_output(record: dict, folder_id: str, url: str, name: str) -> str:
         # the whole file; `media/faststart.py` has the measurement. Done here,
         # on the staged file, because this is the one moment the bytes are on
         # a disk this service owns — a refusal leaves the file as it came.
-        if faststart.is_mp4_name(name) and faststart.faststart(staged):
+        indexed = faststart.is_mp4_name(name)
+        if indexed and faststart.faststart(staged):
             logger.info("Faststarted output %s for run %s", node["node_id"], record["id"])
         s3.put_file(node["blob_key"], staged, content_type)
     finally:
@@ -590,6 +591,9 @@ def _store_output(record: dict, folder_id: str, url: str, name: str) -> str:
         size=metadata.get("ContentLength", 0),
         content_type=metadata.get("ContentType") or content_type,
         checksum=s3.content_hash(metadata),
+        # Marked whichever way the rewrite went: it ran over the staged file,
+        # so the object is `moov`-first now, and a sweep need not re-read it.
+        faststart=True if indexed else None,
     )
     logger.info("Stored output %s for run %s", node["node_id"], record["id"])
     return node["node_id"]

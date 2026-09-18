@@ -258,6 +258,24 @@ def get_body(key: str, max_bytes: int) -> bytes:
     return response["Body"].read(max_bytes)
 
 
+def read_range(key: str, start: int, end: int) -> bytes:
+    """Bytes `start..end` (inclusive) of one object — an atom header, not a clip.
+
+    What lets the worker ask "is this clip `moov`-first?" for the cost of a
+    few dozen bytes rather than the whole file; `faststart.needs_faststart_at`
+    walks the top-level atoms through it.
+    """
+    try:
+        response = client().get_object(
+            Bucket=config.media_bucket(), Key=key, Range=f"bytes={start}-{end}")
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in ("404", "NoSuchKey"):
+            raise NotFoundError(key) from exc
+        logger.warning("GetObject (range) failed for %s: %s", key, exc)
+        raise UpstreamError("Could not read the object") from exc
+    return response["Body"].read()
+
+
 def download(key: str, path: str) -> str:
     """Stream one object to a local file. -> the path it was written to.
 

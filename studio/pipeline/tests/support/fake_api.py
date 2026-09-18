@@ -597,6 +597,7 @@ class FakeApi:
             (r"/api/renders", self._r_renders),
             (r"/api/renders/([^/]+)", self._r_render),
             (r"/api/posters", self._r_posters),
+            (r"/api/faststarts", self._r_faststarts),
             (r"/api/images/convert", self._r_image_convert),
             (r"/api/images/crop", self._r_image_crop),
             (r"/api/phrasebook", self._r_phrasebook),
@@ -2012,6 +2013,21 @@ class FakeApi:
                                   b"poster")
             still["poster_of"] = record["id"]
             record["poster"] = still["id"]
+            queued.append(record["id"])
+        return {"queued": queued, "skipped": skipped, "truncated": False}
+
+    def _r_faststarts(self, method, body, params):
+        """`POST /api/faststarts` — every unmarked MP4 is marked at once."""
+        if method != "POST":
+            raise FakeError(405, method)
+        queued, skipped = [], 0
+        for record in list(self.nodes.values()):
+            if (record.get("kind") != "file" or record.get("faststart")
+                    or record.get("poster_of")
+                    or not record["name"].lower().endswith(".mp4")):
+                skipped += 1
+                continue
+            record["faststart"] = True
             queued.append(record["id"])
         return {"queued": queued, "skipped": skipped, "truncated": False}
 

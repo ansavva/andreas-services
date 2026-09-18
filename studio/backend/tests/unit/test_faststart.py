@@ -11,8 +11,15 @@ not a fixture.
 """
 import struct
 
+import pytest
+
 from studio_core.media import faststart
 from studio_core.services import catalog, layout
+from tests.unit.test_render import queue as _queue
+
+# The moto queue `test_render` owns, re-exported so the worker tests below
+# can ask for it without ruff reading each use as a redefinition.
+queue = _queue
 
 
 def atom(kind: bytes, body: bytes, large: bool = False) -> bytes:
@@ -200,3 +207,108 @@ def test_a_clip_is_indexed_before_it_is_stored(empty_api, media_bucket, monkeypa
     assert stored != provider_file
     assert len(stored) == len(provider_file)
     assert stored.index(b"moov") < stored.index(b"mdat")
+    assert catalog.node(closed["outputs"][0])["faststart"] is True
+
+
+# ──────────────────────────── on the worker ────────────────────────────
+
+
+def test_the_remote_probe_reads_headers_not_the_clip():
+    """`needs_faststart_at` stops at the first of `moov`/`mdat`, a few bytes in."""
+    ordered = FTYP + moov_around(stco([len(FTYP) + 8])) + MDAT
+    provider = FTYP + atom(b"free", b"\0" * 4) + MDAT + moov_around(stco([len(FTYP) + 8]))
+    for data, expected, budget in ((ordered, False, 2), (provider, True, 3)):
+        reads = []
+
+        def read(offset, length, data=data):
+            reads.append((offset, length))
+            return data[offset:offset + length]
+
+        assert faststart.needs_faststart_at(read, len(data)) is expected
+        assert len(reads) <= budget
+        assert all(length <= 16 for _, length in reads)
+    # Not an MP4 at all: no, and nothing blew up.
+    assert faststart.needs_faststart_at(lambda o, n: b"PNG\r\n\x1a\n"[o:o + n], 8) is False
+
+
+def _job(api, node_id):
+    from studio_core.services import render
+    job = api.post("/api/renders", json={"kind": "faststart", "params": {
+        "node": node_id}}).get_json()
+    return render.run(job["id"])
+
+
+def test_the_job_rewrites_a_provider_clip_and_marks_it(empty_api, queue):
+    from studio_core.clients.aws import s3
+    node, before = _clip_node(empty_api)
+
+    done = _job(empty_api, node["node_id"])
+    assert done["status"] == "succeeded", done
+    assert done["result"] == {"rewritten": True}
+    after = s3.get_body(node["blob_key"], 10_000)
+    assert after.index(b"moov") < after.index(b"mdat")
+    assert len(after) == len(before)
+    row = catalog.node(node["node_id"])
+    assert row["faststart"] is True
+    assert row["blob_key"] == node["blob_key"]
+
+
+def test_the_job_marks_an_ordered_clip_without_pulling_it(empty_api, queue, monkeypatch):
+    from studio_core.clients.aws import s3
+    node, _ = _clip_node(empty_api)
+    _job(empty_api, node["node_id"])
+    catalog.set_blob(node["node_id"], node["blob_key"], faststart=None)
+
+    monkeypatch.setattr(s3, "download", lambda *_a, **_k: pytest.fail("pulled the clip"))
+    done = _job(empty_api, node["node_id"])
+    assert done["result"] == {"rewritten": False}
+    assert catalog.node(node["node_id"])["faststart"] is True
+
+
+def test_the_sweep_queues_unmarked_clips_only(empty_api, queue, monkeypatch):
+    from studio_core.services import render
+    node, _ = _clip_node(empty_api)
+    still, _ = _clip_node(empty_api, name="frame.png")
+    marked, _ = _clip_node(empty_api, name="done.mp4")
+    catalog.set_blob(marked["node_id"], marked["blob_key"], faststart=True)
+
+    resp = empty_api.post("/api/faststarts")
+    assert resp.status_code == 202, resp.get_json()
+    report = resp.get_json()
+    assert report["queued"] == [node["node_id"]]
+    assert report["truncated"] is False
+
+    for render_id in _queued(queue):
+        render.run(render_id)
+    assert empty_api.post("/api/faststarts").get_json()["queued"] == []
+
+
+def _queued(queue):
+    import json
+    client, url = queue
+    ids = []
+    while True:
+        got = client.receive_message(QueueUrl=url, MaxNumberOfMessages=10).get("Messages", [])
+        if not got:
+            return ids
+        for message in got:
+            ids.append(json.loads(message["Body"])["render"])
+            client.delete_message(QueueUrl=url, ReceiptHandle=message["ReceiptHandle"])
+
+
+def test_confirming_an_mp4_upload_queues_a_faststart(empty_api, queue, monkeypatch):
+    from studio_core.clients.aws import s3
+    from studio_core.services import render
+    project = empty_api.post("/api/projects", json={"name": "wall"}).get_json()
+    pool = layout.folder_under(project["root"], layout.INPUT_FOLDER)
+    created = empty_api.post("/api/nodes", json={
+        "parent": pool["node_id"], "name": "phone.mp4", "kind": "file"}).get_json()
+    s3.put_text(catalog.node(created["id"])["blob_key"], FTYP + MDAT, "video/mp4")
+
+    queued = []
+    monkeypatch.setattr(render, "enqueue",
+                        lambda lib, kind, params: queued.append((kind, params)))
+    assert empty_api.post(f"/api/nodes/{created['id']}/confirm-upload",
+                          json={}).status_code == 200
+    assert queued == [("poster", {"node": created["id"]}),
+                      ("faststart", {"node": created["id"]})]

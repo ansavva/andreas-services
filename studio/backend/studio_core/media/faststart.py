@@ -154,6 +154,38 @@ def needs_faststart(path: str) -> bool:
     return kinds.index(b"moov") > kinds.index(b"mdat")
 
 
+def needs_faststart_at(read, total: int) -> bool:
+    """`needs_faststart` over bytes that are somewhere else.
+
+    `read(offset, length)` answers a slice of the file and `total` is its
+    size. The walk stops at the first of `moov` and `mdat`, which for every
+    clip a provider writes is one or two headers in — a few dozen bytes read
+    off S3 instead of a 60 MB pull to learn that nothing needs doing. Not an
+    MP4, or neither atom found: `False`, the same answer the local walker
+    gives.
+    """
+    offset = 0
+    while offset + 8 <= total:
+        head = read(offset, 16)
+        if len(head) < 8:
+            return False
+        size, kind = struct.unpack(">I4s", head[:8])
+        if size == 1:
+            if len(head) < 16:
+                return False
+            size = struct.unpack(">Q", head[8:16])[0]
+        elif size == 0:
+            size = total - offset
+        if kind == b"moov":
+            return False
+        if kind == b"mdat":
+            return True
+        if size < 8 or offset + size > total:
+            return False
+        offset += size
+    return False
+
+
 def faststart(path: str) -> bool:
     """Rewrite `path` in place with `moov` before `mdat`. `True` if it did.
 

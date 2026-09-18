@@ -91,8 +91,12 @@ KIND_SHEET = "sheet"
 #: so it need not load the file. Off a clip's first frame, or a still scaled
 #: down; `catalog.link_poster` either way.
 KIND_POSTER = "poster"
+#: One clip rewritten in place with `moov` before `mdat`, so a browser can
+#: start it before it has all of it. `media/faststart.py` has the measurement.
+KIND_FASTSTART = "faststart"
 
-KINDS = frozenset({KIND_ASSEMBLE, KIND_FRAME, KIND_GRID, KIND_SHEET, KIND_POSTER})
+KINDS = frozenset({KIND_ASSEMBLE, KIND_FRAME, KIND_GRID, KIND_SHEET, KIND_POSTER,
+                   KIND_FASTSTART})
 
 #: Tiles on a sheet, and frames in a grid. Bounds one image's memory: a sheet is
 #: `cols × cell` wide and `rows × cell` tall in RGB, so 64 tiles at 300px is
@@ -187,6 +191,12 @@ def _validated(kind: str, params: dict, lib: str) -> dict:
         node = params.get("node")
         if not isinstance(node, str):
             raise ValidationError("poster needs a `node` naming one image or video")
+        return {"node": node}
+
+    if kind == KIND_FASTSTART:
+        node = params.get("node")
+        if not isinstance(node, str):
+            raise ValidationError("faststart needs a `node` naming one video")
         return {"node": node}
 
     if kind in (KIND_FRAME, KIND_GRID):
@@ -305,17 +315,32 @@ def queue_poster(lib: str, node_id: str) -> bool:
     return True
 
 
-def sweep_posters(lib: str) -> dict:
-    """Queue a poster for every media file in a library that has none.
+def wants_faststart(record: dict) -> bool:
+    """Whether this node is a clip nobody has yet checked for atom order.
 
-    **The backfill**, and idempotent: a node already covered is a read, not a
-    job, so this is safe to run over a whole library as often as wanted. It
-    walks `by-recent`, which holds exactly the images and videos and nothing
-    else, so a library of folders and documents costs nothing to skip.
-
-    Returns what it queued and what it passed over, so the caller can say how
-    much work was handed to the worker — nothing here waits for it.
+    An MP4 with bytes behind it and no `faststart` mark. The mark is written
+    at ingest and by the worker's job whichever way the check went, so a
+    sweep re-reads nothing it has already answered.
     """
+    if record.get("kind") != catalog.KIND_FILE or not record.get("blob_key"):
+        return False
+    if record.get("faststart") or record.get("poster_of") or "size" not in record:
+        return False
+    from studio_core.media import faststart
+    return faststart.is_mp4_name(record.get("name") or "")
+
+
+def queue_faststart(lib: str, node_id: str) -> bool:
+    """Ask the worker to index one clip. Best effort — see `queue_poster`."""
+    try:
+        enqueue(lib, KIND_FASTSTART, {"node": node_id})
+    except Exception as exc:  # noqa: BLE001 — see `queue_poster`
+        logger.warning("No faststart queued for %s: %s", node_id, exc)
+        return False
+    return True
+
+
+def _require_queue() -> None:
     if not config.render_queue_url():
         # Refused once, up front, rather than swallowed per row by
         # `queue_poster` — a person asked for this sweep and is owed the
@@ -323,15 +348,41 @@ def sweep_posters(lib: str) -> dict:
         raise ConfigError(
             "This environment has no render queue — STUDIO_RENDER_QUEUE_URL is unset. "
             "Prod and a per-machine dev stack both set it; CI deliberately does not.")
+
+
+def _sweep(lib: str, wants, queue) -> dict:
+    """Walk `by-recent` — exactly the images and videos, nothing else — and
+    queue one job per record `wants` says so for. Returns what it queued and
+    what it passed over; nothing here waits for the worker."""
+    _require_queue()
     records, truncated = catalog.recent(lib, config.max_poster_sweep())
     queued, skipped = [], 0
     for record in records:
-        if not wants_poster(record):
+        if not wants(record):
             skipped += 1
             continue
-        if queue_poster(lib, record["node_id"]):
+        if queue(lib, record["node_id"]):
             queued.append(record["node_id"])
     return {"queued": queued, "skipped": skipped, "truncated": truncated}
+
+
+def sweep_posters(lib: str) -> dict:
+    """Queue a poster for every media file in a library that has none.
+
+    **The backfill**, and idempotent: a node already covered is a read, not a
+    job, so this is safe to run over a whole library as often as wanted.
+    """
+    return _sweep(lib, wants_poster, queue_poster)
+
+
+def sweep_faststart(lib: str) -> dict:
+    """Queue a faststart check for every clip in a library not yet marked.
+
+    The clip half of the backfill. Each job is a few dozen bytes of ranged
+    reads when the clip is already in order and a rewrite when it is not,
+    and either way the row is marked so the next sweep skips it.
+    """
+    return _sweep(lib, wants_faststart, queue_faststart)
 
 
 # ─────────────────────────────── the worker ───────────────────────────────
@@ -399,6 +450,8 @@ def _dispatch(job: dict) -> dict:
         return _frame(params)
     if kind == KIND_POSTER:
         return _poster(params)
+    if kind == KIND_FASTSTART:
+        return _faststart(params)
     if kind == KIND_GRID:
         return _grid(params)
     if kind == KIND_SHEET:
@@ -638,6 +691,51 @@ def _poster(params: dict) -> dict:
     if seconds is not None:
         result["duration"] = seconds
     return result
+
+
+def _faststart(params: dict) -> dict:
+    """Move one clip's `moov` in front of its `mdat`, in place, on the worker.
+
+    **The check costs bytes, not the clip.** `needs_faststart_at` walks the
+    top-level atoms through ranged reads, and for a clip already in order —
+    every output stored since ingest started doing this — the job is two
+    small GETs and a marker write. Only a clip that needs it is pulled,
+    rewritten (`media/faststart.py`: same bytes, different order) and put
+    back under the same key, so the node keeps its id, name and place; `size`
+    is unchanged and `checksum` is re-read off the new object.
+
+    The route `POST /api/nodes/<id>/faststart` does the same thing
+    synchronously for one clip a person names; this is what a library sweep
+    queues, and what an upload of an MP4 queues as it is confirmed.
+    """
+    from studio_core.media import faststart
+
+    clip = _blob(params["node"])
+    if not faststart.is_mp4_name(clip.get("name") or ""):
+        raise RenderError(f"{clip['node_id']} is not an MP4")
+    key = clip["blob_key"]
+    total = int(clip.get("size") or 0) or int(s3.head(key).get("ContentLength", 0))
+
+    def read(offset: int, length: int) -> bytes:
+        return s3.read_range(key, offset, min(offset + length, total) - 1)
+
+    if not faststart.needs_faststart_at(read, total):
+        catalog.set_blob(clip["node_id"], key, faststart=True)
+        return {"rewritten": False}
+
+    with workspace.Workspace(prefix="faststart-") as space:
+        space.reserve(_declared([{"node": clip["node_id"]}]), factor=2)
+        local = _pull(space, clip["node_id"], "source.mp4")
+        rewritten = faststart.faststart(local)
+        if rewritten:
+            s3.put_file(key, local, clip.get("content_type") or "video/mp4")
+    metadata = s3.head(key)
+    catalog.set_blob(clip["node_id"], key,
+                     size=metadata.get("ContentLength", 0),
+                     content_type=metadata.get("ContentType") or clip.get("content_type"),
+                     checksum=s3.content_hash(metadata),
+                     faststart=True)
+    return {"rewritten": rewritten}
 
 
 def _grid(params: dict) -> dict:

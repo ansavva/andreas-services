@@ -488,10 +488,18 @@ page and a plain textarea over its literal bytes, and never offers fields.
   until the whole file was down. The callback consumer runs
   `media/faststart.py` (pure Python, no ffmpeg, streaming) over each clip
   before it is uploaded, `POST /api/nodes/<id>/faststart` does the same in
-  place for one already stored, and `studio runs faststart <project>` is
-  the backfill. Same bytes, same size, same node; only the atom order and
-  the recorded checksum change. It is the poster's companion, not a
-  substitute: it makes the play fast, the poster makes the not-playing free.
+  place for one already stored, and the render worker's `faststart` job
+  (`render.KIND_FASTSTART`) does it for a clip an upload confirmed or a
+  sweep named. Same bytes, same size, same node; only the atom order and
+  the recorded checksum change. **Every path marks the row `faststart:
+  true`** once the order is known, so `studio faststart` (`POST
+  /api/faststarts`, `render.sweep_faststart`) — the library-wide backfill
+  — skips what is done without a read, and a job on a clip already in
+  order costs a few dozen bytes of ranged reads (`faststart.
+  needs_faststart_at` over `s3.read_range`) rather than a pull. `studio
+  runs faststart <project>` is the older, narrower sweep. It is the
+  poster's companion, not a substitute: it makes the play fast, the poster
+  makes the not-playing free.
 - **The opened run is a lightbox over the feed, not a page.** `/p/<project>/
   r/<run>` renders `ProjectPage` with `runId` set, and `RunLightbox` sits over
   the feed with the create bar live above it: the output large (`MediaPlayer`,
