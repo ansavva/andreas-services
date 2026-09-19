@@ -101,6 +101,14 @@ export const CopyIcon = ({ className }: Props) => (
   </Glyph>
 );
 
+/** Two links of a chain: the address of a thing, as opposed to its path (`ClipboardIcon`). */
+export const LinkIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5" />
+    <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5" />
+  </Glyph>
+);
+
 export const ClipboardIcon = ({ className }: Props) => (
   <Glyph className={className}>
     <path d="M9.5 8.5h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z" />

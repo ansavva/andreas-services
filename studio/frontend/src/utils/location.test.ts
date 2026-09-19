@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  absoluteUrl,
   characterPath,
+  folderLink,
   folderPath,
   moviePath,
   objectPath,
@@ -46,5 +48,41 @@ describe("entity URLs carry ids, so they survive a rename", () => {
     // The run id alone would fetch it; the project in the path is what lets the
     // page draw a breadcrumb before any request comes back.
     expect(runPath("proj-1", "run-1")).toBe("/p/proj-1/r/run-1");
+  });
+});
+
+describe("a folder link carries the view, in `/f`'s own names", () => {
+  const defaults = { view: "folders", sort: "name" };
+
+  it("is the bare folder path when everything is at its default", () => {
+    expect(folderLink(NODE, { view: "folders", sort: "name", tags: [], q: "" }, defaults)).toBe(
+      `/f/${NODE}`,
+    );
+    expect(folderLink(null, {}, defaults)).toBe("/f");
+  });
+
+  it("writes the Media view, the sort, the tags and the typed filter", () => {
+    const link = folderLink(
+      NODE,
+      { view: "media", sort: "newest", tags: ["face", "a b"], q: "hero" },
+      defaults,
+    );
+    const [path, query] = link.split("?");
+    expect(path).toBe(`/f/${NODE}`);
+    const params = new URLSearchParams(query);
+    expect(params.get("view")).toBe("media");
+    expect(params.get("sort")).toBe("newest");
+    // Encoded per tag before joining, the way `FolderBrowser` writes `?tags=`,
+    // so a tag holding a comma or a space reads back as one tag.
+    expect(params.get("tags")).toBe("face,a%20b");
+    expect(params.get("q")).toBe("hero");
+  });
+});
+
+describe("a clipboard link carries the origin", () => {
+  it("prefixes the app's own origin, so the same path links dev and prod alike", () => {
+    expect(absoluteUrl(`/f/${NODE}?view=media`)).toBe(
+      `${window.location.origin}/f/${NODE}?view=media`,
+    );
   });
 });

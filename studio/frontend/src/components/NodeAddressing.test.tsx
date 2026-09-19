@@ -117,7 +117,13 @@ describe("the download button", () => {
 
     // `attachment` is the only reason a cross-origin download downloads, so it
     // is asserted beside the address rather than in a case of its own.
-    render(<ObjectActions file={FILE} />, { wrapper: TestProviders });
+    // Inside a router: the row's "Copy link" reads the address bar.
+    render(
+      <MemoryRouter>
+        <ObjectActions file={FILE} />
+      </MemoryRouter>,
+      { wrapper: TestProviders },
+    );
 
     fireEvent.click(screen.getByLabelText("Download"));
 

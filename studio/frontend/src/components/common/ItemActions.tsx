@@ -1,6 +1,7 @@
 import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { absoluteUrl } from "../../utils/location";
 import { ActionMenu, type MenuAction } from "./ActionMenu";
-import { ClipboardIcon, CopyIcon, FolderIntoIcon, PencilIcon, TrashIcon } from "./icons";
+import { ClipboardIcon, CopyIcon, FolderIntoIcon, LinkIcon, PencilIcon, TrashIcon } from "./icons";
 
 /** Every line's glyph, at the size a line of text carries. */
 const GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
@@ -14,6 +15,17 @@ interface Props {
   copyValue: string;
   /** What `copyValue` names, which is all that differs between the two labels. */
   copyNoun?: "path" | "prefix";
+  /**
+   * The item's in-app path — `/f/<id>` for a folder, `/o/<id>?in=…` for a
+   * file — which "Copy link" puts on the clipboard with the origin in front.
+   *
+   * A second copy line beside the path, because the two go to different
+   * readers: the path is for a `studio` command, the link is for a person.
+   * It is the same `href` the row opens on, so the pasted link and a
+   * command-click land in the same place — and absent where there is no such
+   * `href`, because a file the viewer cannot draw has nowhere a link could go.
+   */
+  linkValue?: string;
   /** Opens the parent's rename field. The parent owns it so it can be full width. */
   onRename: () => void;
   /** Opens the parent's destination picker on a move. */
@@ -51,12 +63,14 @@ export function ItemActions({
   name,
   copyValue,
   copyNoun = "path",
+  linkValue,
   onRename,
   onMove,
   onCopyTo,
   onDelete,
 }: Props) {
   const { status, copy } = useCopyToClipboard();
+  const link = useCopyToClipboard();
 
   const actions: MenuAction[] = [
     {
@@ -90,6 +104,17 @@ export function ItemActions({
       keepOpen: true,
       onSelect: () => void copy(copyValue),
     },
+    ...(linkValue
+      ? [
+          {
+            key: "copy-link",
+            label: copyLabel(link.status, "Copy link"),
+            icon: <LinkIcon className={GLYPH} />,
+            keepOpen: true,
+            onSelect: () => void link.copy(absoluteUrl(linkValue)),
+          },
+        ]
+      : []),
     {
       key: "delete",
       label: "Delete",

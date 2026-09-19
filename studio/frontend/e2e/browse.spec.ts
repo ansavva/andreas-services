@@ -11,7 +11,7 @@
  */
 import { expect, test } from "@playwright/test";
 
-import { CHARACTER, LIBRARY, fixture, stubApi } from "./support/api";
+import { CHARACTER, CHARACTER_ROOT, LIBRARY, fixture, stubApi } from "./support/api";
 import { signIn } from "./support/session";
 
 const SEED = fixture<{
@@ -321,4 +321,38 @@ test("media tiles are links, so a modified click can leave the page", async ({
   // gestures land differently and the link is worse than no link.
   const href = await linked.first().getAttribute("href");
   expect(href).toMatch(/^\/o\/node-/);
+});
+
+/**
+ * **A link to a folder is a link to `/f`, whatever screen it was copied from.**
+ *
+ * A Files tab holds its folder in `?folder=` under the character's address and
+ * its sort under `fsort`; a copy of the address bar from there only works from
+ * there. "Copy link" writes the listing's *state* into `/f`'s own names — so
+ * this opens the menu on a character's Files tab, in Media, and expects the
+ * clipboard to hold the standalone browser's address with `view=media` on it
+ * and nothing the tab was using.
+ */
+test("Copy link on a Files tab hands out the standalone browser's address", async ({
+  page,
+  context,
+}) => {
+  stubOnly("the captured tree is what the tab is standing in");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto(`/c/${CHARACTER}?tab=files`);
+  await page.getByRole("button", { name: "Media", exact: true }).click();
+  await expect(page).toHaveURL(/view=media/);
+
+  await page.getByRole("button", { name: "More", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Copy link" }).click();
+  await expect(page.getByText("Copied to the clipboard")).toBeVisible();
+
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  const url = new URL(copied);
+  expect(url.origin).toBe(new URL(page.url()).origin);
+  expect(url.pathname).toBe(`/f/${CHARACTER_ROOT}`);
+  expect(url.searchParams.get("view")).toBe("media");
+  expect(url.searchParams.has("tab")).toBe(false);
+  expect(url.searchParams.has("folder")).toBe(false);
+  expect(url.searchParams.has("fsort")).toBe(false);
 });
