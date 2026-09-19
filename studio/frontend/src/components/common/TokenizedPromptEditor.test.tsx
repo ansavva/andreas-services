@@ -7,11 +7,9 @@ import type { PromptToken } from "./TokenizedPromptEditor";
 const TOKENS: PromptToken[] = [
   { name: "block.face_only", kind: "block", hint: "THE FACE COMES FROM…" },
   { name: "block.scale_face", kind: "block", hint: "SCALE, held constant…" },
-  { name: "character.top", kind: "computed" },
-  // Still drawn as a pill, never offered — see `legacy` on the type.
-  { name: "face_only", kind: "block", legacy: true },
-  { name: "scale_face", kind: "block", legacy: true },
-  { name: "top", kind: "computed", legacy: true },
+  { name: "block.light", kind: "block", hint: "SOFT, even light…" },
+  { name: "character.1.top", kind: "computed" },
+  { name: "slot.identity", kind: "computed" },
 ];
 
 function show(value: string, onValueChange = vi.fn()) {
@@ -26,73 +24,90 @@ function show(value: string, onValueChange = vi.fn()) {
   return onValueChange;
 }
 
+function pill(name: string): HTMLElement | null {
+  return document.querySelector(`[data-token="${name}"]`);
+}
+
 afterEach(cleanup);
 
 /**
  * **The invariant the whole component exists to protect.**
  *
- * Assembly is `string.Formatter().vformat` over `{name}`, and the fingerprint
- * hashes the prompt. An editor that normalised one space, or dropped one
- * trailing newline, would silently move every fingerprint — for a change
- * nobody made, on a payload nobody edited.
+ * The API fills by scanning for `@name`, and the fingerprint hashes the
+ * prompt. An editor that normalised one space, or dropped one trailing
+ * newline, would silently move every fingerprint — for a change nobody made,
+ * on a payload nobody edited.
  */
 it.each([
   ["a bare line", "A studio portrait of the person, front on."],
-  ["one placeholder", "A studio portrait. {face_only} Neutral expression."],
-  ["adjacent placeholders", "{scale_face}{face_only}"],
-  ["paragraphs", "First line.\n\nSecond paragraph. {face_only}\n\nThird."],
-  ["a computed value", "Wearing {top}. Flat mid-grey backdrop."],
-  ["double spaces inside a line", "Two  spaces and {face_only}  after."],
-  ["a placeholder at each end", "{face_only} middle {scale_face}"],
+  ["one citation", "A studio portrait. @block.face_only Neutral expression."],
+  ["adjacent citations", "@block.scale_face @block.face_only"],
+  ["paragraphs", "First line.\n\nSecond paragraph. @block.face_only\n\nThird."],
+  ["a computed value", "Wearing @character.1.top. Flat mid-grey backdrop."],
+  ["double spaces inside a line", "Two  spaces and @block.face_only  after."],
+  ["a citation at each end", "@block.face_only middle @block.scale_face"],
+  ["a citation at the end of a line, before a break", "@block.light\nnext line"],
+  ["an e-mail address and shorthand", "mail me@block.light, shot @ f/2.8"],
   ["the real face_front template",
    "A studio portrait of the person, front on, squared to the camera, looking " +
    "straight down the lens. Neutral expression, mouth closed. CROPPED AT " +
    "MID-CHEST — head and shoulders only, with no waist, no hips and no legs " +
-   "anywhere in the frame.\n\n{scale_face}\n\n{face_only}\n\n{top}. " +
-   "{backdrop_face} {light} {style} {quality}"],
+   "anywhere in the frame.\n\n@block.scale_face\n\n@block.face_only\n\n@character.1.top. " +
+   "@block.light @slot.identity"],
 ])("round-trips %s byte for byte", async (_name, original) => {
   const changed = show(original);
   await waitFor(() => expect(changed).toHaveBeenCalled());
   expect(changed.mock.calls.at(-1)![0]).toBe(original);
 });
 
-it("draws a placeholder as a pill rather than as characters", async () => {
-  show("A portrait. {face_only}");
-  const pill = await waitFor(() => {
-    const found = document.querySelector('[data-token="face_only"]');
-    if (!found) throw new Error("no pill");
-    return found as HTMLElement;
+it("draws a citation as a pill rather than as characters", async () => {
+  show("A portrait. @block.face_only");
+  const found = await waitFor(() => {
+    const got = pill("block.face_only");
+    if (!got) throw new Error("no pill");
+    return got;
   });
-  expect(pill.dataset.kind).toBe("block");
+  expect(found.dataset.namespace).toBe("block");
+  expect(found.textContent).toBe("@block.face_only");
 });
 
-it("marks a COMPUTED value differently from a block", async () => {
+it("marks a pill with its NAMESPACE — block, character, slot", async () => {
   /**
-   * A block is in the database and opens for editing; a computed value is
-   * filled from the character's bible and has nothing behind it to open.
-   * Identical pills would send somebody clicking `{top}` looking for a text box
-   * that cannot exist.
+   * A block is in the database and opens for editing; a character value is
+   * filled from the bible and has nothing behind it to open; a slot is where
+   * the images landed. Identical pills would send somebody clicking
+   * `@character.1.top` looking for a text box that cannot exist — so a block
+   * is the full tint at medium weight and a computed value is stepped back,
+   * and the text says the namespace too.
    */
-  show("Wearing {top} and {face_only}.");
-  await waitFor(() => expect(document.querySelector('[data-token="top"]')).toBeTruthy());
-  expect(
-    (document.querySelector('[data-token="top"]') as HTMLElement).dataset.kind,
-  ).toBe("computed");
-  expect(
-    (document.querySelector('[data-token="face_only"]') as HTMLElement).dataset.kind,
-  ).toBe("block");
+  show("Wearing @character.1.top and @block.face_only, @slot.identity.");
+  await waitFor(() => expect(pill("character.1.top")).toBeTruthy());
+  expect(pill("character.1.top")!.dataset.namespace).toBe("character");
+  expect(pill("block.face_only")!.dataset.namespace).toBe("block");
+  expect(pill("slot.identity")!.dataset.namespace).toBe("slot");
+  expect(pill("character.1.top")!.className).not.toBe(pill("block.face_only")!.className);
 });
 
-it("a placeholder nothing provides still round-trips, marked as unknown", async () => {
+it("a citation nothing provides still round-trips, and is not a pill", async () => {
   /**
    * The editor must never silently drop or rewrite text it does not recognise.
-   * `{no_such_block}` is a real failure the person needs to see and fix — but a
-   * prompt that lost it on load would look repaired while the angle stayed
-   * broken.
+   * `@block.no_such_block` is a real failure the person needs to see and fix —
+   * but a prompt that lost it on load would look repaired while the template
+   * stayed broken. It stays TEXT rather than becoming a pill: an `@` has no
+   * closing brace to say the name is finished, so only a name the editor
+   * knows is one somebody meant. The template page names it in its warning.
    */
-  const changed = show("A portrait. {no_such_block}");
+  const changed = show("A portrait. @block.no_such_block");
   await waitFor(() => expect(changed).toHaveBeenCalled());
-  expect(changed.mock.calls.at(-1)![0]).toBe("A portrait. {no_such_block}");
+  expect(changed.mock.calls.at(-1)![0]).toBe("A portrait. @block.no_such_block");
+  expect(pill("block.no_such_block")).toBeNull();
+});
+
+it("leaves an `@` inside a word alone", async () => {
+  /** `me@block.light` is an address. The boundary is `CITATION`'s own. */
+  show("mail me@block.light please");
+  await waitFor(() => expect(document.querySelector("[aria-label=Prompt]")).toBeTruthy());
+  expect(pill("block.light")).toBeNull();
 });
 
 /**
@@ -105,10 +120,10 @@ it("a placeholder nothing provides still round-trips, marked as unknown", async 
  * keyboard.
  */
 it.each([
-  ["a brace at the start of a line", "{", "", "{"],
-  ["a name being typed", "{face", "face", "{face"],
-  ["mid-paragraph, after a space", "…in the frame. {face", "face", "{face"],
-  ["straight after a full stop", "text.{sc", "sc", "{sc"],
+  ["an @ at the start of a line", "@", "", "@"],
+  ["a name being typed", "@face", "face", "@face"],
+  ["mid-paragraph, after a space", "…in the frame. @face", "face", "@face"],
+  ["straight after a full stop", "text.@sc", "sc", "@sc"],
 ])("opens on %s", (_name, text, query, replaceable) => {
   const match = promptTriggerMatch(text);
   expect(match).not.toBeNull();
@@ -118,87 +133,55 @@ it.each([
 });
 
 it.each([
-  ["there is no brace", "plain text"],
-  ["the brace is already closed", "{face_only}"],
-  ["the name has a space in it", "{face only"],
-  ["the brace is doubled — no placeholder can start there", "a {{lit"],
+  ["there is no @", "plain text"],
+  ["the name has a space in it", "@face only"],
+  ["the @ is inside a word — an address, not a mention", "mail me@lit"],
 ])("stays shut when %s", (_name, text) => {
   expect(promptTriggerMatch(text)).toBeNull();
 });
 
-it("reports the query as the name alone, never the character before the brace", () => {
+it("reports the query as the name alone, never the character before the @", () => {
   /**
-   * The regression this pins. The matcher grew a leading group to refuse `{{`,
-   * and a second copy of the parse inside the menu plugin went on reading group
-   * 1 — which had become the character BEFORE the brace. At the start of a node
-   * the query was always empty so the list never narrowed; mid-paragraph it was
-   * the preceding space, which names no placeholder, so no menu opened at all.
+   * The regression this pins. The matcher grew a leading group for the word
+   * boundary, and a second copy of the parse inside the menu plugin went on
+   * reading group 1 — which had become the character BEFORE the trigger. At
+   * the start of a node the query was always empty so the list never
+   * narrowed; mid-paragraph it was the preceding space, which names no
+   * placeholder, so no menu opened at all.
    */
-  expect(promptTriggerMatch(" {face")!.matchingString).toBe("face");
-  expect(promptTriggerMatch(".{face")!.matchingString).toBe("face");
+  expect(promptTriggerMatch(" @face")!.matchingString).toBe("face");
+  expect(promptTriggerMatch(".@face")!.matchingString).toBe("face");
 });
 
-it("turns a hand-typed placeholder into a pill, so the menu is not the only way in", async () => {
+it("turns a hand-typed citation into a pill, so the menu is not the only way in", async () => {
   /**
    * `Hydrate` puts the stored string in as plain TEXT and one transform turns
-   * it into pills — the same transform a typed `{light}` goes through. That is
-   * why this can be asserted on a loaded value: there is no second parse for
-   * the typing path to drift from.
+   * it into pills — the same transform a typed `@block.light` goes through.
+   * That is why this can be asserted on a loaded value: there is no second
+   * parse for the typing path to drift from.
    */
-  show("Lit by {face_only} and nothing else.");
-  await waitFor(() =>
-    expect(document.querySelector('[data-token="face_only"]')).toBeTruthy(),
-  );
+  show("Lit by @block.face_only and nothing else.");
+  await waitFor(() => expect(pill("block.face_only")).toBeTruthy());
 });
 
-it("leaves a DOUBLED brace flat", async () => {
-  /**
-   * `{{` was the escape for a literal brace and is no longer anything: the fill
-   * matches citations by shape and leaves every other brace as text, so nothing
-   * has to be escaped. What is left is a run a person can only have typed by
-   * mistake, and a pill drawn inside a pair of stray braces reads as neither.
-   */
-  const changed = show("Write {{face_only}} literally.");
-  await waitFor(() => expect(changed).toHaveBeenCalled());
-  expect(changed.mock.calls.at(-1)![0]).toBe("Write {{face_only}} literally.");
-  expect(document.querySelector('[data-token="face_only"]')).toBeNull();
-});
-
-it.each([
-  ["a namespaced block", "A portrait. {block.face_only} Neutral."],
-  ["a namespaced character value", "Wearing {character.top}."],
-  ["both spellings in one template", "{face_only} and {block.face_only}"],
-])("round-trips %s byte for byte", async (_name, original) => {
-  const changed = show(original);
-  await waitFor(() => expect(changed).toHaveBeenCalled());
-  expect(changed.mock.calls.at(-1)![0]).toBe(original);
-});
-
-it("draws a namespaced placeholder as ONE pill, dot and all", async () => {
-  show("A portrait. {block.face_only}");
-  const pill = await waitFor(() => {
-    const found = document.querySelector('[data-token="block.face_only"]');
-    if (!found) throw new Error("no pill");
-    return found as HTMLElement;
+it("draws a dotted name as ONE pill, dots and all", async () => {
+  show("A portrait. @character.1.top");
+  const found = await waitFor(() => {
+    const got = pill("character.1.top");
+    if (!got) throw new Error("no pill");
+    return got;
   });
-  expect(pill.dataset.kind).toBe("block");
-  expect(pill.textContent).toBe("{block.face_only}");
+  expect(found.textContent).toBe("@character.1.top");
 });
 
-it("still draws the LEGACY bare spelling as the block it is", async () => {
-  /**
-   * Every template written before the namespaces uses it. Drawn as an unknown
-   * value, all of them would read as broken.
-   */
-  show("A portrait. {face_only}");
-  await waitFor(() =>
-    expect(
-      (document.querySelector('[data-token="face_only"]') as HTMLElement).dataset.kind,
-    ).toBe("block"),
-  );
+it("a citation ends where its name does — the full stop after it is prose", async () => {
+  const changed = show("Then @block.light. Done.");
+  await waitFor(() => expect(pill("block.light")).toBeTruthy());
+  expect(pill("block.light")!.textContent).toBe("@block.light");
+  expect(changed.mock.calls.at(-1)![0]).toBe("Then @block.light. Done.");
 });
 
 it("opens on a dotted name and narrows on the part after the dot", () => {
-  expect(promptTriggerMatch("{block.face")!.matchingString).toBe("block.face");
-  expect(promptTriggerMatch("text. {character.")!.matchingString).toBe("character.");
+  expect(promptTriggerMatch("@block.face")!.matchingString).toBe("block.face");
+  expect(promptTriggerMatch("text. @character.")!.matchingString).toBe("character.");
 });

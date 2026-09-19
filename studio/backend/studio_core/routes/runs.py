@@ -960,7 +960,7 @@ def view(record: dict, send_entries: list[dict] | None = None) -> dict:
             # That field is written at creation and nowhere else, so a run built
             # by adding a character's references in the editor binds six of that
             # character's photographs and records nobody. `cast` is what
-            # `{character.N}` counts, derived from the bindings when the record
+            # `@character.N` counts, derived from the bindings when the record
             # itself is silent — see `_cast`.
             "cast": _cast(record),
             # **The ordered list, each image with what it is for and where it
@@ -1089,7 +1089,7 @@ def _cast(record: dict) -> list:
     **Otherwise, whoever owns the images it binds.** `characters` is written at
     CREATION and nowhere else, so a run built by adding a character's references
     in the editor binds six of that character's photographs and records nobody:
-    `{character.1.top}` would have had nothing to fill from on exactly the runs
+    `@character.1.top` would have had nothing to fill from on exactly the runs
     most likely to want it. A reference image belongs to a character by its
     ancestry, which `owner_of` already resolves for every listing, so the answer
     is there to be read rather than guessed.
@@ -1112,7 +1112,7 @@ def _cast(record: dict) -> list:
 
 
 def _profiles(record: dict) -> list:
-    """The bibles of this run's cast, in the order `{character.N}` counts."""
+    """The bibles of this run's cast, in the order `@character.N` counts."""
     return [
         (catalog.entity(catalog.ENTITY_CHARACTER, cid) or {}).get("profile") or {}
         for cid in _cast(record)
@@ -1238,7 +1238,7 @@ def update_run(run_id: str):
     # A run's characters are edges — `RUN#<id>` / `CHAR#<id>` — and `POST /runs`
     # was the only thing that wrote them. That made a run created without any
     # permanently uncitable: a prompt names its cast by position, so a template
-    # citing `{character.1.top}` had nothing to fill from and no way to be given
+    # citing `@character.1.top` had nothing to fill from and no way to be given
     # it. The app never sent the field at all, so EVERY run it made was in that
     # state.
     #
@@ -1252,7 +1252,7 @@ def update_run(run_id: str):
         for char_id in cast:
             support.entity_at(catalog.ENTITY_CHARACTER, g.library, char_id, held)
         # **Both halves, in one transaction.** The cast is a field on the record
-        # — what a run reports and what `{character.N}` counts — AND a set of
+        # — what a run reports and what `@character.N` counts — AND a set of
         # `RUN#<id>` / `CHAR#<id>` edges, which is what makes "every run that
         # used this character" answerable. Writing one without the other is the
         # class of drift the whole of this change removed elsewhere; `edges` is

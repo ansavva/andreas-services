@@ -39,7 +39,7 @@ const SPEC: TemplateLibrary = {
     {
       id: "template-face-front",
       name: "Face, front",
-      prompt: "A studio portrait, front on. {face_only} {top}",
+      prompt: "A studio portrait, front on. @block.face_only @character.1.top",
       description: "Head and shoulders, front on.",
       tags: ["face", "front"],
     },
@@ -85,10 +85,10 @@ it("keeps the blocks on their OWN tab, and previews them beside the prompt", asy
   expect(
     (await screen.findByLabelText("Assembled preview")).textContent,
   ).toContain("THE FACE COMES FROM THE REFERENCE IMAGES.");
-  expect(screen.queryByRole("button", { name: /\{face_only\}/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /@block\.face_only/ })).toBeNull();
 
   await blocksTab();
-  expect(screen.getByRole("button", { name: /\{face_only\}/ })).toBeTruthy();
+  expect(screen.getByRole("button", { name: /@block\.face_only/ })).toBeTruthy();
 });
 
 it("lists EVERY block, not only the ones some template happens to cite", async () => {
@@ -102,10 +102,8 @@ it("lists EVERY block, not only the ones some template happens to cite", async (
   });
   show();
   await blocksTab();
-  expect(
-    screen.getByRole("button", { name: /\{orphan\}/, expanded: false }),
-  ).toBeTruthy();
-  expect(screen.getByText("(0 templates)")).toBeTruthy();
+  const row = screen.getByRole("button", { name: /@block\.orphan/ });
+  expect(row.parentElement!.textContent).toContain("0 templates");
 });
 
 it("says how many templates a block reaches BEFORE it is edited", async () => {
@@ -120,13 +118,19 @@ it("says how many templates a block reaches BEFORE it is edited", async () => {
       {
         ...SPEC.templates[0]!,
         name: "Face, back",
-        prompt: "Back. {block.face_only}",
+        prompt: "Back. @block.face_only",
       },
     ],
   });
   show();
   await blocksTab();
-  expect(screen.getByText("(2 templates)")).toBeTruthy();
+  expect(
+    screen.getByRole("button", { name: /@block\.face_only/ }).parentElement!
+      .textContent,
+  ).toContain("2 templates");
+  // And again on the opened block, before the box.
+  fireEvent.click(screen.getByRole("button", { name: /@block\.face_only/ }));
+  expect(await screen.findByText(/editing this changes 2 templates/)).toBeTruthy();
 });
 
 it("says what to do when a library holds no templates at all", async () => {
@@ -143,7 +147,7 @@ it("says what to do when a library holds no templates at all", async () => {
 it("names a placeholder no block provides, while it is still being typed", async () => {
   /**
    * The failure this screen makes possible: deleting a block is one click, and
-   * the template citing it does not break until somebody drafts. `{top}` is
+   * the template citing it does not break until somebody drafts. `@character.1.top` is
    * computed by the assembler rather than read off a row, so it must NOT be
    * flagged — marking every computed value as unknown would make the warning
    * noise nobody reads.
@@ -153,10 +157,7 @@ it("names a placeholder no block provides, while it is still being typed", async
     templates: [
       {
         ...SPEC.templates[0]!,
-        // `{face_only}` is the bare spelling and no longer resolves at all, so
-        // it is flagged like any other unknown name — `{block.face_only}` is
-        // the one that works.
-        prompt: "{block.face_only} {character.1.top} {block.no_such_block}",
+        prompt: "@block.face_only @character.1.top @block.no_such_block",
       },
     ],
   });
@@ -167,7 +168,7 @@ it("names a placeholder no block provides, while it is still being typed", async
   // red-vs-grey pill would have carried the warning on hue alone.
   expect(await screen.findByText(/No block provides this name/i)).toBeTruthy();
   expect(screen.getByText(/no_such_block —/)).toBeTruthy();
-  // `{character.1.top}` is computed from the bible rather than read off a row,
+  // `@character.1.top` is computed from the bible rather than read off a row,
   // so flagging it would make the warning noise nobody reads.
   expect(screen.queryByText(/character\.1\.top —/)).toBeNull();
 });
@@ -182,7 +183,7 @@ it("saves one block without refetching the whole spec", async () => {
   show();
 
   await blocksTab();
-  fireEvent.click(screen.getByRole("button", { name: /\{face_only\}/ }));
+  fireEvent.click(screen.getByRole("button", { name: /@block\.face_only/ }));
   const box = await screen.findByDisplayValue(/THE FACE COMES FROM/);
   fireEvent.change(box, { target: { value: "edited" } });
   fireEvent.click(screen.getAllByText("Save")[0]!);
@@ -228,16 +229,13 @@ it("creates a block, which is the same call as editing one", async () => {
     expect(savedBlock).toHaveBeenCalledWith("backdrop_body", "White seamless."),
   );
   expect(
-    await screen.findByRole("button", {
-      name: /\{backdrop_body\}/,
-      expanded: false,
-    }),
+    await screen.findByRole("button", { name: /@block\.backdrop_body/ }),
   ).toBeTruthy();
 });
 
 it("refuses a name no template could ever cite", async () => {
   /**
-   * A block is cited as `{block.<name>}` and a dot is attribute access, so a
+   * A block is cited as `@block.<name>` and a dot is attribute access, so a
    * name that is not an identifier is a block nothing can name. The API refuses
    * it; saying so here means finding out while typing.
    */
@@ -283,7 +281,7 @@ it("deletes a block, and says how many templates it will break first", async () 
   show();
   await blocksTab();
 
-  fireEvent.click(screen.getByRole("button", { name: /\{face_only\}/ }));
+  fireEvent.click(screen.getByRole("button", { name: /@block\.face_only/ }));
   // A cited block takes templates down with it, so it types its name rather
   // than arming in place — the gate a project or a character gets, not a file's.
   fireEvent.click(screen.getByRole("button", { name: "Delete" }));
@@ -296,7 +294,7 @@ it("deletes a block, and says how many templates it will break first", async () 
 
   await waitFor(() => expect(removeBlock).toHaveBeenCalledWith("face_only"));
   await waitFor(() =>
-    expect(screen.queryByRole("button", { name: /\{face_only\}/ })).toBeNull(),
+    expect(screen.queryByRole("button", { name: /@block\.face_only/ })).toBeNull(),
   );
 });
 

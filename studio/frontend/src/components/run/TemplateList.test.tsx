@@ -42,7 +42,7 @@ it("a pick hands over the prompt, and says when it cites more cast than the run 
       {
         id: "t1",
         name: "Two up",
-        prompt: "{character.1.profile} and {character.2.profile}\nmore",
+        prompt: "@character.1.profile and @character.2.profile\nmore",
         description: "",
         tags: [],
       },
@@ -51,10 +51,10 @@ it("a pick hands over the prompt, and says when it cites more cast than the run 
   const onPick = vi.fn();
   render(<TemplateList onPick={onPick} cast={1} />, { wrapper: TestProviders });
 
-  const row = await screen.findByRole("button", { name: /Two up/ });
-  expect(row.textContent).toContain("Cites character 2; this run binds 1");
+  const row = await screen.findByRole("option", { name: /Two up/ });
+  expect(row.textContent).toContain("Needs character 2; this run binds 1");
   fireEvent.click(row);
   expect(onPick).toHaveBeenCalledWith(
-    "{character.1.profile} and {character.2.profile}\nmore",
+    "@character.1.profile and @character.2.profile\nmore",
   );
 });

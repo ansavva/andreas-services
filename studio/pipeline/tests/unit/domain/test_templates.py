@@ -8,7 +8,7 @@ from studio_pipeline.domain import templates as SPEC
 
 TEMPLATE = {
     "name": "Face, front",
-    "prompt": "A studio portrait of the person, front on. {block.face_only}",
+    "prompt": "A studio portrait of the person, front on. @block.face_only",
     "description": "Head and shoulders, front on.",
     "tags": ["face", "front"],
 }

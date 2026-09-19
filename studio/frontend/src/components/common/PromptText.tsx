@@ -1,30 +1,30 @@
 import { forwardRef, useMemo, type ReactNode } from "react";
 
-import { TOKEN_CLASS } from "./TokenNode";
-import { FAMILY, nextPlaceholder } from "./TokenizedPromptEditor";
+import { citationsIn } from "../../utils/citations";
+import { CITE_PILL } from "./citeStyle";
+import { FAMILY } from "./TokenizedPromptEditor";
 
 /**
  * A prompt read back, drawn the way the create sheet draws it being written.
  *
  * **The same text in the same clothes.** The sheet's editor is body type at
  * `leading-6`, pre-wrapped so a paragraph break is a paragraph break, with
- * every `{placeholder}` as a pill — and the feed row and the opened run's
- * rail drew the same prompt as a plain `Text`: a different face, the line
- * breaks collapsed, and `{character.1.top}` sitting in it as bare braces. A
- * run's prompt is what was in the box when Send was pressed, and it should
- * look like it.
+ * every `@citation` as a pill — and the feed row and the opened run's rail
+ * drew the same prompt as a plain `Text`: a different face, the line breaks
+ * collapsed, and `@character.1.top` sitting in it as bare text. A run's
+ * prompt is what was in the box when Send was pressed, and it should look
+ * like it.
  *
  * **Read-only, and no Lexical.** A feed page holds twenty of these; the
  * editor is an instance each. The pills are the editor's own classes
- * (`TOKEN_CLASS`) over the editor's own scanner (`nextPlaceholder`), so the
- * two cannot drift apart on what a citation looks like or where one starts.
+ * (`CITE_PILL`) over the one citation scanner (`citationsIn`), so the two
+ * cannot drift apart on what a citation looks like or where one starts.
  *
- * **A pill's kind is read off its namespace.** The editor asks the template
- * list which names are blocks; this has no list, and does not need one: a
- * `{block.…}` is a block by construction and every other namespace —
- * `character.N.…`, `slot.…` — is filled from something other than the
- * database. A template lands in the sheet filled, so a stored prompt rarely
- * carries a `{block.…}` at all.
+ * **Every citation is a pill here, known or not.** The editor pills only the
+ * names its menu offers, because there a half-typed name must stay text;
+ * this has no list and no caret, and a stored prompt's citations were all
+ * real when it was sent. A template lands in the sheet filled, so a stored
+ * prompt rarely carries a `@block.…` at all.
  */
 export const PromptText = forwardRef<
   HTMLDivElement,
@@ -51,18 +51,20 @@ export const PromptText = forwardRef<
   );
 });
 
-/** The text as spans — prose verbatim, each placeholder a pill. */
+/** The text as spans — prose verbatim, each citation a pill. */
 function split(text: string): ReactNode[] {
   const parts: ReactNode[] = [];
   let from = 0;
-  for (;;) {
-    const found = nextPlaceholder(text, from);
-    if (found === null) break;
+  for (const found of citationsIn(text)) {
     if (found.start > from) parts.push(text.slice(from, found.start));
-    const kind = found.name.startsWith("block.") ? "block" : "computed";
     parts.push(
-      <span key={found.start} className={TOKEN_CLASS[kind]} data-token={found.name} data-kind={kind}>
-        {found.token}
+      <span
+        key={found.start}
+        className={CITE_PILL[found.namespace]}
+        data-token={found.name}
+        data-namespace={found.namespace}
+      >
+        {text.slice(found.start, found.end)}
       </span>,
     );
     from = found.end;

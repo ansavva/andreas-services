@@ -506,7 +506,7 @@ def put_template(template_id: str, fields: dict) -> dict:
     the caller's — `domain/templates.py` matches the file against the stack it
     just read, so it knows the id of every name already there and mints one only
     for a name that is new. A block is different and is still keyed on its name:
-    prose cites it as `{block.face_only}`, so its name is load-bearing in a way a
+    prose cites it as `@block.face_only`, so its name is load-bearing in a way a
     template's is not.
     """
     return api.patch(f"/api/templates/{_segment(template_id)}", fields)

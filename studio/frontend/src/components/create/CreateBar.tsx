@@ -77,7 +77,7 @@ import { seedPlan } from "./seedPlan";
 import { runPath, projectPath } from "../../utils/location";
 
 /**
- * What `{character.N.…}` may cite — the same six values a reference angle
+ * What `@character.N.…` may cite — the same six values a reference angle
  * fills from a bible. `build` and `must` name a variant, because the bible
  * answers both differently for a face than for a body.
  */
@@ -278,8 +278,8 @@ export function CreateBar() {
   /**
    * A template picked lands FILLED, not as the citations it was written with.
    *
-   * **The box is the preview now.** A template is mostly `{block.…}` and
-   * `{character.N.…}`, so picking one used to put a prompt in the bar that
+   * **The box is the preview now.** A template is mostly `@block.…` and
+   * `@character.N.…`, so picking one used to put a prompt in the bar that
    * said almost nothing about what the model would be told; reading it took a
    * second popover holding a second rendering of the same prompt. Filling at
    * the pick collapses the two: what is in the box is what goes out, and it is
@@ -292,7 +292,7 @@ export function CreateBar() {
    * reasoning.
    *
    * **A fill that cannot be done leaves the template.** A prompt citing
-   * `{character.2.…}` against a one-character run is a 400 naming the
+   * `@character.2.…` against a one-character run is a 400 naming the
    * citation; the words land in the box as written so the cast can be added
    * and the prompt sent, and the refusal is said rather than swallowed.
    *

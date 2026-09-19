@@ -20,7 +20,7 @@ BLOCK = "THE FACE COMES FROM THE REFERENCE IMAGES. Study the nose."
 
 TEMPLATE = {
     "name": "Face, front",
-    "prompt": "A studio portrait, front on. {block.face_only} {character.1.top}",
+    "prompt": "A studio portrait, front on. @block.face_only @character.1.top",
     "description": "Head and shoulders, front on.",
     "tags": ["face", "front"],
 }
@@ -119,13 +119,13 @@ def test_a_template_citing_a_block_nobody_wrote_names_what_was_available():
 
     Somebody deletes a block an angle still cites. The useful answer is the list
     of names they could have meant, not a stack trace — and the citation has to
-    be SHAPED like one to get it, because an unshaped brace is now prose.
+    be SHAPED like one to get it, because an unshaped `@` is prose.
     """
     from studio_core.errors import ValidationError
     from studio_core.services import template as tmpl
 
     try:
-        tmpl.expand("{block.no_such_block}", [PROFILE], {"face_only": BLOCK})
+        tmpl.expand("@block.no_such_block", [PROFILE], {"face_only": BLOCK})
     except ValidationError as exc:
         assert "no_such_block" in str(exc)
         assert "block has: face_only." in str(exc)
@@ -133,26 +133,64 @@ def test_a_template_citing_a_block_nobody_wrote_names_what_was_available():
         raise AssertionError("a missing placeholder must be refused")
 
 
-def test_a_stray_brace_in_edited_prose_is_LITERAL_now():
-    """**This asserted the opposite, and the opposite was the bug.**
+def test_a_stray_at_sign_in_edited_prose_is_LITERAL():
+    """A citation is an `@` SHAPED like one, and everything else is text.
 
-    It used to refuse every stray brace with "a literal brace must be doubled",
-    because the fill walked `string.Formatter().parse`, which reads every `{…}`
-    in the string as a field. That rule cost more than it bought: `studio
-    prompt` writes a prompt as **serialised JSON**, so the app could not send
-    one at all — `{"subject": …}` came back as "this prompt cites
-    { "subject"}, which nothing provides" — and asking a person to double every
-    brace in a JSON document to send it is not an answer.
-
-    So a brace run is a citation only when it matches `CITATION`, and everything
-    else is text the model gets as written. Nothing is lost: a citation that IS
-    shaped right and names nothing real is still refused, which is where the
-    typos worth catching land.
+    The brace spelling this replaced had the same rule and learned it the hard
+    way: the fill once walked `string.Formatter().parse`, which reads every
+    `{…}` as a field, so `studio prompt`'s serialised-JSON prompts could not be
+    sent at all. A mention has a cheaper version of the same hazard — an `@` is
+    in every e-mail address and half the photography shorthand there is — so
+    an `@` counts only with a namespace after it and a word boundary before it.
+    A citation that IS shaped right and names nothing real is still refused,
+    which is where the typos worth catching land.
     """
     from studio_core.services import template as tmpl
 
-    for prose in ("a { b", "a } b", "{}", "{ 'json': 1 }", "a {{ b }} c"):
+    for prose in ("shot @ f/2.8", "mail me@block.example", "@", "@ block.x",
+                  "a { b", "{ 'json': 1 }", "@Block.face_only"):
         assert tmpl.expand(prose, [PROFILE], {}) == prose
+
+
+def test_a_brace_citation_is_read_and_rewritten():
+    """**Every row written before 2026-09-18 cites in braces**, and none of
+    them is migrated: `modernise` rewrites the old shape on every read and
+    every write, and only the old shape — JSON and stray braces are untouched
+    — so a template fills the same whichever spelling it holds, and converges
+    on `@` the first time somebody saves it."""
+    from studio_core.services import template as tmpl
+
+    old = 'Portrait. {block.face_only} {character.1.top}\n{"camera": {"lens": 35}} {x}'
+    assert tmpl.modernise(old) == (
+        'Portrait. @block.face_only @character.1.top\n{"camera": {"lens": 35}} {x}')
+    assert tmpl.modernise(tmpl.modernise(old)) == tmpl.modernise(old)
+    assert (tmpl.expand(old, [PROFILE], {"face_only": BLOCK})
+            == tmpl.expand(tmpl.modernise(old), [PROFILE], {"face_only": BLOCK}))
+
+
+def test_the_library_comes_back_and_is_stored_in_the_new_spelling(empty_api, catalog_table):
+    """The app never sees a brace: a pushed file in the old spelling is stored
+    in the new one, and a row that still holds braces is read as if it did not."""
+    empty_api.patch("/api/templates/blocks/face_only", json={"text": BLOCK})
+    empty_api.patch(f"/api/templates/{FACE}",
+                    json={**TEMPLATE, "prompt": "Old. {block.face_only} {character.1.top}"})
+    (got,) = empty_api.get("/api/templates").get_json()["templates"]
+    assert got["prompt"] == "Old. @block.face_only @character.1.top"
+    stored = _item(catalog_table, f"LIB#{CATALOG_LIBRARY}", f"SPEC#TEMPLATE#{FACE}")
+    assert "{block" not in str(stored)
+
+
+def test_a_citation_ends_where_its_name_does():
+    """No closing delimiter, so the name is what says where a mention stops.
+
+    A full stop after a citation is the sentence's; `.face` after a value that
+    HAS variants is the variant; a following word in a different case is a
+    word. Each is decided by the pattern rather than by a `}`, which is what
+    the spelling change cost and what has to hold for prose to be typeable.
+    """
+    text = _assemble("@block.face_only. Then @character.1.top.", {"face_only": BLOCK})
+    assert text == f"{BLOCK}. Then Wearing a plain white polo shirt, unbranded, with no logo, text or embroidery."
+    assert _assemble("@block.face_onlyX", {"face_only": BLOCK}) == f"{BLOCK}X"
 
 
 def test_a_json_prompt_comes_back_byte_identical():
@@ -173,13 +211,13 @@ def test_a_json_prompt_comes_back_byte_identical():
 def test_a_real_citation_inside_a_json_prompt_is_still_filled():
     """The two spellings coexist, because one of them is unambiguous.
 
-    A JSON prompt is not a reason to stop filling `{block.…}`: the citation is
-    shaped in a way no JSON object is, so a template value can be dropped into a
+    A JSON prompt is not a reason to stop filling `@block.…`: the citation is
+    shaped in a way no JSON string is, so a template value can be dropped into a
     structured prompt and the rest of the document is copied through.
     """
     from studio_core.services import template as tmpl
 
-    text = tmpl.expand('{"subject": "{character.1.top}", "n": {"a": 1}}',
+    text = tmpl.expand('{"subject": "@character.1.top", "n": {"a": 1}}',
                        [PROFILE], {})
     assert text == ('{"subject": "Wearing a plain white polo shirt, unbranded, '
                     'with no logo, text or embroidery", "n": {"a": 1}}')
@@ -280,9 +318,9 @@ def _assemble(template, blocks=None, **kw):
 
 def test_a_namespaced_placeholder_says_where_it_comes_from():
     """**The point of the dotted spelling.** A reader of an assembled prompt
-    wants to know which words they can go and change, and a bare `{top}` does
+    wants to know which words they can go and change, and a bare `@top` does
     not say whether that is a block or the character's bible."""
-    text = _assemble("{block.face_only} | {character.1.style} | {slot.identity}",
+    text = _assemble("@block.face_only | @character.1.style | @slot.identity",
                      identity_positions=[2, 3])
     assert text == f"{BLOCK} | Realistic. | [Image2] and [Image3]"
 
@@ -296,16 +334,16 @@ def test_a_bare_name_is_not_a_citation_and_is_left_alone():
     far used it; it is not kept now, because there is one template library and
     one way to write a citation in it.
 
-    It was a refusal for a while and is now simply text — a bare `{face_only}`
-    names no namespace, so nothing here can tell it from a brace somebody typed
-    on purpose. A template still carrying one shows as unfilled prose rather
-    than as a 400, which is the visible half of the same answer.
+    It was a refusal for a while and is now simply text — a bare `@face_only`
+    names no namespace, so nothing here can tell it from a handle somebody
+    typed on purpose. A template still carrying one shows as unfilled prose
+    rather than as a 400, which is the visible half of the same answer.
     """
-    assert _assemble("{face_only}") == "{face_only}"
+    assert _assemble("@face_only") == "@face_only"
 
 
 def test_a_character_is_cited_by_POSITION_and_the_refusal_says_so():
-    """`{character.top}` was the one-character spelling. There is no such thing.
+    """`@character.top` was the one-character spelling. There is no such thing.
 
     A template is filled from the characters a RUN binds, so a character is
     named by its position — the same number `[Image1]` counts. A slug would be
@@ -313,18 +351,18 @@ def test_a_character_is_cited_by_POSITION_and_the_refusal_says_so():
     prompt would be quietly wrong afterwards.
     """
     with pytest.raises(ValidationError) as refusal:
-        _assemble("{character.top}")
-    assert "{character.1.top}" in str(refusal.value)
+        _assemble("@character.top")
+    assert "@character.1.top" in str(refusal.value)
 
 
 def test_a_block_that_collides_with_a_field_name_is_simply_fine():
     """Nothing shares a namespace any more, so nothing can collide.
 
-    A block called `top` and the bible's `top` are `{block.top}` and
-    `{character.1.top}`; both resolve, and neither can win an argument the other
+    A block called `top` and the bible's `top` are `@block.top` and
+    `@character.1.top`; both resolve, and neither can win an argument the other
     did not know it was having.
     """
-    text = _assemble("{block.top} :: {character.1.top}", {"top": "A BLOCK CALLED TOP"})
+    text = _assemble("@block.top :: @character.1.top", {"top": "A BLOCK CALLED TOP"})
     assert text.startswith("A BLOCK CALLED TOP :: Wearing a plain")
 
 
@@ -338,9 +376,9 @@ def test_there_is_no_plate_slot_left_to_collide_with():
     distorted the thing they existed to record), so the slot they filled is gone
     with them and a block may be called `angle_slot` with nothing to fight.
     """
-    assert _assemble("{block.angle_slot}", {"angle_slot": "A BLOCK"}) == "A BLOCK"
+    assert _assemble("@block.angle_slot", {"angle_slot": "A BLOCK"}) == "A BLOCK"
     with pytest.raises(ValidationError):
-        _assemble("{slot.angle}")
+        _assemble("@slot.angle")
 
 
 def test_a_MISTYPED_member_is_a_refusal_and_not_a_500():
@@ -348,24 +386,23 @@ def test_a_MISTYPED_member_is_a_refusal_and_not_a_500():
     `AttributeError` where a missing key raises `KeyError`. Unhandled it reaches
     a person as a 500 on a route whose whole input is their own typing."""
     with pytest.raises(ValidationError) as refusal:
-        _assemble("{block.tops}")
+        _assemble("@block.tops")
     assert "tops" in str(refusal.value)
     # And it says what the namespace DOES hold.
     assert "block has:" in str(refusal.value)
 
 
-def test_a_namespace_that_does_not_exist_is_text_like_any_other_brace():
+def test_a_namespace_that_does_not_exist_is_text_like_any_other_at_sign():
     """**Three namespaces, and a fourth word is not one of them.**
 
-    This was a refusal naming the namespace. It cannot be any more without
-    taking JSON down with it: `{"camera": …}` and `{wardrobe.top}` are both
-    "a brace run whose first word is not `block`, `character` or `slot`", and
-    the one rule that separates a citation from typing is the shape. The trade
-    is that a mistyped namespace reaches the model as text; the shapes that ARE
+    This was a refusal naming the namespace. It is not one any more: an `@`
+    followed by some other word is a handle, an address or shorthand, and the
+    one rule that separates a citation from typing is the shape. The trade is
+    that a mistyped namespace reaches the model as text; the shapes that ARE
     citations — the deleted block, the unnumbered character, the bare variant,
     the cast position that does not exist — are all still refused.
     """
-    assert _assemble("{wardrobe.top}") == "{wardrobe.top}"
+    assert _assemble("@wardrobe.top") == "@wardrobe.top"
 
 
 # ─────────────────── whitespace, and per-angle identity ───────────────────
@@ -387,7 +424,7 @@ def test_the_prompt_keeps_its_newlines():
     """
     from studio_core.services import template as tmpl
 
-    template = "First line.\n\nSecond paragraph. {block.face_only}\n\nThird."
+    template = "First line.\n\nSecond paragraph. @block.face_only\n\nThird."
     text = tmpl.expand(template, [PROFILE], {"face_only": BLOCK})
     assert text.count("\n\n") == 2
     assert text.startswith("First line.")
@@ -456,10 +493,10 @@ def test_a_rename_keeps_the_prompt_it_was_given(empty_api):
     _library(empty_api)
 
     empty_api.patch(f"/api/templates/{FACE}",
-                    json={**TEMPLATE, "name": "Renamed", "prompt": "{block.face_only} only"})
+                    json={**TEMPLATE, "name": "Renamed", "prompt": "@block.face_only only"})
 
     (kept,) = empty_api.get("/api/templates").get_json()["templates"]
-    assert kept["prompt"] == "{block.face_only} only"
+    assert kept["prompt"] == "@block.face_only only"
 
 
 def test_a_name_carrying_the_key_separator_is_refused(empty_api):
@@ -554,7 +591,7 @@ def test_a_template_is_filled_from_a_cast_named_by_id_with_no_run(empty_api):
     ids = _cast(empty_api)
 
     got = empty_api.post("/api/templates/expand", json={
-        "template": "{block.face_only} He wears {character.1.top}.",
+        "template": "@block.face_only He wears @character.1.top.",
         "characters": ids,
     }).get_json()
 
@@ -585,7 +622,7 @@ def test_a_citation_the_cast_cannot_answer_is_a_400_naming_it(empty_api):
     every day, and the fix is to add the character."""
     ids = _cast(empty_api)
     resp = empty_api.post("/api/templates/expand", json={
-        "template": "{character.2.top}", "characters": ids,
+        "template": "@character.2.top", "characters": ids,
     })
 
     assert resp.status_code == 400

@@ -9,7 +9,7 @@ import type { RunRecord } from "../../types";
 interface Props {
   runId: string;
   projectId: string;
-  /** The run's cast, in the order `{character.1.…}` counts them. */
+  /** The run's cast, in the order `@character.1.…` counts them. */
   value: string[];
   /** The run as the API reports it after the write, never a local merge. */
   onSaved: (run: RunRecord) => void;
@@ -21,13 +21,13 @@ interface Props {
  * **A run's cast could only be set when it was created, and the app never set
  * it.** `POST /api/runs` takes `characters` and the new-run strip did not send
  * them, so every run made in the app bound nobody; nothing could then cite one,
- * because a prompt names its cast by POSITION and `{character.1.top}` had
+ * because a prompt names its cast by POSITION and `@character.1.top` had
  * nothing to fill from. The template picker was permanently unusable and the
  * reason was invisible.
  *
  * ## Order is the payload
  *
- * `{character.1.…}` is the first of these and `[Image1]` counts the same way, so
+ * `@character.1.…` is the first of these and `[Image1]` counts the same way, so
  * the chips show their position and clicking appends rather than inserting.
  * That is the same reason a run's sends are an ordered list rather than a set.
  *
@@ -75,7 +75,7 @@ export function RunCast({ runId, projectId, value, onSaved }: Props) {
       <Text variant="caption" tone="muted">Characters</Text>
       <Text variant="caption" tone="muted">
         Who this run is about. A prompt cites them by position —{" "}
-        <code>{"{character.1.top}"}</code> is the first.
+        <code>{"@character.1.top"}</code> is the first.
       </Text>
 
       {offered.length === 0 ? (

@@ -737,8 +737,8 @@ page and a plain textarea over its literal bytes, and never offers fields.
   reason as `focus` above.
   Send is `createRun` (plan +
   sends together, then `PATCH /plan` with `template` when the prompt cites
-  something — a `{block.…}`, `{character.N.…}` or `{slot.…}`, tested by
-  `utils/citations.ts` and **not** by looking for a brace — so the API expands
+  something — a `@block.…`, `@character.N.…` or `@slot.…`, tested by
+  `utils/citations.ts` and **not** by looking for an `@` — so the API expands
   it into `prompt`; the template is the instruction and is not stored. A prompt
   written as JSON, which is what `studio prompt` produces, cites nothing and is
   sent as the words it is), one `?fingerprint=` read that holds the

@@ -25,15 +25,22 @@ import {
   $createLineBreakNode,
   $createParagraphNode,
   $createTextNode,
+  $getNodeByKey,
   $getRoot,
   $getSelection,
   $isRangeSelection,
+  $isTextNode,
   COMMAND_PRIORITY_HIGH,
+  COMMAND_PRIORITY_LOW,
   KEY_ENTER_COMMAND,
+  SELECTION_CHANGE_COMMAND,
   TextNode,
   $setSelection,
 } from "lexical";
 
+import { citationsIn } from "../../utils/citations";
+import type { Citation } from "../../utils/citations";
+import { CITE_TEXT } from "./citeStyle";
 import { $createTokenNode, TokenNode } from "./TokenNode";
 
 /** One thing the menu can insert, and what kind of pill it becomes. */
@@ -42,44 +49,23 @@ export interface PromptToken {
   kind: "block" | "computed";
   /** First line of the block, or what the computed value is filled from. */
   hint?: string;
-  /**
-   * Drawn as a pill, but never offered by the menu.
-   *
-   * The bare spelling — `{scale_face}` rather than `{block.scale_face}` — still
-   * resolves and still has to LOOK like what it is, or every template written
-   * before the namespaces reads as broken. It is not offered, because there is
-   * no reason to write a new one.
-   */
-  legacy?: boolean;
 }
 
-//: A placeholder name: `block.scale_face`, `slot.identity`, or a positional
-//: `character.1.build.face`.
-//:
-//: **Every segment after the first may be digits**, and requiring a leading
-//: letter on all of them is what stopped `{character.1.top}` from ever drawing
-//: as a pill. It looked like a rendering bug and read like a broken citation
-//: sitting between block pills that worked — a prompt written entirely in the
-//: one spelling the fill accepts showed none of it as recognised. The first
-//: segment is still a namespace, so it keeps its letter.
-const PLACEHOLDER = /\{[a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)*\}/g;
-
 /**
- * `{` plus the name being typed, immediately before the caret.
+ * `@` plus the name being typed, immediately before the caret.
  *
- * **The trigger is `{` because that is the character a placeholder starts
- * with.** It was `+`, which is a key nobody can guess and nothing on the page
- * announced — so the only way to insert a pill was to be told. Triggering on the
- * brace means the menu appears while you type the thing you were going to type
+ * **The trigger is `@` because that is the character a citation starts
+ * with.** It was `+`, then `{` — the first a key nobody can guess, the second
+ * the character the old spelling happened to start with, which nobody guesses
+ * either. `@` is what every editor a person has used means by "name a thing
+ * here", so the menu appears while you type the thing you were going to type
  * anyway, and there is nothing left to teach.
  *
- * The leading group refuses a doubled brace. `{{` was how a template escaped a
- * LITERAL brace; the fill has no escape any more — a brace run is a citation
- * only when it is shaped like one, and everything else is text — so `{{` is now
- * a shape nobody has a reason to type, and opening the menu on it would be
- * offering a placeholder in the middle of one.
+ * The leading group refuses an `@` inside a word: `me@block` is an address,
+ * and opening the menu on it would be offering a placeholder in the middle of
+ * one. It is the same boundary `CITATION` keeps.
  */
-const TRIGGER = /(^|[^{])(\{([a-z0-9_.]*))$/;
+const TRIGGER = /(^|[^A-Za-z0-9_])(@([a-z0-9_.]*))$/;
 
 /**
  * What the menu would open on, given the text before the caret.
@@ -99,55 +85,48 @@ export function promptTriggerMatch(text: string) {
 }
 
 /**
- * The next `{placeholder}` in `text` at or after `from`.
+ * The first citation in `text` that names something the editor knows.
  *
- * A doubled brace is skipped. It used to be the escape for a literal brace and
- * is no longer anything — the fill matches citations by SHAPE now and leaves
- * every other brace as text — but a pill drawn inside a pair of stray braces
- * reads as neither, so the run stays flat and a person can see what they typed.
+ * **Known names only.** The old brace spelling pilled every well-formed
+ * `{…}`, because the closing brace said the person had finished typing; an
+ * `@` has no closing brace, so `@bl` is as well-formed as `@block.light` and
+ * pilling it would swallow the caret mid-word. A name that is in the menu is
+ * one somebody meant; anything else stays text, and the template page names
+ * it in its warning instead.
  */
-export function nextPlaceholder(text: string, from = 0) {
-  PLACEHOLDER.lastIndex = from;
-  let found = PLACEHOLDER.exec(text);
-  while (found !== null) {
-    const start = found.index;
-    const end = start + found[0].length;
-    if (text[start - 1] !== "{" && text[end] !== "}") {
-      return { token: found[0], name: found[0].slice(1, -1), start, end };
-    }
-    found = PLACEHOLDER.exec(text);
-  }
-  return null;
+function nextKnown(text: string, known: ReadonlySet<string>): Citation | null {
+  return citationsIn(text).find((each) => known.has(each.name)) ?? null;
 }
 
 /**
- * A prompt template, with its `{placeholders}` drawn as pills.
+ * A prompt template, with its `@citations` drawn as pills.
  *
  * ## Why this exists
  *
  * A template is text with named holes, and it was typed into a plain box: a
- * mistyped `{face_onl}` looked exactly like a correct one and did not fail until
- * the angle was drafted and refused. A pill cannot be mistyped, because it
- * either names a real placeholder or it does not become one.
+ * mistyped `@block.face_onl` looked exactly like a correct one and did not
+ * fail until the run was drafted and refused. A pill cannot be mistyped,
+ * because it either names a real placeholder or it does not become one.
  *
  * ## The invariant everything here protects
  *
- * **The value is a plain string and the round trip is byte-exact.** Assembly is
- * `string.Formatter().vformat` over `{name}`, and the fingerprint hashes the
- * prompt — so an editor that normalised one space or dropped one trailing
- * newline would silently move every fingerprint, for a change nobody made.
+ * **The value is a plain string and the round trip is byte-exact.** The API
+ * fills by scanning for `@name`, and the fingerprint hashes the prompt — so an
+ * editor that normalised one space or dropped one trailing newline would
+ * silently move every fingerprint, for a change nobody made.
  *
  * That invariant is held by construction rather than by care: a pill is a
- * `TextNode` whose text IS `{name}`, so `root.getTextContent()` is the string.
+ * `TextNode` whose text IS `@name`, so `root.getTextContent()` is the string.
  * There is no serialiser to keep in step, which is the only reason this is a
  * safe thing to put in front of a hashed payload.
  *
  * ## Two ways in, and neither has to be taught
  *
- * Type the placeholder — `Pillify` turns it into a pill on the closing brace —
- * or take it from the menu that opens on `{`. The menu is the shortcut, not the
- * entrance, which is what the hand-rolled version got wrong: it was the only way
- * in, and it was a key combination with nothing on screen to name it.
+ * Type the citation — `Pillify` turns it into a pill once the caret has moved
+ * on — or take it from the menu that opens on `@`. The menu is the shortcut,
+ * not the entrance, which is what the hand-rolled version got wrong: it was
+ * the only way in, and it was a key combination with nothing on screen to
+ * name it.
  *
  * ## Reusable on purpose
  *
@@ -161,7 +140,7 @@ export function TokenizedPromptEditor({
   onValueChange,
   tokens,
   ariaLabel,
-  placeholder = "Write the angle's prompt… type { for a placeholder.",
+  placeholder = "Write the prompt… type @ to cite a block or a character.",
   className = "border border-line p-2",
   contentClassName = "min-h-24",
   onSubmit,
@@ -186,7 +165,7 @@ export function TokenizedPromptEditor({
    * template is paragraphs. The create bar did send on plain Enter, like a
    * chat box — and a prompt is not a chat message: it is paragraphs too, and
    * a line break meant for the prompt sent it half-written (decision
-   * 2026-09-13). The `{` menu still takes Enter first while it is open.
+   * 2026-09-13). The `@` menu still takes Enter first while it is open.
    */
   onSubmit?: () => void;
   /**
@@ -196,7 +175,7 @@ export function TokenizedPromptEditor({
    */
   family?: "mono" | "body";
   /**
-   * Which way the `{` menu opens. Lexical hangs it under the caret and flips
+   * Which way the `@` menu opens. Lexical hangs it under the caret and flips
    * it upward only when the EDITOR is taller than the menu — a two-line box
    * at the foot of the viewport never is, so the menu ran off the bottom of
    * the screen. The create sheet says `up`.
@@ -212,17 +191,11 @@ export function TokenizedPromptEditor({
    */
   blurKey?: number;
 }) {
-  const kinds = useMemo(
-    () =>
-      Object.fromEntries(tokens.map((t) => [t.name, t.kind])) as Record<
-        string,
-        "block" | "computed"
-      >,
-    [tokens],
-  );
+  /** The names a typed citation becomes a pill for — see `nextKnown`. */
+  const known = useMemo(() => new Set(tokens.map((t) => t.name)), [tokens]);
 
   /**
-   * Whether the `{` menu is open — read by the Enter handler, which must yield
+   * Whether the `@` menu is open — read by the Enter handler, which must yield
    * to it. A ref rather than state: the handler is a Lexical command listener
    * and the menu toggles many times a second while a name is typed.
    */
@@ -281,7 +254,7 @@ export function TokenizedPromptEditor({
             nothing at all — in a box whose whole purpose is trying wordings out. */}
         <HistoryPlugin />
         <Hydrate value={value} held={held} />
-        <Pillify kinds={kinds} />
+        <Pillify known={known} />
         {onSubmit && <SubmitOnEnter onSubmit={onSubmit} menuOpen={menuOpen} />}
         <Focus focusKey={focusKey} />
         <Blur blurKey={blurKey} />
@@ -296,7 +269,7 @@ export function TokenizedPromptEditor({
             })
           }
         />
-        <Typeahead tokens={tokens} kinds={kinds} menuOpen={menuOpen} menuSide={menuSide} />
+        <Typeahead tokens={tokens} menuOpen={menuOpen} menuSide={menuSide} />
       </div>
     </LexicalComposer>
   );
@@ -305,7 +278,7 @@ export function TokenizedPromptEditor({
 /**
  * ⌘/Ctrl+Enter sends; Enter and Shift+Enter are line breaks.
  *
- * Registered at `COMMAND_PRIORITY_HIGH`, above the `{` menu's own Enter and
+ * Registered at `COMMAND_PRIORITY_HIGH`, above the `@` menu's own Enter and
  * above the plain-text plugin's, so it is asked first — and it declines when
  * the menu is open, so the keystroke falls through to the menu and picks the
  * highlighted pill instead of sending a half-written citation. It declines
@@ -418,7 +391,7 @@ function Hydrate({
 }
 
 /**
- * A `{placeholder}` becomes a pill — whether typed, pasted or loaded.
+ * An `@citation` becomes a pill — whether typed, pasted or loaded.
  *
  * **The only place text becomes a pill.** `Hydrate` puts the stored string in as
  * plain text and this turns it into pills, so a prompt read from the API and a
@@ -428,13 +401,23 @@ function Hydrate({
  * `registerLexicalTextEntity` is the shape of this and is deliberately not used:
  * its transform converts a target node back to plain text whenever the node
  * beside it is a text entity or its mode is not normal, which would un-pill both
- * of two ADJACENT placeholders — `{scale_face}{face_only}` is a real template —
- * and would un-pill anything the moment you typed a character after it, because
- * these nodes are in `token` mode. No reverse transform is needed here for the
- * same reason: token mode means the caret cannot get inside a pill, so a pill's
- * text cannot stop matching.
+ * of two ADJACENT placeholders, and would un-pill anything the moment you typed
+ * a character after it, because these nodes are in `token` mode. No reverse
+ * transform is needed here for the same reason: token mode means the caret
+ * cannot get inside a pill, so a pill's text cannot stop matching.
+ *
+ * ## Not under the caret
+ *
+ * A brace said when a name was finished; an `@` does not. `@block.light` is a
+ * known name and also the first eleven characters of `@block.light_soft`, so a
+ * citation that ends exactly where the caret is may still be being typed and
+ * is left alone — the menu is open over it anyway, and Enter there makes the
+ * pill directly. It becomes a pill the moment the caret moves on: a space or a
+ * full stop dirties the node and the transform runs again; a click or an
+ * arrow elsewhere dirties it by hand, below, because a selection change on its
+ * own does not.
  */
-function Pillify({ kinds }: { kinds: Record<string, "block" | "computed"> }) {
+function Pillify({ known }: { known: ReadonlySet<string> }) {
   const [editor] = useLexicalComposerContext();
 
   // **A layout effect, so this is registered before `Hydrate` runs.** Passive
@@ -446,8 +429,19 @@ function Pillify({ kinds }: { kinds: Record<string, "block" | "computed"> }) {
     () =>
       editor.registerNodeTransform(TextNode, (node) => {
         if (!node.isSimpleText()) return;
-        const found = nextPlaceholder(node.getTextContent());
+        const text = node.getTextContent();
+        const found = nextKnown(text, known);
         if (found === null) return;
+        if (found.end === text.length) {
+          const selection = $getSelection();
+          if (
+            $isRangeSelection(selection) &&
+            selection.isCollapsed() &&
+            selection.anchor.key === node.getKey() &&
+            selection.anchor.offset === text.length
+          )
+            return;
+        }
         // One per pass. Lexical re-runs a transform until nothing is dirty, and
         // the remainder left by the split is dirty, so a line pasted with six
         // placeholders resolves without looping here.
@@ -455,12 +449,32 @@ function Pillify({ kinds }: { kinds: Record<string, "block" | "computed"> }) {
           found.start === 0
             ? node.splitText(found.end)[0]
             : node.splitText(found.start, found.end)[1];
-        target?.replace(
-          $createTokenNode(found.token, kinds[found.name] ?? "computed"),
-        );
+        target?.replace($createTokenNode(`@${found.name}`, found.namespace));
       }),
-    [editor, kinds],
+    [editor, known],
   );
+
+  // The node the caret just left, marked dirty so the transform above gets a
+  // second look at a citation it deferred. Only text nodes, and only when the
+  // anchor actually moved to another node — the transform is cheap, but a
+  // dirty mark on every keystroke is a rebuild on every keystroke.
+  useEffect(() => {
+    let last: string | null = null;
+    return editor.registerCommand(
+      SELECTION_CHANGE_COMMAND,
+      () => {
+        const selection = $getSelection();
+        const key = $isRangeSelection(selection) ? selection.anchor.key : null;
+        if (last !== null && last !== key) {
+          const left = $getNodeByKey(last);
+          if ($isTextNode(left) && left.isSimpleText()) left.markDirty();
+        }
+        last = key;
+        return false;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+  }, [editor]);
 
   return null;
 }
@@ -475,7 +489,7 @@ class TokenOption extends MenuOption {
 }
 
 /**
- * The menu that opens on `{`.
+ * The menu that opens on `@`.
  *
  * Lexical's own typeahead plugin, rather than the hand-rolled one this replaced.
  * Three things it does that the hand-rolled one did not, each of which was a bug
@@ -493,12 +507,10 @@ class TokenOption extends MenuOption {
  */
 function Typeahead({
   tokens,
-  kinds,
   menuOpen,
   menuSide,
 }: {
   tokens: PromptToken[];
-  kinds: Record<string, "block" | "computed">;
   /** Written here, read by `SubmitOnEnter` — the one thing the two share. */
   menuOpen: MutableRefObject<boolean>;
   menuSide: "down" | "up";
@@ -517,7 +529,6 @@ function Typeahead({
   const options = useMemo(
     () =>
       tokens
-        .filter((t) => !t.legacy)
         .filter((t) =>
           t.name.toLowerCase().includes((query ?? "").toLowerCase()),
         )
@@ -531,11 +542,11 @@ function Typeahead({
   }, [menuOpen, options.length, resolved]);
 
   // `promptTriggerMatch`, not a second copy of it. There WAS a second copy, and
-  // when the regex grew the group that refuses `{{`, that copy went on reading
-  // group 1 — which had become the character BEFORE the brace. At the start of a
-  // node the query was therefore always empty and the menu never narrowed; in
-  // the middle of a paragraph it was the preceding space, which matches no
-  // placeholder, so no menu opened at all.
+  // when the regex grew a leading boundary group, that copy went on reading
+  // group 1 — which had become the character BEFORE the trigger. At the start
+  // of a node the query was therefore always empty and the menu never
+  // narrowed; in the middle of a paragraph it was the preceding space, which
+  // matches no placeholder, so no menu opened at all.
   const trigger = useCallback(
     (text: string): MenuTextMatch | null => promptTriggerMatch(text),
     [],
@@ -548,10 +559,9 @@ function Typeahead({
       closeMenu: () => void,
     ) => {
       editor.update(() => {
-        const pill = $createTokenNode(
-          `{${option.token.name}}`,
-          kinds[option.token.name] ?? option.token.kind,
-        );
+        const [namespace] = citationsIn(`@${option.token.name}`);
+        if (!namespace) return;
+        const pill = $createTokenNode(`@${option.token.name}`, namespace.namespace);
         if (nodeToReplace) {
           nodeToReplace.replace(pill);
         } else {
@@ -562,7 +572,7 @@ function Typeahead({
         closeMenu();
       });
     },
-    [editor, kinds],
+    [editor],
   );
 
   return (
@@ -573,7 +583,7 @@ function Typeahead({
       onOpen={onOpen}
       onClose={onClose}
       triggerFn={trigger}
-      // A `{` typed immediately after a pill is the commonest case there is —
+      // An `@` typed immediately after a pill is the commonest case there is —
       // a template is mostly citations — and the default suppresses the menu
       // when the caret sits against a text entity, which every pill is.
       ignoreEntityBoundary
@@ -588,10 +598,14 @@ function Typeahead({
         anchorElementRef.current === null || options.length === 0
           ? null
           : createPortal(
+              // Frosted, like the create sheet: it floats over the prose it
+              // is about to add to, and a solid card there is a hole in the
+              // page. `bg-sheet` over `backdrop-blur-xl`, the same recipe.
               <ul
                 role="listbox"
                 aria-label="Insert a placeholder"
-                className={`m-0 max-h-64 w-72 list-none overflow-auto rounded-md border border-line bg-card p-1 shadow-lg ${
+                className={`m-0 max-h-64 w-80 list-none overflow-auto rounded-md bg-sheet p-1
+                            shadow-[0_8px_32px_rgba(0,0,0,0.55)] ring-1 ring-line backdrop-blur-xl ${
                   // Above the anchor, which Lexical puts just under the caret
                   // line; the margin clears that line.
                   menuSide === "up" ? "absolute bottom-full left-0 mb-7" : ""
@@ -612,11 +626,16 @@ function Typeahead({
                       setHighlightedIndex(index);
                       selectOptionAndCleanUp(option);
                     }}
-                    className={`flex cursor-pointer items-baseline gap-2 px-2 py-1 ${
-                      selectedIndex === index ? "bg-surface-alt" : ""
+                    className={`flex cursor-pointer items-baseline gap-2 rounded-sm px-2 py-1 ${
+                      selectedIndex === index ? "bg-fill-hover" : ""
                     }`}
                   >
-                    <span className="font-mono text-sm">{`{${option.token.name}}`}</span>
+                    {/* In the tint its pill will have. */}
+                    <span
+                      className={`font-mono text-sm ${CITE_TEXT[citationsIn(`@${option.token.name}`)[0]?.namespace ?? "block"]}`}
+                    >
+                      {`@${option.token.name}`}
+                    </span>
                     <span className="truncate text-xs text-muted">
                       {option.token.kind === "computed"
                         ? "filled from the character"

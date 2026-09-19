@@ -531,7 +531,7 @@ export interface SpecBlock {
  * standard set, carried a `group` that had to be `face` or `body`, and only a
  * turnaround could use one. `group` chose which prose `build` and `must`
  * produced, and a template names that itself now —
- * `{character.1.build.face}` — so the column was a second place to say
+ * `@character.1.build.face` — so the column was a second place to say
  * something the prompt already says. `order` was the shooting order, and
  * nothing shoots a set.
  */
@@ -832,7 +832,7 @@ export interface RunRecord {
    * `characters` is written at creation and nowhere else, so a run built by
    * adding a character's references in the editor binds that character's
    * photographs and records nobody. This is derived from the bindings when the
-   * record is silent, and it is what `{character.N}` counts.
+   * record is silent, and it is what `@character.N` counts.
    */
   cast?: string[];
   id: string;
