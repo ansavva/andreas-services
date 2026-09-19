@@ -624,6 +624,10 @@ export async function stubApi(page: Page): Promise<void> {
     }
 
     if (path.endsWith("/api/libraries")) return json(route, libraries);
+    // The sidebar's account: no name and no picture, so the address is drawn.
+    if (path.endsWith("/api/account")) {
+      return json(route, { name: null, avatar_url: null, updated_at: null });
+    }
     if (path.endsWith("/api/defaults/models")) return json(route, { defaults });
     if (path.endsWith("/api/favorites")) {
       if (url.searchParams.get("view") === "ids") return json(route, { ids: favorited });

@@ -6,6 +6,11 @@ import type { ProjectSummary } from "../../types";
 
 vi.mock("../../apis/studio", () => ({
   getProjects: vi.fn().mockResolvedValue([]),
+  // The account menu reads this. See `AccountMenu.test.tsx`.
+  getAccount: vi.fn().mockResolvedValue({ name: null, avatar_url: null, updated_at: null }),
+  setAccountName: vi.fn(),
+  uploadAccountAvatar: vi.fn(),
+  removeAccountAvatar: vi.fn(),
 }));
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({ email: "person@example.com", logout: vi.fn() }),

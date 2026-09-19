@@ -46,6 +46,7 @@ One node type. A folder is a node with no blob; a file is a node with one.
 | Sweep | `LIB#<lib>` | `SWEEP#<opened>#<id>#<n>` | blobs a delete is about to strand |
 | Favorite | `USER#<sub>` | `FAV#<lib>#<node_id>` | one person's picks, per library |
 | Model defaults | `USER#<sub>` | `DEFAULTS#<model>` | one person's starting params for a model |
+| Account | `USER#<sub>` | `ACCOUNT` | one person's name and picture, wherever they sign in |
 
 **An id is the identity; a name is a label.** Every entity has a `v4` UUID that
 never changes, and the name is a mutable free-text attribute — not unique, not
@@ -3594,3 +3595,97 @@ def delete_model_defaults(sub: str, model: str) -> None:
     except ClientError as exc:
         logger.warning("Could not clear defaults for %s: %s", model, exc)
         raise UpstreamError("Could not write to the catalog") from exc
+
+
+# **Who a person is, to the people beside them: a name and a picture.**
+# Cognito holds the address and the password; this row holds what the
+# sidebar draws — a display name and, when one was uploaded, the key of a
+# picture. Under `USER#<sub>` beside memberships, favorites and defaults, for
+# the same reason: it is a fact about the person, carried across every
+# library they are in. A person with no row is not an error — the sidebar
+# falls back to initials off the email, then to the email itself — so
+# `account` answers an empty record rather than 404.
+#
+# The picture is a blob the API wrote (`routes/account.py` re-encodes it),
+# keyed `accounts/<sub>/<stamp>.jpg`: a fresh key per upload, so a presigned
+# URL cached by the browser never shows the previous picture, and the
+# previous object is deleted best-effort once the row points elsewhere.
+# It is not a node — it belongs to no library and appears in no listing.
+#
+# Like a `DEFAULTS#` row it carries no `path` and no `reel`, and begins with
+# something other than `LIB#`, so `libraries_for` never reads it as a
+# membership.
+
+ACCOUNT_SK = "ACCOUNT"
+ACCOUNT_PREFIX = "accounts"
+ACCOUNT_NAME_MAX = 100
+
+
+def account(sub: str) -> dict:
+    """This person's name and picture key — empty when nothing was ever set."""
+    try:
+        response = dynamodb.client().get_item(
+            TableName=config.catalog_table(),
+            Key={"pk": {"S": _user_pk(sub)}, "sk": {"S": ACCOUNT_SK}},
+        )
+    except ClientError as exc:
+        logger.warning("Could not read the account for %s: %s", sub, exc)
+        raise UpstreamError("Could not read the catalog") from exc
+    item = response.get("Item")
+    row = _attributes(item) if item else {}
+    return {
+        "name": row.get("name") if isinstance(row.get("name"), str) else None,
+        "avatar_key": row.get("avatar_key") if isinstance(row.get("avatar_key"), str) else None,
+        "updated_at": row.get("updated_at"),
+    }
+
+
+def set_account_name(sub: str, name: str | None) -> dict:
+    """Set — or with `None`, clear — the display name. The picture is untouched."""
+    return _update_account(sub, {"name": name})
+
+
+def set_account_avatar(sub: str, avatar_key: str | None) -> dict:
+    """Point the row at a new picture, or with `None` at none. The name is untouched."""
+    return _update_account(sub, {"avatar_key": avatar_key})
+
+
+def avatar_key_for(sub: str) -> str:
+    """Where the next upload lands. Fresh per call — see the note above."""
+    return f"{ACCOUNT_PREFIX}/{sub}/{uuid.uuid4().hex[:12]}.jpg"
+
+
+def _update_account(sub: str, assignments: dict) -> dict:
+    """One `UpdateItem` that creates the row if it is not there.
+
+    Not `_update`, whose `attribute_exists(pk)` is right for every node and
+    wrong here: the first name a person types IS the row's creation. A `None`
+    is a REMOVE rather than a NULL, as it is there, so a cleared name and a
+    never-set one read back the same way. `name` is a reserved word, hence the
+    placeholders.
+    """
+    assignments = {**assignments, "updated_at": _now()}
+    names = {f"#{index}": attribute for index, attribute in enumerate(assignments)}
+    values = {
+        f":{index}": _serialize(value)
+        for index, value in enumerate(assignments.values())
+        if value is not None
+    }
+    clauses = []
+    if values:
+        clauses.append("SET " + ", ".join(f"{k} = :{k[1:]}" for k in names if f":{k[1:]}" in values))
+    removed = [k for k in names if f":{k[1:]}" not in values]
+    if removed:
+        clauses.append("REMOVE " + ", ".join(removed))
+    try:
+        dynamodb.client().update_item(
+            TableName=config.catalog_table(),
+            Key={"pk": {"S": _user_pk(sub)}, "sk": {"S": ACCOUNT_SK}},
+            UpdateExpression=" ".join(clauses),
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
+        )
+    except ClientError as exc:
+        logger.warning("Could not write the account for %s: %s", sub, exc)
+        raise UpstreamError("Could not write to the catalog") from exc
+    return account(sub)

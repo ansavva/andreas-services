@@ -1,4 +1,5 @@
 import type {
+  Account,
   AssetResponse,
   CharacterRecord,
   CharacterProfile,
@@ -617,6 +618,34 @@ export function removeFavorite(id: string) {
     "DELETE",
     `/api/favorites/${encodeURIComponent(id)}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// The account: the person's own name and picture. Filed under the caller like
+// a favorite, about no library — `LIBRARY_UNSCOPED_PATHS` on the API — so it
+// can be read before the library list lands and by an account in none.
+// ---------------------------------------------------------------------------
+
+export function getAccount() {
+  return apiGet<Account>("/api/account");
+}
+
+/** Set the display name. An empty string clears it. */
+export function setAccountName(name: string) {
+  return apiSend<Account>("PATCH", "/api/account", { name });
+}
+
+/**
+ * Replace the picture. `image` is a data URL — a PNG, JPEG or WebP under 3 MB
+ * — and what lands is a square JPEG the API re-encoded, so the answer's
+ * `avatar_url` is the one to draw, never the bytes that were sent.
+ */
+export function uploadAccountAvatar(image: string) {
+  return apiSend<Account>("POST", "/api/account/avatar", { image });
+}
+
+export function removeAccountAvatar() {
+  return apiSend<Account>("DELETE", "/api/account/avatar");
 }
 
 export function getTemplates() {

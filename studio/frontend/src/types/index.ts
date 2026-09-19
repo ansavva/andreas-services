@@ -36,6 +36,20 @@ export interface Library {
 }
 
 /**
+ * Who the signed-in person is, as far as the API knows.
+ *
+ * Cognito holds the address, and `useAuth` reads it off the ID token; this is
+ * the rest — a display name and a picture, both optional. `avatar_url` is a
+ * presigned URL that lasts the service's TTL, and `null` is the ordinary case:
+ * the sidebar then draws initials off the name, then the address.
+ */
+export interface Account {
+  name: string | null;
+  avatar_url: string | null;
+  updated_at: string | null;
+}
+
+/**
  * What a node is, as `/api/nodes` and `/api/resolve` report it.
  *
  * Not `MediaKind`. That one is classified from the extension and answers "how do

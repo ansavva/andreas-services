@@ -5,6 +5,11 @@ import { afterEach, expect, it, vi } from "vitest";
 vi.mock("../../apis/studio", () => ({
   getCharacters: vi.fn().mockResolvedValue([]),
   getProjects: vi.fn().mockResolvedValue([]),
+  // The account menu reads this. See `AccountMenu.test.tsx`.
+  getAccount: vi.fn().mockResolvedValue({ name: null, avatar_url: null, updated_at: null }),
+  setAccountName: vi.fn(),
+  uploadAccountAvatar: vi.fn(),
+  removeAccountAvatar: vi.fn(),
   // The create bar in the top bar reads these. See `CreateBar.test.tsx`.
   getModelDefaults: vi.fn().mockResolvedValue({ defaults: {} }),
   getModels: vi.fn().mockResolvedValue({}),
