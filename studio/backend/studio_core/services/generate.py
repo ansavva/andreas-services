@@ -858,10 +858,13 @@ def close_from_prediction(record: dict, prediction: dict) -> dict:
     leave two copies of a video in the bucket. That is normal traffic rather than
     an incident, so it is not logged as one.
 
-    A prediction still in flight is likewise a no-op. The webhook filter asks for
-    `completed` only, so this should not happen; a reconcile against a running
-    prediction reaches it every time, and the honest answer there is "nothing has
-    changed yet".
+    A prediction still in flight is likewise a no-op — for a model. The webhook
+    filter asks for `completed` only, so this should not happen; a reconcile
+    against a running prediction reaches it every time, and the honest answer
+    there is "nothing has changed yet". **A training pod is the exception**: it
+    reports progress on the same signed URL as each checkpoint lands, and the
+    run stays `running` while `training.confirm_progress` files what arrived —
+    so a two-hour run shows its weights as they come rather than at the end.
     """
     if record.get("status") in catalog.TERMINAL_RUN_STATUSES:
         logger.info("Run %s is already %s; ignoring a repeat report",
@@ -871,6 +874,9 @@ def close_from_prediction(record: dict, prediction: dict) -> dict:
     provider_status = (prediction.get("status") or "").lower()
     status = PROVIDER_STATUS.get(provider_status, "failed")
     if status == "running":
+        if provider_of(record) == registry.RUNPOD_POD:
+            from studio_core.services import training
+            return training.confirm_progress(record, prediction)
         return record
 
     urls = _output_urls(record, prediction) if status == "succeeded" else []

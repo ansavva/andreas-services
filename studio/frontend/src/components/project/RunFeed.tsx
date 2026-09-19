@@ -538,7 +538,25 @@ function FeedRow({
           The floor is now the smaller of the tile's size and the column's. */}
       <div className="grid content-start gap-2 sm:grid-cols-[repeat(auto-fill,minmax(min(18rem,100%),1fr))]">
         {flying ? (
-          <InFlightTiles row={row} now={now} />
+          <>
+            {/* **A training run's outputs land while it runs.** Each
+                checkpoint pair is filed the minute it reaches the bucket, so
+                a running row of that kind draws what has landed and keeps one
+                in-flight tile for what is still training. Every other kind
+                has no outputs until it closes, so this maps nothing. */}
+            {row.outputs.map((asset, index) => (
+              <OutputTile
+                key={asset.node}
+                row={row}
+                asset={asset}
+                index={index}
+                onOpen={() => onOpen(row, index)}
+                onPromote={() => setPromoting(asset)}
+                actions={actions}
+              />
+            ))}
+            <InFlightTiles row={row} now={now} />
+          </>
         ) : row.outputs.length > 0 ? (
           row.outputs.map((asset, index) => (
             <OutputTile
@@ -695,7 +713,9 @@ export function StatusBadge({ status }: { status: RunStatus }) {
  * will be when the outputs land and nothing below it jumps.
  */
 function InFlightTiles({ row, now }: { row: RunFeedRow; now: number }) {
-  const count = expectedOutputs(row);
+  // Less what has already landed (a training run's checkpoints), never none:
+  // the spinner and the clock live on the first tile.
+  const count = Math.max(expectedOutputs(row) - row.outputs.length, 1);
   const ratio = ratioOf(row);
   return (
     <>
