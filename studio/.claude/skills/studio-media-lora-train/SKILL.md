@@ -73,6 +73,9 @@ dataset is the character's, chosen by tag.
 | `cloud` | **`secure`** (datacenter) or `community` (cheaper, peer hardware) |
 | `base` | **`i2v`** — the base the inference endpoint runs; `t2v` for a text-to-video adapter |
 | `max_hours` | 1–12, default **6**: the pod kills the trainer and reports `failed` past it. Billing cannot outlive this number |
+| `sample_prompts` | the stills drawn at every save point, one per prompt — see [Samples](#samples-the-face-emerging-a-save-point-at-a-time). Default four scenes; `[]` for none |
+| `sample_seed` | default **42**, held across the run, so the only thing that changes down a column is the LoRA |
+| `sample_steps` | sampler steps per still, default **20** |
 
 ## What it costs, and what it leaves
 
@@ -83,7 +86,8 @@ pod's hourly rate × the hours it existed, computed by the pod at the end.
 Outputs land under **`<character>/models/`** as
 `<trigger>-<run>_<step>_high_noise.safetensors` / `…_low_noise…` for each
 save point, and the same without a step number for the final pair. The run
-page lists them as file tiles; each opens a page with size, type and Download.
+page lists them one row per save point, the pair beside it and that step's
+samples under it; each file opens a page with size, type and Download.
 
 **They appear as they land, not at the end.** The pod tells studio after each
 checkpoint it uploads, so a pair shows up in `<character>/models/` and on the
@@ -92,6 +96,46 @@ minutes on an A100 at 250-step intervals. Evaluate the early pairs while the
 later ones train. If a run is `running` and shows nothing where you expected
 a pair, `studio runs reconcile <run>` files whatever has reached the bucket
 without closing the run.
+
+## Samples: the face emerging, a save point at a time
+
+Weights are nothing to look at, and the first real run proved it: sixteen
+files and no way to see whether the face was there without a video run by
+hand against each pair. So at every save point the trainer also **draws one
+still per `sample_prompts` entry** with the pair it just wrote — same
+prompts, same seed each time, so reading down the list is watching the LoRA
+and nothing else change. They land under **`<character>/models/samples/`**
+as `<trigger>-<run>_<step>_sample_<i>.jpg` (the final step's unnumbered,
+like the final pair) and the run page shows each row's strip under its pair,
+as the samples arrive.
+
+The defaults put the subject where a dataset usually does not — a kitchen, a
+night street, a formal suit, a beach — because a sample of the training
+scene only shows what was memorised. Write your own with `{trigger}` where
+the token goes:
+
+```bash
+studio run --model wan-2.2-lora-train --project <project> \
+  --character <name> --pick-tag dataset \
+  --extra '{"trigger":"ohwx_pt","sample_prompts":["{trigger}, on a ski slope, goggles up, medium shot"],"sample_seed":7}' \
+  --dry-run
+```
+
+`"sample_prompts": []` turns sampling off. Each prompt costs ~20 sampler
+steps of a 14B model per save point — about a minute on an A100 for the
+four defaults, so ~8 minutes over a 2000-step run.
+
+**What to look for, down the column:**
+
+| Reading | It says |
+|---|---|
+| a stranger, or a generic face | **underfit** — the token has not bound yet; read on, or more steps next time |
+| the person, in the scene the prompt asked for | **right** — this is the pair to evaluate on video |
+| the person, but wearing the dataset's clothes, in its lighting, against its backgrounds | **bleed** — overfitting; the pair before this one, or fewer steps and more varied images next time |
+| the same face, then a slightly worse one | past the peak; the earlier row is the candidate |
+
+A sample is a still off a video model at 20 steps, so judge likeness and
+bleed, not polish.
 
 ## After it succeeds — the evaluation
 

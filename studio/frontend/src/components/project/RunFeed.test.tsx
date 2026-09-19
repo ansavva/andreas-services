@@ -336,11 +336,35 @@ describe("a run in flight", () => {
             content_type: "application/octet-stream",
             size: 300,
           },
+          // The samples drawn with that pair, uploaded out of prompt order,
+          // and one that landed before its pair did.
+          {
+            node: "node-s1",
+            name: "ohwx-1234_000000250_sample_1.jpg",
+            url: "/s1.jpg",
+            content_type: "image/jpeg",
+            size: 40_000,
+          },
+          {
+            node: "node-s0",
+            name: "ohwx-1234_000000250_sample_0.jpg",
+            url: "/s0.jpg",
+            content_type: "image/jpeg",
+            size: 41_000,
+          },
+          {
+            node: "node-s500",
+            name: "ohwx-1234_000000500_sample_0.jpg",
+            url: "/s500.jpg",
+            content_type: "image/jpeg",
+            size: 42_000,
+          },
         ],
       }),
     ]);
 
     const article = await screen.findByRole("article");
+    // The size is a checkpoint's, not a sample's.
     expect(within(article).getByText("1 of 8 checkpoint pairs so far · 300 B each")).toBeTruthy();
     const rows = within(article).getAllByRole("listitem").filter((li) => li.hasAttribute("data-checkpoint"));
     expect(rows.map((li) => li.getAttribute("data-checkpoint"))).toEqual([
@@ -348,7 +372,19 @@ describe("a run in flight", () => {
     ]);
     expect(within(rows[0]!).getByRole("link", { name: /high-noise checkpoint at step 250/ }).getAttribute("href")).toBe("/o/node-w1");
     expect(within(rows[0]!).getByRole("link", { name: /low-noise checkpoint at step 250/ })).toBeTruthy();
-    expect(within(rows[1]!).queryByRole("link")).toBeNull();
+    // The strip under the pair: both samples, in prompt order, each opening
+    // the picture's own page, drawn as pictures rather than file tiles.
+    const samples = within(rows[0]!).getAllByRole("link", { name: /^Open sample/ });
+    expect(samples.map((a) => a.getAttribute("aria-label"))).toEqual([
+      "Open sample 1 at step 250", "Open sample 2 at step 250",
+    ]);
+    expect(samples.map((a) => a.getAttribute("href"))).toEqual(["/o/node-s0", "/o/node-s1"]);
+    expect(samples[0]!.querySelector("img")?.getAttribute("src")).toBe("/s0.jpg");
+    expect(within(article).queryByText("File")).toBeNull();
+    // A sample that landed ahead of its pair sits in its row with the pair still to come.
+    expect(within(rows[1]!).getAllByRole("link")).toHaveLength(1);
+    expect(within(rows[1]!).getByRole("link", { name: "Open sample 1 at step 500" })).toBeTruthy();
+    expect(within(rows[2]!).queryByRole("link")).toBeNull();
     expect(within(rows[7]!).getByText("final · 2000")).toBeTruthy();
     expect(within(article).queryByTestId("in-flight-tile")).toBeNull();
   });
