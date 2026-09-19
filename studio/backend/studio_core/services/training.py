@@ -74,7 +74,7 @@ from datetime import datetime, timezone
 from studio_core.clients import runpod_pods
 from studio_core.clients.aws import s3
 from studio_core.errors import NotFoundError, ValidationError
-from studio_core.services import catalog, layout, registry
+from studio_core.services import catalog, keys, layout, registry
 
 logger = logging.getLogger(__name__)
 
@@ -375,7 +375,18 @@ def confirm_progress(record: dict, prediction: dict) -> dict:
     if not added:
         return record
     outputs = confirmed + added
-    listing = {} if confirmed else {"thumb": outputs[0]}
+    # The listing row's thumbnail: the first picture to land, since a
+    # weights file draws nothing — and the first file of any kind until one
+    # does, so a run with sampling off still has a row.
+    names = {node_id: name for name, node_id in mapping.items()}
+    is_picture = lambda node_id: keys.kind(names.get(node_id, "")) == "image"  # noqa: E731
+    listing = {}
+    if not any(is_picture(node_id) for node_id in confirmed):
+        pictures = [node_id for node_id in added if is_picture(node_id)]
+        if pictures:
+            listing["thumb"] = pictures[0]
+        elif not confirmed:
+            listing["thumb"] = added[0]
     logger.info("Run %s: %d of %d files landed", record["id"], len(outputs), len(mapping))
     return catalog.update_project_entity(catalog.ENTITY_RUN, record, {"outputs": outputs}, listing)
 

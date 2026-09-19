@@ -1547,6 +1547,27 @@ def test_a_progress_callback_naming_a_sample_confirms_it_as_an_image_and_queues_
     assert body["outputs"][0]["url"].startswith("http")
 
 
+def test_the_first_picture_to_land_becomes_the_listing_thumbnail_over_a_weights_file(
+        empty_api, media_bucket):
+    from studio_core.services import callbacks
+    record, made = _running_training(empty_api, media_bucket)
+    weight = next(n for n in made if n.endswith("_000000250_high_noise.safetensors"))
+    sample = next(n for n in made if n.endswith("_000000250_sample_0.jpg"))
+
+    def thumb():
+        rows = empty_api.get(f"/api/runs?project={record['project']}").get_json()["runs"]
+        return next(r for r in rows if r["id"] == record["id"]).get("thumb")
+
+    # A weights file first: the row has a thumbnail, and it is the file.
+    _land(media_bucket, made, [weight])
+    callbacks.process(_pod_message(record["id"], _progress(record, [weight])))
+    assert (thumb() or {}).get("node") == made[weight]
+    # Then a sample: the row's thumbnail becomes a picture.
+    _land(media_bucket, made, [sample], body=b"\xff\xd8jpeg")
+    callbacks.process(_pod_message(record["id"], _progress(record, [weight, sample])))
+    assert thumb()["node"] == made[sample]
+
+
 def test_the_close_keeps_the_samples_that_came_and_drops_the_rest(
         empty_api, media_bucket, monkeypatch):
     from studio_core.clients import runpod_pods
