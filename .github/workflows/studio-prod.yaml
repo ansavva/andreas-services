@@ -91,6 +91,14 @@ jobs:
           filters: |
             infra:
               - 'studio/infra/**'
+              # Two Lambdas are zips Terraform packages straight from these
+              # files, so an edit to either deploys nowhere unless this job
+              # runs. Learned the expensive way: #768 added a provider to the
+              # receiver's allow-list, the infra job never ran, and prod
+              # answered every callback of the first training run with 404
+              # while the pod billed on until a reconcile closed it by hand.
+              - 'studio/backend/studio_core/handlers/aws/hook/**'
+              - 'studio/backend/studio_core/handlers/aws/signup/**'
               - '.github/workflows/studio-prod.yaml'
             backend:
               - 'studio/backend/**'
