@@ -12,6 +12,17 @@ const CHECKPOINT = /(?:_(\d{9}))?_(high|low)_noise\.safetensors$/;
 
 type Expert = "high" | "low";
 
+/** A checkpoint file name taken apart: the stem, the save point (`null` for the final pair), the expert. */
+export function checkpointName(name: string): { stem: string; step: number | null; expert: Expert } | null {
+  const match = CHECKPOINT.exec(name);
+  if (!match) return null;
+  return {
+    stem: name.slice(0, match.index),
+    step: match[1] ? Number(match[1]) : null,
+    expert: match[2] as Expert,
+  };
+}
+
 interface Checkpoint {
   /** The save point, or `null` for the final pair the trainer writes unnumbered. */
   step: number | null;
