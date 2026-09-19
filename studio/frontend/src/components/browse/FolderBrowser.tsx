@@ -33,10 +33,16 @@ import { useFolder } from "../../hooks/useFolder";
 import { useSearchParamState } from "../../hooks/useSearchParamState";
 import { useSelection } from "../../hooks/useSelection";
 import { useUploads } from "../../hooks/useUploads";
-import type { Crumb as FolderCrumb, EntryKind, FileEntry, SortOrder } from "../../types";
+import {
+  DEFAULT_SORT,
+  type Crumb as FolderCrumb,
+  type EntryKind,
+  type FileEntry,
+  type SortOrder,
+} from "../../types";
 import { downloadNode } from "../../utils/download";
 import { MEDIA_GRID } from "../../utils/grid";
-import type { FolderId } from "../../utils/location";
+import { absoluteUrl, folderLink, folderPath, type FolderId } from "../../utils/location";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
 import { DestinationPicker } from "./DestinationPicker";
@@ -63,6 +69,7 @@ import {
   HeartFilledIcon,
   HeartIcon,
   ImageIcon,
+  LinkIcon,
   TrashIcon,
   UploadIcon,
 } from "../common/icons";
@@ -294,6 +301,12 @@ export function FolderBrowser({
    */
   const [view, setView] = useSearchParamState(viewParam, defaultView);
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
+  /**
+   * One copier for every tile's "Copy link". A menu is open on one tile at a
+   * time, so one status is enough, and it is the toast that confirms the copy
+   * anyway — see `useCopyToClipboard`.
+   */
+  const linkCopy = useCopyToClipboard();
 
   /**
    * The listing, straight from the folder the caller names.
@@ -321,6 +334,24 @@ export function FolderBrowser({
    * `openFile`; see `BrowserNav`.
    */
   const deep = data?.depth === "all";
+
+  /**
+   * This listing, as a link — the folder, and the view of it that is on screen.
+   *
+   * **Always `/f/<id>`, whichever browser built it.** A Files tab holds its
+   * folder in `?folder=` under an entity's address, and a link to that would
+   * only work from that tab; the standalone browser is the one address a
+   * folder has from anywhere. What rides along is what somebody was looking
+   * at — Media or Folders, the sort, a tag filter, a typed name — spelled in
+   * `/f`'s own parameter names, since this browser's may be namespaced. It is
+   * the state, not the address bar, so a tab's `?tab=files&fsort=…` never
+   * leaks into it.
+   */
+  const link = folderLink(
+    folder,
+    { view, sort, tags, q: filter },
+    { view: VIEW_FOLDERS, sort: DEFAULT_SORT },
+  );
 
   /**
    * The listing's own breadcrumbs are where every *path* on this page comes from.
@@ -565,6 +596,16 @@ export function FolderBrowser({
           icon: <DownloadIcon className={MENU_GLYPH} />,
           onSelect: () => void downloadNode(file.id),
         },
+        // The tile's own `href`, with the origin in front — so a pasted link
+        // opens the viewer on this file scrolling through this listing, the
+        // same as a command-click would.
+        {
+          key: "copy-link",
+          label: copyLabel(linkCopy.status, "Copy link"),
+          icon: <LinkIcon className={MENU_GLYPH} />,
+          keepOpen: true,
+          onSelect: () => void linkCopy.copy(absoluteUrl(nav.fileHref(file, deep))),
+        },
         {
           key: "move",
           label: "Move…",
@@ -589,7 +630,7 @@ export function FolderBrowser({
         },
       ];
     },
-    [bar, deleteOne, favorites, firstFrame.take],
+    [bar, deep, deleteOne, favorites, firstFrame.take, linkCopy, nav],
   );
 
   /**
@@ -893,6 +934,7 @@ export function FolderBrowser({
           atRoot={atRoot}
           folderName={folderName}
           prefix={prefix}
+          link={link}
           onNewFolder={() => setNewFolder("")}
           onUploadFiles={uploads.start}
           onDeleteFolder={deleteCurrentFolder}
@@ -1089,6 +1131,7 @@ export function FolderBrowser({
                 key={folder.id}
                 name={folder.name}
                 prefix={folder.prefix}
+                link={folderPath(folder.id)}
                 onOpen={() => goToFolder(folder.id)}
                 onRename={(name) => run(renameNode(folder.id, name))}
                 onMove={() =>
@@ -1199,6 +1242,8 @@ interface FolderMenuProps {
   atRoot: boolean;
   folderName: string;
   prefix: string | null;
+  /** This listing's address on `/f`, view and filters included — see `FolderBrowser`. */
+  link: string;
   onNewFolder: () => void;
   onUploadFiles: (files: File[]) => void;
   onDeleteFolder: () => Promise<unknown>;
@@ -1229,6 +1274,7 @@ function FolderMenu({
   atRoot,
   folderName,
   prefix,
+  link,
   onNewFolder,
   onUploadFiles,
   onDeleteFolder,
@@ -1236,6 +1282,7 @@ function FolderMenu({
   onSelectAll,
 }: FolderMenuProps) {
   const { status, copy } = useCopyToClipboard();
+  const linkCopy = useCopyToClipboard();
   const uploadInput = useRef<HTMLInputElement>(null);
 
   const actions: MenuAction[] = [
@@ -1263,6 +1310,16 @@ function FolderMenu({
       icon: <ClipboardIcon className={MENU_GLYPH} />,
       keepOpen: true,
       onSelect: () => void copy(prefix ?? ""),
+    },
+    // Beside the path, and not the same thing: the path is for a `studio`
+    // command, the link is for a person, and it carries the view they would
+    // see on arriving — Media, the sort, the filters — not just the folder.
+    {
+      key: "copy-link",
+      label: copyLabel(linkCopy.status, "Copy link"),
+      icon: <LinkIcon className={MENU_GLYPH} />,
+      keepOpen: true,
+      onSelect: () => void linkCopy.copy(absoluteUrl(link)),
     },
     ...(showSelectAll
       ? [

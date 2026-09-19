@@ -71,3 +71,38 @@ describe("the delete item, which arms rather than fires", () => {
     expect(remove().textContent).toBe("Delete");
   });
 });
+
+describe("the link item, beside the path", () => {
+  it("copies the row's address with the origin in front", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(
+      <ItemActions
+        name="clip.mp4"
+        copyValue="a/b/clip.mp4"
+        linkValue="/o/node-1?in=f%3Anode-0"
+        onRename={vi.fn()}
+        onMove={vi.fn()}
+        onDelete={vi.fn(() => Promise.resolve())}
+      />,
+      { wrapper: TestProviders },
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Actions for clip.mp4" })[0]!);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy link" }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        `${window.location.origin}/o/node-1?in=f%3Anode-0`,
+      ),
+    );
+    // The path line is still there and still says what it said: the two are
+    // different things for different readers, not one line renamed.
+    expect(screen.getByRole("menuitem", { name: "Copy path" })).toBeTruthy();
+  });
+
+  it("offers no link for a row with nowhere to open", () => {
+    show();
+    expect(screen.queryByRole("menuitem", { name: "Copy link" })).toBeNull();
+  });
+});

@@ -104,6 +104,9 @@ export function FileRow({
         <ItemActions
           name={file.name}
           copyValue={file.key}
+          // The row's own `href`, so "Copy link" and command-click agree; a
+          // row with nowhere to open has no link to copy either.
+          linkValue={to}
           onRename={() => setRenaming(true)}
           onMove={onMove}
           onCopyTo={onCopyTo}

@@ -19,6 +19,13 @@ interface Props {
    * the clipboard.
    */
   prefix: string;
+  /**
+   * The folder's address on the standalone browser, `/f/<id>` — what "Copy
+   * link" puts on the clipboard. Not what `onOpen` navigates to: inside a
+   * Files tab opening stays in the tab, but a *link* to a folder is a link to
+   * the browser, which is the one address that works from anywhere.
+   */
+  link: string;
   onOpen: () => void;
   onRename: (name: string) => Promise<unknown>;
   /** Asks the page to open its destination picker on this folder. */
@@ -36,7 +43,7 @@ interface Props {
  * than a URL — see `BrowserNav` — so opening one is always `onOpen`), and the
  * ⋯ menu rides in the `trailing` slot the same way a file's does.
  */
-export function FolderCard({ name, prefix, onOpen, onRename, onMove, onDelete }: Props) {
+export function FolderCard({ name, prefix, link, onOpen, onRename, onMove, onDelete }: Props) {
   const { title, subtitle } = describeFolder(name);
   const [renaming, setRenaming] = useState(false);
   const stopRenaming = useCallback(() => setRenaming(false), []);
@@ -56,6 +63,7 @@ export function FolderCard({ name, prefix, onOpen, onRename, onMove, onDelete }:
           name={name}
           copyValue={prefix}
           copyNoun="prefix"
+          linkValue={link}
           onRename={() => setRenaming(true)}
           onMove={onMove}
           onDelete={onDelete}

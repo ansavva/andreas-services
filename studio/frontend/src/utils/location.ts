@@ -80,6 +80,48 @@ export function folderPath(id: FolderId): string {
 }
 
 /**
+ * The listing's state, as the query string a share link carries.
+ *
+ * `/f/<id>` alone lands on the folder; this is the rest of what somebody was
+ * looking at — the Media view, a sort, a tag filter, a typed name. Written in
+ * the names `BrowsePage` and `FolderBrowser` read on `/f` (`view`, `sort`,
+ * `tags`, `q`), whatever names the browser that built it was using: a Files
+ * tab sorts under `fsort` and a project's Runs grid views under its own key,
+ * and a link copied from either has to open on `/f`, where those names mean
+ * nothing.
+ *
+ * Every default is absence, the same rule `useSearchParamState` writes with,
+ * so a folder at rest links as `/f/<id>` and nothing more.
+ */
+export function folderLink(
+  id: FolderId,
+  state: { view?: string; sort?: string; tags?: string[]; q?: string },
+  defaults: { view: string; sort: string },
+): string {
+  const params = new URLSearchParams();
+  if (state.view && state.view !== defaults.view) params.set("view", state.view);
+  if (state.sort && state.sort !== defaults.sort) params.set("sort", state.sort);
+  if (state.tags && state.tags.length > 0)
+    params.set("tags", state.tags.map(encodeURIComponent).join(","));
+  if (state.q) params.set("q", state.q);
+  const query = params.toString();
+  return query ? `${folderPath(id)}?${query}` : folderPath(id);
+}
+
+/**
+ * An in-app path as the URL that goes on the clipboard.
+ *
+ * Every builder here returns a path, because a path is what `navigate` and an
+ * `href` take; a link handed to another person has to carry the origin too,
+ * and this is the one place it is added. `window.location.origin`, not a
+ * configured value: the app knows where it is being served from, and a
+ * constant would be one more thing for dev and prod to disagree on.
+ */
+export function absoluteUrl(path: string): string {
+  return `${window.location.origin}${path}`;
+}
+
+/**
  * What the viewer is scrolling THROUGH, carried in the address.
  *
  * **A file opened from a run and the same file opened from a folder are not the

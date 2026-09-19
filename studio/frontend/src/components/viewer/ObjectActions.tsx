@@ -1,12 +1,16 @@
+import { useLocation } from "react-router-dom";
+
 import { IconButton } from "@ansavva/design-system";
 
+import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { downloadNode } from "../../utils/download";
+import { absoluteUrl } from "../../utils/location";
 import type { AttachRole } from "../../context/CreateBarContext";
 import type { FileEntry } from "../../types";
 import { ActionMenu } from "../common/ActionMenu";
 import { FavoriteButton } from "../common/FavoriteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
-import { CloseIcon, DownloadIcon, PencilIcon, TrashIcon } from "../common/icons";
+import { CloseIcon, DownloadIcon, LinkIcon, PencilIcon, TrashIcon } from "../common/icons";
 import { THIS_FRAME_GROUP, attachActions } from "../create/attachActions";
 
 interface Props {
@@ -80,6 +84,16 @@ export function ObjectActions({
   // be a button whose only outcome is a 400 — see `services/favorites.py`.
   const favoritable = file.kind === "image" || file.kind === "video";
 
+  /**
+   * The address bar, as a link. It is already the share link — `/o/<id>` with
+   * whatever `?in=` the feed is scrolling through, and `ObjectPage` rewrites
+   * it as the reel moves — so nothing is built here: a pasted copy of it lands
+   * on this file, among these neighbours. In the `⋯` menu and not the row,
+   * because the row's seven icons are what the column fits.
+   */
+  const { pathname, search } = useLocation();
+  const link = useCopyToClipboard();
+
   return (
     <>
       {/*
@@ -126,38 +140,43 @@ export function ObjectActions({
           appeared nowhere else in the app and read as nothing, on the one row
           a person came to for the picture. The clip's `Frame` pill on the
           player carries the same lines where the frame is. */}
-      {(onUseAs || onDelete) && (
-        <ActionMenu
-          label={file.name}
-          triggerLabel="More actions"
-          actions={[
-            ...(onUseAs
-              ? attachActions(
-                  { node: file.id, url: file.url, name: file.name, kind: "object" },
-                  (_, role) => onUseAs(role),
-                  file.kind,
-                  onFrameAs && ((_, role) => onFrameAs(role)),
-                  THIS_FRAME_GROUP,
-                )
-              : []),
-            ...(onDelete
-              ? [
-                  {
-                    key: "delete",
-                    label: "Delete",
-                    armedLabel: "Confirm — delete this file",
-                    icon: (
-                      <TrashIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />
-                    ),
-                    danger: true,
-                    arm: true,
-                    onSelect: onDelete,
-                  },
-                ]
-              : []),
-          ]}
-        />
-      )}
+      <ActionMenu
+        label={file.name}
+        triggerLabel="More actions"
+        actions={[
+          ...(onUseAs
+            ? attachActions(
+                { node: file.id, url: file.url, name: file.name, kind: "object" },
+                (_, role) => onUseAs(role),
+                file.kind,
+                onFrameAs && ((_, role) => onFrameAs(role)),
+                THIS_FRAME_GROUP,
+              )
+            : []),
+          {
+            key: "copy-link",
+            label: copyLabel(link.status, "Copy link"),
+            icon: <LinkIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />,
+            keepOpen: true,
+            onSelect: () => void link.copy(absoluteUrl(`${pathname}${search}`)),
+          },
+          ...(onDelete
+            ? [
+                {
+                  key: "delete",
+                  label: "Delete",
+                  armedLabel: "Confirm — delete this file",
+                  icon: (
+                    <TrashIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />
+                  ),
+                  danger: true,
+                  arm: true,
+                  onSelect: onDelete,
+                },
+              ]
+            : []),
+        ]}
+      />
     </>
   );
 }
