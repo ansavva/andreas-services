@@ -314,14 +314,6 @@ export const SidebarIcon = ({ className }: Props) => (
  * Characters section wears. Two person glyphs in one 64px rail have to differ,
  * and the ring is what says "you" rather than "them".
  */
-export const ProfileIcon = ({ className }: Props) => (
-  <Glyph className={className}>
-    <circle cx="12" cy="12" r="9" />
-    <circle cx="12" cy="10" r="3" />
-    <path d="M6.5 18.5a6 6 0 0 1 11 0" />
-  </Glyph>
-);
-
 // --- the viewer ------------------------------------------------------------
 
 export const SoundOnIcon = ({ className }: Props) => (

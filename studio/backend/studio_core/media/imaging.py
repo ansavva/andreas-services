@@ -122,6 +122,35 @@ def crop(body: bytes, box: tuple[int, int, int, int], target_ext: str,
     }
 
 
+#: An account picture's edge. Drawn at 24–80 CSS pixels and nowhere else, so
+#: 512 is generous; the same number humbugg settles on.
+AVATAR_SIZE = 512
+AVATAR_QUALITY = 82
+AVATAR_FORMATS = ("JPEG", "PNG", "WEBP")
+
+
+def avatar(body: bytes) -> bytes:
+    """One picture -> a square JPEG of `AVATAR_SIZE`, centre-cropped, metadata gone.
+
+    Re-encoding is the point rather than a nicety. The bytes came from a
+    browser as a data URL, so nothing about them is trusted: the format is
+    checked against the three a browser would produce, the pixels are
+    decoded once and written fresh, and an EXIF block — which is where a
+    phone writes a location — never makes it to the bucket. A portrait and a
+    landscape both work, because the crop takes the largest centred square.
+    """
+    from PIL import ImageOps
+
+    im = _open(body)
+    if im.format not in AVATAR_FORMATS:
+        raise ValidationError("upload a PNG, JPEG or WebP image")
+    # `exif_transpose` first: a phone photo is stored sideways with a tag
+    # saying which way is up, and the tag is about to be thrown away.
+    im = ImageOps.exif_transpose(im)
+    square = ImageOps.fit(im, (AVATAR_SIZE, AVATAR_SIZE), centering=(0.5, 0.5))
+    return _save(square, ".jpg", AVATAR_QUALITY)
+
+
 #: What a still's poster is scaled to across — the same number `ffmpeg.poster`
 #: uses for a clip, so one tile draws both at one size. A poster is drawn at a
 #: few hundred CSS pixels wide and nowhere else; the original is what the

@@ -1206,8 +1206,11 @@ the entity's id.
 | `POST \| DELETE /api/favorites/<node_id>` | Favorite an image or a video, or stop. Idempotent both ways; **no toggle route** |
 | `GET /api/defaults/models` | **This caller's own starting params, per model** — `{defaults: {<owner/name>: {…}}}`. The create sheet lays them over the registry's snapshot defaults; a person's, not a library's, so they follow them between devices |
 | `POST \| DELETE /api/defaults/models/<name>` | Set them for one model — `{params}`, whole, scalars only, no image field — or go back to the model's own. The create sheet's **Set as default** and **Reset**, under the settings rows on the popover and the phone sheet alike |
+| `GET /api/account` | **This caller's name and picture** — `{name, avatar_url, updated_at}`, every field `null` until set. Answered about no library (`LIBRARY_UNSCOPED_PATHS`), so an account in two or in none reads it the same |
+| `PATCH /api/account` | `{name}` → the display name, whitespace-collapsed, 100 characters; blank or `null` clears it |
+| `POST \| DELETE /api/account/avatar` | `{image}` as a `data:image/(png\|jpeg\|webp);base64,…` URL under 3 MB → re-encoded to a 512px square JPEG under `accounts/<sub>/`, the previous object discarded; or back to initials. Humbugg's profile, in studio's shape — the sidebar draws the picture, then initials off the name, then off the address |
 
-### Favorites, which are the only per-CALLER thing in this API
+### Favorites, model defaults and the account: the per-CALLER things in this API
 
 Everything else this service stores is a fact about the library: a name, a tag,
 a description, a run. A favorite is a fact about the **person** — two members of
@@ -1216,6 +1219,13 @@ caller's own partition, `USER#<sub>` / `FAV#<lib>#<node_id>`, and nothing can
 read or write anybody else's. That is why it is not a tag called `favorite`: the
 tag vocabulary is shared and library-wide, and a shared favorite is a different
 feature.
+
+The same partition holds two more facts about the person: their starting
+params per model (`DEFAULTS#<model>`) and their account (`ACCOUNT` — a display
+name and a picture key). The account is the one row here that is about **no
+library at all**, which is why its routes sit beside `/api/libraries` in
+`LIBRARY_UNSCOPED_PATHS`: the sidebar draws the person before the library list
+lands, and an account in none still has a name.
 
 **Home opens on them.** The Recent grid that used to sit there was retired
 because twelve tiles cost an enumeration of the whole library; this answers

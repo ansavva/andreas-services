@@ -5,6 +5,11 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 vi.mock("../../apis/studio", () => ({
   getCharacters: vi.fn().mockResolvedValue([]),
   getProjects: vi.fn().mockResolvedValue([]),
+  // The account menu reads this. See `AccountMenu.test.tsx`.
+  getAccount: vi.fn().mockResolvedValue({ name: null, avatar_url: null, updated_at: null }),
+  setAccountName: vi.fn(),
+  uploadAccountAvatar: vi.fn(),
+  removeAccountAvatar: vi.fn(),
   // The create bar's reads. Out of scope here — `CreateBar.test.tsx` is its
   // suite — but present, because an accessed name missing from the factory
   // is a vitest error about the mock rather than an empty bar.

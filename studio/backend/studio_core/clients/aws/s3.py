@@ -128,9 +128,10 @@ def delete(keys: list[str]) -> None:
 def put_text(key: str, body: bytes, content_type: str) -> None:
     """Overwrite a text object with new contents.
 
-    The only write in this module that carries a caller-supplied body, and the
-    caller is `services.manage.update_text`, which has already established that
-    the node is a text file carrying a blob, small enough to hold in memory. S3 has
+    The only write in this module that carries a caller-supplied body. Two
+    callers: `services.manage.update_text`, which has already established that
+    the node is a text file carrying a blob, small enough to hold in memory; and
+    `routes/account.py`, whose body is a picture it re-encoded itself. S3 has
     no partial write and no conditional put, so this is a whole-object replace —
     the previous contents survive only as a noncurrent version.
     """

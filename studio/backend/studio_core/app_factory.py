@@ -16,6 +16,7 @@ from studio_core.errors import (
     UpstreamError,
     ValidationError,
 )
+from studio_core.routes.account import bp as account_bp
 from studio_core.routes.browse import bp as browse_bp
 from studio_core.routes.characters import bp as characters_bp
 from studio_core.routes.defaults import bp as defaults_bp
@@ -69,7 +70,12 @@ UNAUTHENTICATED_PATHS = frozenset({"/api/health"})
 # That is safe here in a way it was not there: an entry that never matches a real
 # route leaves an authenticated caller at the 404 they were already getting,
 # whereas an unauthentication skip that missed would open a route to strangers.
-LIBRARY_UNSCOPED_PATHS = frozenset({"/api/libraries"})
+#
+# `/api/account` and its picture are here for the same reason with the opposite
+# emphasis: they are about ONE person and NO library, so a caller in two
+# libraries who has not picked one yet — the sidebar draws their name before
+# anything else — must not be asked to.
+LIBRARY_UNSCOPED_PATHS = frozenset({"/api/libraries", "/api/account", "/api/account/avatar"})
 
 # The verbs and headers this API accepts, and **one of four places that have to
 # agree**. The other three are all in `modules/api_gateway`: the MOCK
@@ -275,6 +281,10 @@ def create_app() -> Flask:
     # What one PERSON starts a model's params at — the same shape as a
     # favorite, for the same reason. See `routes/defaults.py`.
     app.register_blueprint(defaults_bp)
+    # Who one PERSON is — a name and a picture, filed under them like a
+    # favorite. About no library, so its paths are in `LIBRARY_UNSCOPED_PATHS`.
+    # See `routes/account.py`.
+    app.register_blueprint(account_bp)
     app.register_blueprint(tags_bp)
     app.register_blueprint(templates_bp)
     # Drafting a character's reference angles. It writes RUNS, so it could
