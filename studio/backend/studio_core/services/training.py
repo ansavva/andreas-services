@@ -9,6 +9,7 @@ a cost. What differs is inside those steps, and it is all here so
 
     dispatch  make the output nodes, mint the grants, write the manifest,
               rent the pod                                   ── billing starts
+    progress  confirm each checkpoint as the pod says it landed; stay running
     report    what the pod wrote into the bucket, for `reconcile`
     adopt     confirm the checkpoints the pod uploaded as the run's outputs
     release   terminate the pod, drop the manifest              ── billing stops
@@ -30,6 +31,18 @@ at dispatch, each with a PUT grant on its own blob key, so the pod writes
 straight into the bucket and `adopt` only has to confirm what arrived. A
 node whose file never came (a run stopped early, a failed one) is deleted at
 close, so `models/` holds weights and nothing that looks like weights.
+
+## A checkpoint is visible when it lands, not when the run ends
+
+An empty node is hidden from the library until its size and checksum are on
+the row, and a run trains for an hour or two while pairs land every few
+minutes. So the pod's uploader POSTs a progress document — `IN_PROGRESS`,
+the names uploaded so far — to the same signed callback URL after each PUT,
+and `confirm_progress` confirms those files and appends them to the run's
+`outputs` while the run stays `running`. Best-effort on the pod's side and
+idempotent on this one: a lost progress call costs nothing but the wait for
+the next, `reconcile` confirms whatever has landed when asked, and `adopt`
+at close re-confirms the whole set and drops the rest exactly as before.
 """
 
 import json
@@ -222,8 +235,7 @@ def adopt_outputs(record: dict, prediction: dict, status: str, error) -> tuple[l
     at dispatch for files that never came are deleted whatever the outcome —
     a `models/` folder must not hold an empty file that looks like weights.
     """
-    training = (record.get("payload") or {}).get("training") or {}
-    mapping: dict[str, str] = training.get("outputs") or {}
+    mapping = _mapping(record)
     uploaded = set(runpod_pods.output_urls(prediction)) if status == "succeeded" else set()
 
     outputs: list[str] = []
@@ -231,24 +243,67 @@ def adopt_outputs(record: dict, prediction: dict, status: str, error) -> tuple[l
         if name not in uploaded:
             _drop(node_id)
             continue
-        try:
-            node = catalog.node(node_id)
-            metadata = s3.head(node["blob_key"])
-        except NotFoundError:
+        if not _confirm(node_id):
             logger.warning("Pod reported %s uploaded but %s is empty", name, node_id)
             _drop(node_id)
             continue
-        catalog.set_blob(
-            node_id, node["blob_key"],
-            size=metadata.get("ContentLength", 0),
-            content_type=metadata.get("ContentType") or "application/octet-stream",
-            checksum=s3.content_hash(metadata),
-        )
         outputs.append(node_id)
 
     if status == "succeeded" and not outputs:
         return [], "failed", "the pod reported success but no checkpoint reached the bucket"
     return outputs, status, error
+
+
+def confirm_progress(record: dict, prediction: dict) -> dict:
+    """Confirm the checkpoints that have landed so far. The run stays `running`.
+
+    Reached with a progress document from the pod — `output.uploaded` names
+    what its uploader has PUT — or with a bare "the machine is alive" answer
+    from `reconcile`, which names nothing; then every unconfirmed node is
+    tried. A name already on the run's `outputs` is skipped, a name whose
+    object is not in the bucket yet is skipped silently (the next call gets
+    it), and nothing is dropped: only the close knows which nodes will never
+    fill. Returns the run, rewritten only when something new was confirmed.
+    """
+    mapping = _mapping(record)
+    confirmed = list(record.get("outputs") or [])
+    names = runpod_pods.output_urls(prediction) or list(mapping)
+    added = [
+        node_id for name in names
+        if (node_id := mapping.get(name)) and node_id not in confirmed and _confirm(node_id)
+    ]
+    if not added:
+        return record
+    outputs = confirmed + added
+    listing = {} if confirmed else {"thumb": outputs[0]}
+    logger.info("Run %s: %d of %d checkpoints landed", record["id"], len(outputs), len(mapping))
+    return catalog.update_project_entity(catalog.ENTITY_RUN, record, {"outputs": outputs}, listing)
+
+
+def _mapping(record: dict) -> dict[str, str]:
+    """Expected file name → the node made for it at dispatch."""
+    training = (record.get("payload") or {}).get("training") or {}
+    return training.get("outputs") or {}
+
+
+def _confirm(node_id: str) -> bool:
+    """Record the size and checksum of what the pod PUT onto this node's key.
+
+    False when there is nothing there yet. Idempotent: a node confirmed twice
+    carries the same values twice.
+    """
+    try:
+        node = catalog.node(node_id)
+        metadata = s3.head(node["blob_key"])
+    except NotFoundError:
+        return False
+    catalog.set_blob(
+        node_id, node["blob_key"],
+        size=metadata.get("ContentLength", 0),
+        content_type=metadata.get("ContentType") or "application/octet-stream",
+        checksum=s3.content_hash(metadata),
+    )
+    return True
 
 
 def _drop(node_id: str) -> None:
@@ -287,9 +342,10 @@ BOOT = (
 )
 
 #: The job. Bash around three Python passes: fetch the dataset and write the
-#: ai-toolkit config; upload checkpoints as the trainer writes them; write
-#: the result and call back. Everything the pod learns is in the manifest and
-#: everything it says goes to the bucket — it holds no credential.
+#: ai-toolkit config; upload checkpoints as the trainer writes them, telling
+#: the callback URL after each one; write the result and call back.
+#: Everything the pod learns is in the manifest and everything it says goes
+#: to the bucket — it holds no credential.
 JOB_SCRIPT = r'''#!/usr/bin/env bash
 set -uo pipefail
 export PYTHONUNBUFFERED=1
@@ -336,6 +392,18 @@ def put(p):
     req = urllib.request.Request(grants[p.name], data=data, method="PUT",
                                  headers={"Content-Type": "application/octet-stream"})
     urllib.request.urlopen(req, timeout=600).read()
+def progress():
+    # Best effort: what has landed so far, so studio can show it before the
+    # end. A failure here costs nothing — the final report names everything.
+    if not m.get("callback"): return
+    body = json.dumps({"id": m["pod"]["id"], "status": "IN_PROGRESS",
+                       "output": {"uploaded": sorted(done)}}).encode()
+    try:
+        req = urllib.request.Request(m["callback"], data=body, method="POST",
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=20).read()
+    except Exception as exc:
+        print("progress callback failed", exc, flush=True)
 def sweep(final=False):
     if not out.is_dir(): return
     for p in sorted(out.glob("*_noise.safetensors")):
@@ -346,7 +414,8 @@ def sweep(final=False):
         try:
             put(p); done.add(p.name); print("uploaded", p.name, size, flush=True)
         except Exception as exc:
-            print("upload failed", p.name, exc, flush=True)
+            print("upload failed", p.name, exc, flush=True); continue
+        progress()
     json.dump(sorted(done), open("/tmp/uploaded.json", "w"))
 if sys.argv[1:] == ["final"]:
     sweep(final=True); sweep(final=True)

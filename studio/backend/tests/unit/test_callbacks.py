@@ -237,6 +237,25 @@ def test_the_receiver_carries_runpods_proof_from_the_query_string(queue):
     assert message["headers"] == {}
 
 
+def test_the_receiver_queues_a_pods_progress_report_on_the_same_route(queue):
+    """A training pod calls back more than once: `IN_PROGRESS` after each
+    checkpoint lands, then the final report. The receiver reads nothing of the
+    body, so a progress document travels exactly as the final one does — same
+    route, same `sig`, same 200."""
+    body = json.dumps({"id": "pod-1", "status": "IN_PROGRESS",
+                       "output": {"uploaded": ["stem_000000250_high_noise.safetensors"]}}).encode()
+
+    answer = hook_handler.handler(
+        _event("run-abc", body, headers={}, provider="runpod-pod",
+               query={"sig": "abc123"}), None)
+
+    assert answer["statusCode"] == 200
+    message = json.loads(queue.sent[0]["MessageBody"])
+    assert message["provider"] == "runpod-pod"
+    assert message["sig"] == "abc123"
+    assert base64.b64decode(message["body_b64"]) == body
+
+
 def test_the_receiver_refuses_an_oversized_body(queue, monkeypatch):
     """SQS refuses a message over 256 KiB, and a failed video's `logs` can be
     large. Capped here, where the refusal can be logged against a run id."""

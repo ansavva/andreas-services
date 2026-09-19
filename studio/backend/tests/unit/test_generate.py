@@ -1377,6 +1377,189 @@ def test_the_pod_callback_is_verified_like_a_public_endpoints(empty_api, media_b
     assert closed["cost"]["amount"] == 0.4
 
 
+# ── progress: a checkpoint is visible when it lands ─────────────────────────
+#
+# The pod POSTs `IN_PROGRESS` with the names uploaded so far after each PUT, on
+# the same signed URL as the final report. The closer routes a still-running
+# status for a pod run to `training.confirm_progress`, which files what has
+# landed and leaves the run `running`; the final report then closes it exactly
+# as before, and `reconcile` confirms whatever landed while a callback was lost.
+
+
+def _running_training(api, media_bucket):
+    project = _project(api)
+    character = _character(api)
+    run = _training_draft(api, project, character, _dataset(api, character))
+    api.post(f"/api/runs/{run['id']}/submit")
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    return record, record["payload"]["training"]["outputs"]
+
+
+def _land(media_bucket, made, names, body=b"weights"):
+    for name in names:
+        media_bucket.put_object(Bucket=config.media_bucket(),
+                                Key=catalog.node(made[name])["blob_key"], Body=body)
+
+
+def _progress(record, uploaded):
+    return {"id": record["prediction_id"], "status": "IN_PROGRESS", "output": {"uploaded": uploaded}}
+
+
+def _pod_message(run_id, document):
+    from studio_core.clients import runpod
+    return {"run": run_id, "provider": "runpod-pod", "sig": runpod.callback_signature(run_id),
+            "body_b64": base64.b64encode(json.dumps(document).encode()).decode()}
+
+
+def test_a_progress_callback_confirms_only_what_landed_and_keeps_the_run_running(
+        empty_api, media_bucket):
+    from studio_core.services import callbacks
+    record, made = _running_training(empty_api, media_bucket)
+    first_pair = sorted(n for n in made if "_000000250_" in n)
+    # The pod says the first pair is up, but only the high-noise half has
+    # reached the bucket — the other PUT is still in flight.
+    _land(media_bucket, made, first_pair[:1])
+    for node_id in made.values():
+        assert "size" not in catalog.node(node_id)  # placeholders: hidden from models/
+
+    updated = callbacks.process(_pod_message(record["id"], _progress(record, first_pair)))
+
+    assert updated["status"] == "running"
+    assert updated["outputs"] == [made[first_pair[0]]]
+    assert catalog.node(made[first_pair[0]])["size"] == len(b"weights")
+    assert "size" not in catalog.node(made[first_pair[1]])
+    # The API shows the same: outputs on a running run, nothing dropped.
+    body = empty_api.get(f"/api/runs/{record['id']}").get_json()
+    assert body["status"] == "running"
+    assert [asset["node"] for asset in body["outputs"]] == [made[first_pair[0]]]
+    assert body["outputs"][0]["name"] == first_pair[0] and body["outputs"][0]["size"] == len(b"weights")
+    assert all(catalog.node(node_id) for node_id in made.values())
+
+
+def test_a_repeated_progress_callback_changes_nothing(empty_api, media_bucket):
+    from studio_core.services import callbacks
+    record, made = _running_training(empty_api, media_bucket)
+    first_pair = sorted(n for n in made if "_000000250_" in n)
+    _land(media_bucket, made, first_pair)
+
+    once = callbacks.process(_pod_message(record["id"], _progress(record, first_pair)))
+    twice = callbacks.process(_pod_message(record["id"], _progress(record, first_pair)))
+
+    assert once["outputs"] == [made[n] for n in first_pair]
+    assert twice["outputs"] == once["outputs"]
+    assert twice["status"] == "running"
+    assert catalog.entity(catalog.ENTITY_RUN, record["id"])["outputs"] == once["outputs"]
+
+
+def test_the_final_report_after_progress_closes_with_every_file_once_and_drops_the_rest(
+        empty_api, media_bucket, monkeypatch):
+    from studio_core.clients import runpod_pods
+    from studio_core.services import callbacks
+    record, made = _running_training(empty_api, media_bucket)
+    monkeypatch.setattr(runpod_pods, "terminate", lambda pod_id: None)
+    first_pair = sorted(n for n in made if "_000000250_" in n)
+    final_pair = sorted(n for n in made if "_0000" not in n)
+    _land(media_bucket, made, first_pair)
+    callbacks.process(_pod_message(record["id"], _progress(record, first_pair)))
+    # The trainer stops before the final pair's low-noise half is written.
+    _land(media_bucket, made, final_pair[:1])
+    uploaded = first_pair + final_pair[:1]
+    callbacks.process(_pod_message(record["id"], _progress(record, uploaded)))
+    report = {"id": record["prediction_id"], "status": "COMPLETED",
+              "output": {"uploaded": uploaded, "cost": 2.41, "seconds": 5460, "rate": 1.59}}
+
+    closed = callbacks.process(_pod_message(record["id"], report))
+
+    assert closed["status"] == "succeeded", closed
+    assert sorted(closed["outputs"]) == sorted(made[n] for n in uploaded)
+    assert len(closed["outputs"]) == len(set(closed["outputs"])) == 3
+    for name in uploaded:
+        assert catalog.node(made[name])["size"] == len(b"weights")
+    with pytest.raises(NotFoundError):
+        catalog.node(made[final_pair[1]])
+    # A late progress call is a repeat report on a terminal run: ignored.
+    again = callbacks.process(_pod_message(record["id"], _progress(record, uploaded)))
+    assert again["status"] == "succeeded" and len(again["outputs"]) == 3
+
+
+def test_reconcile_on_a_running_training_run_confirms_what_landed(empty_api, media_bucket):
+    """A lost progress callback is not a lost view: `reconcile` finds no result
+    yet and the pod alive, and files whatever is in the bucket."""
+    record, made = _running_training(empty_api, media_bucket)
+    first_pair = sorted(n for n in made if "_000000250_" in n)
+    _land(media_bucket, made, first_pair)
+
+    body = empty_api.post(f"/api/runs/{record['id']}/reconcile").get_json()
+
+    assert body["status"] == "running", body
+    assert sorted(a["node"] for a in body["outputs"]) == sorted(made[n] for n in first_pair)
+    for name in first_pair:
+        assert catalog.node(made[name])["size"] == len(b"weights")
+    # Nothing landed since: the second ask rewrites nothing.
+    again = empty_api.post(f"/api/runs/{record['id']}/reconcile").get_json()
+    assert [a["node"] for a in again["outputs"]] == [a["node"] for a in body["outputs"]]
+    assert again["status"] == "running"
+
+
+def _uploader_source():
+    """The uploader the pod runs, lifted out of the job script it is embedded in."""
+    from studio_core.services import training
+    start = training.JOB_SCRIPT.index('open("/tmp/uploader.py", "w").write(r"""') + len(
+        'open("/tmp/uploader.py", "w").write(r"""')
+    return training.JOB_SCRIPT[start:training.JOB_SCRIPT.index('""")', start)]
+
+
+def test_the_pods_uploader_posts_progress_to_the_callback_after_each_put(tmp_path, monkeypatch):
+    """The embedded script, executed: every checkpoint goes through its grant,
+    and after each one the callback URL hears what has landed so far. A
+    refused progress POST is printed and does not stop the uploads."""
+    import urllib.request
+    out = tmp_path / "output" / "stem"
+    out.mkdir(parents=True)
+    names = ["stem_000000250_high_noise.safetensors", "stem_000000250_low_noise.safetensors",
+             "stem_high_noise.safetensors", "stem_low_noise.safetensors"]
+    for name in names:
+        (out / name).write_bytes(b"w" * 16)
+    (out / "optimizer.pt").write_bytes(b"not a checkpoint")
+    job = tmp_path / "job.json"
+    job.write_text(json.dumps({
+        "pod": {"id": "pod-1"}, "stem": "stem",
+        "outputs": {name: f"https://bucket.test/{name}?grant" for name in names},
+        "callback": "https://hooks.test/api/hooks/runpod-pod/run-x?sig=abc",
+    }))
+    uploaded_json = tmp_path / "uploaded.json"
+
+    calls = []
+
+    class _Answer:
+        def read(self):
+            return b""
+
+    def urlopen(req, timeout=None):
+        calls.append((req.get_method(), req.full_url, req.data))
+        if req.get_method() == "POST" and len(calls) == 2:
+            raise OSError("hook down")  # the first progress POST fails
+        return _Answer()
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr("sys.argv", ["uploader", "final"])
+    source = (_uploader_source()
+              .replace("/tmp/job.json", str(job))
+              .replace("/workspace/output", str(tmp_path / "output"))
+              .replace("/tmp/uploaded.json", str(uploaded_json)))
+    exec(compile(source, "uploader.py", "exec"), {"__name__": "__main__"})
+
+    puts = [(url, data) for method, url, data in calls if method == "PUT"]
+    assert [url for url, _ in puts] == [f"https://bucket.test/{n}?grant" for n in names]
+    assert all(data == b"w" * 16 for _, data in puts)
+    posts = [json.loads(data) for method, url, data in calls if method == "POST"]
+    assert len(posts) == len(names)
+    assert all(p["status"] == "IN_PROGRESS" and p["id"] == "pod-1" for p in posts)
+    assert posts[0]["output"]["uploaded"] == names[:1]
+    assert posts[-1]["output"]["uploaded"] == sorted(names)
+    assert json.loads(uploaded_json.read_text()) == sorted(names)
+
+
 def test_lora_fields_are_read_off_the_entry_and_nothing_else():
     from studio_core.services import registry
     assert registry.lora_fields(LORA) == {"high_noise_loras", "low_noise_loras"}
