@@ -710,7 +710,11 @@ export function ModelChip({
       trigger={{
         label: `Model: ${entry.key}`,
         title: "Model",
-        className: `${chipClass} text-ink max-md:bg-fill`,
+        // `min-w-0 shrink` over the chip's `shrink-0`: the project and the
+        // model are the two chips that carry a name, and a long pair of
+        // them pushed Send off a phone's right edge. They give way; the
+        // name truncates, and the glyph, the gear and Send stay in reach.
+        className: `${chipClass} min-w-0 shrink text-ink max-md:bg-fill`,
         children: (
           <>
             <ModelIcon className={GLYPH} />
@@ -1153,7 +1157,8 @@ export function ProjectChip({
       trigger={{
         label: `Project: ${chosen?.name ?? "none"}`,
         title: "Project",
-        className: `${chipClass} ${chosen ? "text-ink" : ""} max-md:bg-fill`,
+        // `min-w-0 shrink`: see `ModelChip`.
+        className: `${chipClass} min-w-0 shrink ${chosen ? "text-ink" : ""} max-md:bg-fill`,
         children: (
           <>
             <ProjectsIcon className={GLYPH} />
