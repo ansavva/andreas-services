@@ -2188,3 +2188,18 @@ def test_the_readme_route_answers_for_an_openrouter_entry_without_a_provider_cal
 
     assert body["readme"].startswith("# openrouter/alibaba/wan-3.0")
     assert "usage.cost" in body["readme"]
+
+
+def test_the_job_script_reports_once_and_then_holds_the_container():
+    """A pod restarts its command when it exits, on the same disk. Measured on
+    the first real run: the finished trainer re-ran, re-reported, and re-billed
+    every six minutes until the pod was terminated by hand. The script marks
+    the report and holds; a restart finds the mark and holds without running."""
+    from studio_core.services import training
+
+    script = training.JOB_SCRIPT
+    guard = script.index("if [ -f /workspace/.reported ]")
+    assert guard < script.index("python run.py"), "the guard runs before the trainer"
+    assert script.rstrip().endswith("exec sleep infinity")
+    assert script.index("touch /workspace/.reported") > script.index('m["callback"]'), \
+        "the mark is set only after the report and callback"

@@ -349,6 +349,12 @@ BOOT = (
 JOB_SCRIPT = r'''#!/usr/bin/env bash
 set -uo pipefail
 export PYTHONUNBUFFERED=1
+# A pod restarts its container when the command exits, and the container disk
+# survives the restart. Without this guard a finished job ran again: the trainer
+# found its final checkpoint, exited 0 in seconds, and the result was re-written
+# and re-sent with a bigger bill every six minutes until studio terminated the
+# pod. Reported once, the machine holds idle for studio to terminate.
+if [ -f /workspace/.reported ]; then echo "already reported; holding"; exec sleep infinity; fi
 mkdir -p /workspace/dataset /workspace/output
 cd /app/ai-toolkit
 
@@ -462,4 +468,10 @@ if m.get("callback"):
         except Exception as exc:
             print("callback failed", attempt, exc, flush=True); time.sleep(20)
 PYEOF
+
+# Reported. Hold the container so Runpod does not restart the job — studio's
+# close terminates the pod, and `reconcile` does the same if the callback was
+# lost. The meter runs while this holds, which is why the report went first.
+touch /workspace/.reported
+exec sleep infinity
 '''
