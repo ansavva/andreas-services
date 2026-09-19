@@ -11,9 +11,9 @@
  *
  * What is asserted here is what only a real browser can say: that the object
  * screen is a page in the app shell rather than the overlay it used to be, that
- * a press decodes and advances a real video in place, that closing puts the
- * poster back without navigating, and that walking the feed rewrites the
- * address instead of stacking twenty entries to escape.
+ * a press on Video.js's own play button decodes and advances a real video in
+ * place without navigating, and that walking the feed rewrites the address
+ * instead of stacking twenty entries to escape.
  *
  * **What is deliberately absent is anything a headless desktop Chromium cannot
  * honestly answer.** Native fullscreen, iOS Safari's refusal of
@@ -137,19 +137,20 @@ test("the object screen is the viewer in the app shell, with the shell still aro
   expect(frame?.bottom).toBe(frame?.window);
 });
 
-test("a poster plays in place, and closing returns to it without navigating", async ({
-  page,
-}) => {
+test("a clip plays in place, on Video.js's own controls", async ({ page }) => {
   stubOnly();
   await page.goto(at(CLIP_ITEM.id));
 
-  const poster = page.getByRole("button", { name: `Play ${CLIP_ITEM.name}` });
-  await expect(poster).toBeVisible();
+  // The skin's play button, by the skin's name. Nothing over the picture is
+  // ours; the Frame menu sits beside the player.
+  const play = page.getByRole("button", { name: "Play" }).first();
+  await expect(play).toBeVisible();
+  await expect(page.getByRole("button", { name: "Frame" })).toBeVisible();
 
   const address = page.url();
   const entries = await page.evaluate(() => history.length);
 
-  await poster.click();
+  await play.click();
 
   // Really decoding, not merely mounted: a 64px-wide frame is the fixture, and
   // an element handed bytes it cannot read would report 0 and still look like
@@ -160,34 +161,29 @@ test("a poster plays in place, and closing returns to it without navigating", as
   await expect
     .poll(async () => (await stage(page))?.currentTime ?? 0)
     .toBeGreaterThan(0);
-  await expect(
-    page.getByRole("button", { name: /^(Play|Pause) \(space\)$/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Pause" }).first()).toBeVisible();
 
-  // **The affordance studio never had.** Close is a return to the poster, in
-  // the same box, at the same address — not a way out of a mode.
-  await page.getByRole("button", { name: `Close ${CLIP_ITEM.name}` }).click();
-  await expect(poster).toBeVisible();
+  // Playing is not a mode: same box, same address, nothing pushed.
   expect(page.url()).toBe(address);
   expect(await page.evaluate(() => history.length)).toBe(entries);
 });
 
 test("space and m reach the player from the page", async ({ page }) => {
   stubOnly();
-  // The keys `useKeyboardNav` names only work because `MediaPlayer` hands its
-  // controls up — a wiring that a unit test can only assert one half of.
+  // With focus on the page — not in the player — the keys `useKeyboardNav`
+  // names work because `MediaPlayer` hands its controls up. Inside the
+  // player the skin's own shortcuts answer instead, and `useKeyboardNav`
+  // stands down on `defaultPrevented` so one press is one answer.
   await page.goto(at(CLIP_ITEM.id));
   // The player hands its controls up on mount, so the keys are dead until the
-  // poster is on screen — waiting for it is waiting for that.
-  await expect(
-    page.getByRole("button", { name: `Play ${CLIP_ITEM.name}` }),
-  ).toBeVisible();
+  // skin is on screen — waiting for it is waiting for that.
+  await expect(page.getByRole("button", { name: "Play" }).first()).toBeVisible();
 
   await page.keyboard.press(" ");
   await expect.poll(async () => (await stage(page))?.paused).toBe(false);
 
   await page.keyboard.press("m");
-  await expect(page.getByRole("button", { name: "Mute (m)" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Mute" }).first()).toBeVisible();
 
   await page.keyboard.press(" ");
   await expect.poll(async () => (await stage(page))?.paused).toBe(true);
@@ -325,7 +321,7 @@ test("playing a clip sends no request off the origin", async ({ page }) => {
   });
 
   await page.goto(at(CLIP_ITEM.id));
-  await page.getByRole("button", { name: `Play ${CLIP_ITEM.name}` }).click();
+  await page.getByRole("button", { name: "Play" }).first().click();
   await expect
     .poll(async () => (await stage(page))?.currentTime ?? 0)
     .toBeGreaterThan(0);

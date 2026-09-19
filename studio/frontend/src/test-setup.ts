@@ -115,3 +115,20 @@ if (typeof window.PointerEvent === "undefined") {
   }
   Object.defineProperty(window, "PointerEvent", { value: ShimPointerEvent, writable: true });
 }
+
+/**
+ * Video.js's audio-track feature listens on `media.audioTracks`, which jsdom
+ * declares as a bare object — no `addEventListener` — so the packaged skin
+ * logs a `TypeError` under every render. An empty list that IS an
+ * `EventTarget` is what a browser with no alternate tracks reports.
+ */
+class EmptyTrackList extends EventTarget {
+  readonly length = 0;
+  *[Symbol.iterator](): Iterator<never> {}
+}
+for (const list of ["audioTracks", "videoTracks"] as const) {
+  Object.defineProperty(HTMLMediaElement.prototype, list, {
+    get: () => new EmptyTrackList(),
+    configurable: true,
+  });
+}

@@ -60,6 +60,11 @@ export function useKeyboardNav({
 
       // A modified arrow is the browser's (back/forward, word jump); leave it.
       if (event.metaKey || event.ctrlKey || event.altKey) return;
+      // Something closer to the target already answered — the clip player's
+      // own shortcuts, which Video.js scopes to its container and which cover
+      // every key below. A second answer here would undo the first: Space
+      // pausing what it just played, an arrow stepping the feed AND seeking.
+      if (event.defaultPrevented) return;
 
       switch (event.key) {
         case "ArrowLeft":

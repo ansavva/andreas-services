@@ -396,11 +396,11 @@ page and a plain textarea over its literal bytes, and never offers fields.
   file's `Use as…`, the opened run's rail — the group reads **This frame as**
   instead: the time is read off the player (`MediaPlayerControls.currentTime`)
   when the line is pressed and the player is paused there, so the frame on
-  screen is the frame taken; a poster that never played is at 0. The same
-  menu is also **on the player** as a worded `Frame` pill (`FrameMenu`, the
-  player's `actions` slot, drawn on the poster too) — on a phone the rail is
-  a screen below the video, behind an unlabelled glyph, and a person who has
-  just paused on a frame is looking at the player. A file page has no
+  screen is the frame taken; a clip that never played is at 0. The same
+  menu is also **beside the player** as a worded `Frame` pill (`FrameMenu`,
+  the player's `actions` slot, drawn in a row above the picture) — on a
+  phone the rail is a screen below the video, behind an unlabelled glyph,
+  and a person who has just paused on a frame is looking at the player. A file page has no
   project on its route, so the frame's destination is the clip's own
   project, read off `GET /api/nodes/<id>/owner` — which now carries
   `project` for a run-, scene- or movie-owned node — and the bar is pointed
@@ -888,27 +888,44 @@ page and a plain textarea over its literal bytes, and never offers fields.
   parent and whether it is the root are read from the trail `GET /api/nodes`
   returns, which the server built by walking `parent_id`. Rebuilding any of it
   client-side would be a second, guessing implementation.
+- **A clip is Video.js v10's own player; a still is ours.** `MediaPlayer` is
+  one name over two players (`components/media/playerShell.tsx` is what they
+  share). `ClipPlayer` renders the packaged `VideoSkin` from `@videojs/react`
+  **as shipped** — its layout, its controls (play, seek with thumbnails,
+  volume, captions, speed, PiP, AirPlay, Cast, settings, fullscreen), its
+  hotkeys and gestures — and draws nothing of ours over the picture. The
+  app's own controls (`actions`: a Frame menu, a compare label) sit in a row
+  *above* the player. The first cut composed the package's primitives into a
+  copy of the transport we used to hand-roll, and that threw away exactly the
+  features a library is for. The only styling is the skin's two public seams:
+  `--media-font-family` (the app's body face) and `--media-object-fit`
+  (`fit`). **Fullscreen is the package's**: it fullscreens the skin's
+  container where the element API exists (a laptop, and iOS 26's Safari,
+  measured in the simulator), and where it does not it hands the `<video>` to
+  `webkitSetPresentationMode("fullscreen")` and the phone draws its own
+  player. The old in-app fallback was a box *under* Safari's bar.
+  `StillPlayer` keeps that fallback (`useFullscreen`), because a picture has
+  no `<video>` to hand the phone — and keeps `useZoom`, because no video
+  library does pictures. The skin's hotkeys are scoped to a focused player;
+  `useKeyboardNav` stands down on `defaultPrevented` so Space, `m`, `f` and
+  the arrows get one answer wherever focus is.
 - **A full-screen box is sized in `dvh`, never `inset-0`.** `index.html` asks
   for `viewport-fit=cover`, so a `fixed` element pinned to all four sides is
   laid out against the *large* viewport — the one with the browser's toolbars
   hidden — and mobile Safari then draws its bottom toolbar over the result.
-  `MediaPlayer`'s fullscreen shell is `height: 100dvh; max-height: 100dvh` and
-  its two chrome rows carry `env(safe-area-inset-*)` padding — only while it
-  owns the screen, because a landscape iPhone reports a 44px left inset that
-  would be nonsense inside a 300px player nowhere near a bezel. **Sound is in
-  the top row, not the bottom one**: the bottom edge is where a browser puts
-  its own chrome, so keep controls you press *while a clip is playing* out of
-  it.
+  `StillPlayer`'s in-app fullscreen shell is `height: 100dvh; max-height:
+  100dvh`, and its chrome row carries `env(safe-area-inset-*)` padding —
+  only while it owns the screen, because a landscape iPhone reports a 44px
+  left inset that would be nonsense inside a 300px player nowhere near a
+  bezel. A clip's insets are the skin's business.
 - **Do not "fix" the mobile focus-zoom with `maximum-scale` in the viewport
   meta.** That disables pinch-zoom, which is a WCAG 1.4.4 failure. The fix is
   16px inputs and it is upstream in the design system.
 - **Unmuting has to happen inside the click, not in an effect afterwards.**
-  `useMediaPlayback.toggleMuted` sets `video.muted` on the element synchronously
-  and lets React state follow. A passive effect is a later task, and Safari
-  grants sound only within the gesture's own turn of the event loop. A refused
-  `play()` is caught, not swallowed: playback falls back to muted and `blocked`
-  is raised so the UI can say why. Check `volume` too, since a muted element
-  sitting at `volume === 0` is still silent after unmuting.
+  Video.js's volume feature sets `video.muted` on the element synchronously in
+  the press and lets state follow — the same rule our own `useMediaPlayback`
+  learnt three bugs at a time before the package replaced it. Safari grants
+  sound only within the gesture's own turn of the event loop.
 - **`/o/<id>` is the viewer, in the app shell.** `ObjectPage` renders
   `ViewerFrame` inside `AppLayout`: one `MediaPlayer` on the stage, the crumb
   (`PageBar`) and the file's own words in the rail, and the neighbours as a
@@ -1046,9 +1063,8 @@ page and a plain textarea over its literal bytes, and never offers fields.
   sixty range requests on a folder of sixty clips, while `preload="metadata"`
   is how a poster frame arrives for a clip stored before the worker made
   posters (the bucket's one derivative — see the poster notes above).
-  Ref callbacks are memoised per key in `useMediaPlayback.register`: an inline
-  arrow is a new identity every render, which would detach and re-attach the
-  element on every tick of the scrub bar.
+  `ClipPlayer` withholds `src` the same way and hands the element to Video.js
+  through `<Video ref>`.
 - **A date sort has no tie-break, and should not get one.** `catalog._now`
   stamps microseconds, so `_sort_records` is one pass and equal timestamps mean
   equal *instants*. Python's stable sort leaves those in the order the query
@@ -1450,8 +1466,8 @@ covered: the route table (`routes.test.tsx`), the id↔URL mapping
 (`apis/client.test.ts`), node addressing (`apis/studio.test.ts`,
 `components/NodeAddressing.test.tsx`), the upload sequence
 (`apis/upload.test.ts`), the run surface (`components/run/*.test.tsx`,
-`components/project/RunFeed.test.tsx`, `components/run/RunLightbox.test.tsx`), the player (`components/media/*.test.tsx`,
-`hooks/useMediaPlayback.test.ts`), and the entity pages
+`components/project/RunFeed.test.tsx`, `components/run/RunLightbox.test.tsx`), the player (`components/media/*.test.tsx`),
+and the entity pages
 (`pages/{Character,Project,Scene,Movie,Object,Templates}Page.test.tsx`).
 
 Two things follow for anyone adding to this. The route table lives in
