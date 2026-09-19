@@ -51,20 +51,20 @@ it("shows a value the character fills as a hole rather than dropping it", () => 
   /**
    * Dropping it would show a sentence the model never sees; expanding it would
    * need the bible, which is `template.py`'s job and must stay its only one.
-   * The hole is dashed in the character's hue, so a reader sees at a glance
+   * The hole is dashed in the citation tint, so a reader sees at a glance
    * which words are still to come from the character.
    */
   render(<PromptPreview prompt="Wearing @character.1.top. @block.light" blocks={BLOCKS} />);
   expect(unlabelled()).toBe("Wearing @character.1.top. Soft frontal key with gentle falloff.");
   const hole = screen.getByText("@character.1.top");
   expect(hole.className).toContain("border-dashed");
-  expect(hole.className).toContain("cite-character");
+  expect(hole.className).toContain("text-cite");
 });
 
-it("tints a filled block in the block's hue, and labels it", () => {
+it("tints a filled block, and labels it", () => {
   render(<PromptPreview prompt="@block.light" blocks={BLOCKS} />);
   const filled = document.querySelector('[data-block="light"]') as HTMLElement;
-  expect(filled.className).toContain("cite-block");
+  expect(filled.className).toContain("bg-cite");
   expect(filled.querySelector("[data-label]")!.textContent).toBe("@block.light");
 });
 
@@ -88,11 +88,11 @@ it("leaves an @ that is not a mention alone, because it is prose", () => {
   expect(unlabelled()).toBe("Shot @ f/2.8, mail me@block.light.");
 });
 
-it("shows a block nobody wrote as a hole in the block's hue", () => {
+it("shows a block nobody wrote as a hole", () => {
   /** The visible half of the warning the template page puts under the editor. */
   render(<PromptPreview prompt="@block.no_such_block" blocks={BLOCKS} />);
   expect(unlabelled()).toBe("@block.no_such_block");
-  expect(screen.getByText("@block.no_such_block").className).toContain("cite-block");
+  expect(screen.getByText("@block.no_such_block").className).toContain("border-dashed");
 });
 
 it("expands a block, and leaves the character's values as holes", () => {

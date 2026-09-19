@@ -30,13 +30,14 @@ import { CITE_PILL } from "./citeStyle";
  * `@block.face_onl` is a placeholder nothing provides, and nothing would say so
  * until the template was drafted and refused.
  *
- * ## The colour is the namespace
+ * ## The tint is the one hue the chrome has
  *
- * A pill is violet, amber or teal by where its value comes from — a block, the
- * character's bible, the slot the images landed in — and that is the one
- * place this app puts a hue on chrome. `citeStyle.ts` holds the classes;
- * `styles/app.css` holds the reasoning. The text says the namespace too, so the
- * hue is never the only carrier.
+ * A pill is a faint fill and a text tint of one muted hue — the one place
+ * this app puts colour on chrome. A block is the full tint at medium weight; a
+ * computed value (the character's bible, the slot the images landed in) is
+ * the same tint stepped back. `citeStyle.ts` holds the classes;
+ * `styles/app.css` holds the reasoning. The text says the namespace too, so
+ * the tint is never the only carrier.
  */
 export class TokenNode extends TextNode {
   __namespace: Namespace;

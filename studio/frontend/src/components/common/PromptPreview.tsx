@@ -24,9 +24,8 @@ import { CITE_FILL, CITE_HOLE, CITE_LABEL } from "./citeStyle";
  * implementation, deliberately, because two opinions about what a run was told
  * to render disagree invisibly after the fact. This substitutes BLOCKS, which is
  * a dictionary lookup and no part of that reasoning, and shows every remaining
- * placeholder as the hole it still is — in the hue of the namespace that will
- * fill it, so a reader can see at a glance how much of the prompt is still to
- * come from the character.
+ * placeholder as the hole it still is, so a reader can see at a glance how
+ * much of the prompt is still to come from the character.
  *
  * The fully assembled text, character included, lands in the create bar when
  * the template is picked there, where a cast exists and the answer is a real one.
@@ -58,7 +57,7 @@ export function PromptPreview({
           if (part.kind === "unfilled") {
             // Not dropped and not left bare. Dropping it would show a sentence
             // the model never sees; leaving it as plain text would read as
-            // prose somebody forgot to finish. Dashed, in its namespace's hue:
+            // prose somebody forgot to finish. Dashed, in the citation tint:
             // a hole, and a hole a character fills.
             return (
               <span
@@ -104,7 +103,7 @@ export function Filled({
 }: {
   label: string;
   name: string;
-  /** Which hue the tint and the label take — where these words came from. */
+  /** Where these words came from — sets the weight of the tint. */
   namespace: Namespace;
   children: ReactNode;
 }) {
@@ -184,7 +183,7 @@ type Part =
  * the fill will substitute, and a stray `@` is prose here as it is there.
  * `@character.…` and `@slot.…` are filled at shoot time and stay holes: this
  * screen has no character. A `@block.…` naming no block is a hole too, in the
- * block's hue, which is the visible half of the warning under the editor.
+ * same dashed tint, which is the visible half of the warning under the editor.
  */
 function expand(prompt: string, blocks: Record<string, string>): Part[] {
   const parts: Part[] = [];

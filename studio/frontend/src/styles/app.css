@@ -159,17 +159,14 @@
   /* **The one place the chrome has a hue: a citation.** The palette above is
      near-monochrome on purpose, because the media is the only thing that
      should be saturated — and a template is the one screen that shows no
-     media. What it shows is prose with three kinds of hole in it, and the
-     question a reader has about every hole is WHERE its words come from: a
-     block somebody wrote (violet), the character's bible (amber), or where
-     the identity images landed (teal). Three sources, three hues, the same
-     three on the pill in the editor, the filled prose in the preview and the
-     name on the Blocks tab. Never the only carrier — every pill also says
-     its namespace in its text — and never used for anything that is not a
-     citation, or the meaning of the hue goes. */
-  --color-cite-block: #b79cff;
-  --color-cite-character: #ffab5e;
-  --color-cite-slot: #5fd4c4;
+     media. What it shows is prose with holes in it, and a hole has to read
+     as a different kind of thing from the words around it. One hue, muted —
+     a slate blue at low chroma — as a faint fill and a text tint. It was
+     three saturated hues, one per namespace, each with a ring, a glow and a
+     wash (2026-09-18, one afternoon): stickers, not chrome. Where a
+     citation's value comes from is said by its text and its weight, not by
+     a colour wheel. Never used for anything that is not a citation. */
+  --color-cite: #9fb6d4;
 }
 
 [data-theme='dark'] {
@@ -268,14 +265,12 @@ body {
   display: none;
 }
 
-/* **A blurred wash of the three citation hues behind the template editor.**
-   The editor is the one box in the app with colour in it, and a coloured pill
-   on a flat #191919 reads as a sticker. The wash puts the same three hues,
-   blurred past recognition and at a fifth of their strength, under the prose
-   — so the pills sit in a field they belong to rather than on top of one they
-   do not. `filter: blur()` on a pseudo-element, not `backdrop-filter`: there
-   is nothing behind the box to blur, the colour IS the thing being blurred.
-   Under the content (`z-index: -1` inside an isolated stacking context), and
+/* **A blurred wash of the citation hue behind the template editor.** A
+   tinted pill on a flat #191919 reads as a sticker; a faint field of the same
+   hue under the prose, blurred past recognition, is what the pills belong to.
+   `filter: blur()` on a pseudo-element, not `backdrop-filter`: there is
+   nothing behind the box to blur, the colour IS the thing being blurred.
+   Under the content (`z-index: -1` inside an isolated stacking context) and
    `pointer-events: none`, so the caret and the pills are untouched. */
 .cite-wash {
   position: relative;
@@ -288,12 +283,11 @@ body {
   inset: -20%;
   z-index: -1;
   pointer-events: none;
-  opacity: 0.18;
-  filter: blur(48px);
+  opacity: 0.1;
+  filter: blur(56px);
   background:
-    radial-gradient(closest-side at 12% 10%, var(--color-cite-block), transparent),
-    radial-gradient(closest-side at 92% 30%, var(--color-cite-character), transparent),
-    radial-gradient(closest-side at 50% 110%, var(--color-cite-slot), transparent);
+    radial-gradient(closest-side at 15% 0%, var(--color-cite), transparent),
+    radial-gradient(closest-side at 90% 100%, var(--color-cite), transparent);
 }
 
 /* A checkerboard so transparent PNGs (characters/<name>/reference) read as transparent

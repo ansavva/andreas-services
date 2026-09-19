@@ -613,8 +613,8 @@ function BlockEditor({
     // header row, the form under it, the save bar at the foot.
     <div className="flex flex-col gap-3 border border-line p-4">
       <div className="flex items-start justify-between gap-3">
-        {/* In the block hue: the name here is the thing a violet pill in
-            a template points at, and the same colour says so. The count is
+        {/* In the citation tint: the name here is the thing a pill in a
+            template points at, and the same tint says so. The count is
             not repeated under it — the row said it, and the line under the
             header says it again where it matters, before the box. */}
         <Text variant="title" family="mono" className={CITE_TEXT.block}>
@@ -956,7 +956,7 @@ function TemplateEditor({
                 The value is still the same plain string — see the editor's own
                 note on why the round trip has to be byte-exact.
 
-                `cite-wash`: the blurred wash of the three citation hues, under
+                `cite-wash`: the blurred wash of the citation tint, under
                 the prose. This box is the one place the chrome has a colour,
                 and `styles/app.css` says why it is this one. */}
             <TokenizedPromptEditor

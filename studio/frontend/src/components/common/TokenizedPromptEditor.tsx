@@ -630,8 +630,7 @@ function Typeahead({
                       selectedIndex === index ? "bg-fill-hover" : ""
                     }`}
                   >
-                    {/* In the hue its pill will have, so the menu teaches the
-                        colour before the pill needs it read. */}
+                    {/* In the tint its pill will have. */}
                     <span
                       className={`font-mono text-sm ${CITE_TEXT[citationsIn(`@${option.token.name}`)[0]?.namespace ?? "block"]}`}
                     >

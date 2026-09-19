@@ -71,13 +71,14 @@ it("draws a citation as a pill rather than as characters", async () => {
   expect(found.textContent).toBe("@block.face_only");
 });
 
-it("colours a pill by its NAMESPACE — block, character, slot", async () => {
+it("marks a pill with its NAMESPACE — block, character, slot", async () => {
   /**
    * A block is in the database and opens for editing; a character value is
    * filled from the bible and has nothing behind it to open; a slot is where
    * the images landed. Identical pills would send somebody clicking
-   * `@character.1.top` looking for a text box that cannot exist. The hue is the
-   * one place the chrome has one, and the text says the namespace too.
+   * `@character.1.top` looking for a text box that cannot exist — so a block
+   * is the full tint at medium weight and a computed value is stepped back,
+   * and the text says the namespace too.
    */
   show("Wearing @character.1.top and @block.face_only, @slot.identity.");
   await waitFor(() => expect(pill("character.1.top")).toBeTruthy());
