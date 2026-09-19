@@ -301,9 +301,11 @@ describe("a run in flight", () => {
     expect(screen.queryByRole("menuitem", { name: /Delete/ })).toBeNull();
   });
 
-  it("draws a training run's landed checkpoints beside one in-flight tile", async () => {
+  it("lists a training run's checkpoints by step, the landed pair beside each", async () => {
     // The API confirms each pair as the pod uploads it, so a running
-    // training row already has outputs; they are files, not pictures.
+    // training row already has outputs; they are weights, and a list — one
+    // row per save point the plan promises, the pair beside it, the final
+    // pair last — not a wall of file tiles in upload order.
     await draw([
       row({
         id: "run-training",
@@ -339,10 +341,16 @@ describe("a run in flight", () => {
     ]);
 
     const article = await screen.findByRole("article");
-    expect(within(article).getByText("LoRA · high noise")).toBeTruthy();
-    expect(within(article).getByText("LoRA · low noise")).toBeTruthy();
-    expect(within(article).getAllByTestId("in-flight-tile")).toHaveLength(1);
-    expect(within(article).getByText("Running…")).toBeTruthy();
+    expect(within(article).getByText("1 of 8 checkpoint pairs so far · 300 B each")).toBeTruthy();
+    const rows = within(article).getAllByRole("listitem").filter((li) => li.hasAttribute("data-checkpoint"));
+    expect(rows.map((li) => li.getAttribute("data-checkpoint"))).toEqual([
+      "250", "500", "750", "1000", "1250", "1500", "1750", "final",
+    ]);
+    expect(within(rows[0]!).getByRole("link", { name: /high-noise checkpoint at step 250/ }).getAttribute("href")).toBe("/o/node-w1");
+    expect(within(rows[0]!).getByRole("link", { name: /low-noise checkpoint at step 250/ })).toBeTruthy();
+    expect(within(rows[1]!).queryByRole("link")).toBeNull();
+    expect(within(rows[7]!).getByText("final · 2000")).toBeTruthy();
+    expect(within(article).queryByTestId("in-flight-tile")).toBeNull();
   });
 
   it("counts the tiles off the plan, one when it says nothing", () => {

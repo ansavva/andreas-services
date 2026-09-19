@@ -43,6 +43,7 @@ import {
   relativeTime,
 } from "../run/feedTime";
 import { expectedOutputs, ratioOf } from "../run/aspect";
+import { CheckpointList, hasCheckpoints } from "../run/CheckpointList";
 import { OutputTile } from "../run/OutputTile";
 import { SendThumbs } from "../run/SendThumbs";
 import { ParamChips } from "../run/ParamChips";
@@ -537,13 +538,18 @@ function FeedRow({
           one tile overflowed its cell and ran under the prompt beside it.
           The floor is now the smaller of the tile's size and the column's. */}
       <div className="grid content-start gap-2 sm:grid-cols-[repeat(auto-fill,minmax(min(18rem,100%),1fr))]">
-        {flying ? (
+        {hasCheckpoints(row) && (flying || row.outputs.length > 0) ? (
+          /* **A trainer's outputs are a list, not a wall.** Sixteen weight
+             files drawn as tiles were sixteen bands in upload order; the
+             list is one row per save point, the pair beside it, the final
+             pair last — and while the run is out, the rows the plan promises
+             with what has landed so far. */
+          <CheckpointList row={row} flying={flying} />
+        ) : flying ? (
           <>
-            {/* **A training run's outputs land while it runs.** Each
-                checkpoint pair is filed the minute it reaches the bucket, so
-                a running row of that kind draws what has landed and keeps one
-                in-flight tile for what is still training. Every other kind
-                has no outputs until it closes, so this maps nothing. */}
+            {/* Every kind but training has no outputs until it closes, so
+                this maps nothing; it stays so a kind that lands outputs early
+                draws them here rather than nowhere. */}
             {row.outputs.map((asset, index) => (
               <OutputTile
                 key={asset.node}

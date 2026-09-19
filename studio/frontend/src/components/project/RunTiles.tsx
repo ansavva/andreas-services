@@ -8,6 +8,7 @@ import { ActionMenu } from "../common/ActionMenu";
 import { MediaThumb } from "../media/MediaThumb";
 import { expectedOutputs, ratioOf } from "../run/aspect";
 import { elapsedSince, inFlight, relativeTime, type DayGroup } from "../run/feedTime";
+import { CheckpointList, hasCheckpoints } from "../run/CheckpointList";
 import { outputMenu } from "../run/OutputTile";
 import { PromoteDrawer, isVideoAsset } from "../run/PromoteDrawer";
 import { refOfOutput } from "../run/seed";
@@ -169,6 +170,16 @@ function tilesOf(
         )}
       </PlaceholderTile>
     ));
+  }
+
+  if (row.outputs.length > 0 && hasCheckpoints(row)) {
+    // A trainer's outputs are weights: one card holding the checkpoint
+    // list, the way the feed draws them, rather than a tile per file.
+    return [
+      <div key={row.id} className="rounded-md border border-line bg-card p-3" data-testid="checkpoint-tile">
+        <CheckpointList row={row} flying={inFlight(row.status)} />
+      </div>,
+    ];
   }
 
   if (row.outputs.length > 0) {
