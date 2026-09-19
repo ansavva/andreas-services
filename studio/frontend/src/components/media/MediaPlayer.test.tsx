@@ -5,13 +5,14 @@ import { MediaPlayer } from "./MediaPlayer";
 
 /**
  * What is asserted here is the cycle the reel never had — poster, play in
- * place, close back to the poster — and the one piece of chrome that must be
- * ABSENT rather than merely inert.
+ * place, close back to the poster — the chrome that must be ABSENT rather than
+ * merely inert, and the two routes fullscreen takes now that a clip is
+ * Video.js: the container where the API exists, the phone's own player where
+ * it does not.
  *
  * jsdom implements neither `play` nor `pause` on `HTMLMediaElement`: the real
- * methods log "Not implemented" and return `undefined`, which `useMediaPlayback`
- * then calls `.catch` on. Stubbing them is the environment's gap, not the
- * component's.
+ * methods log "Not implemented" and return `undefined`. Stubbing them is the
+ * environment's gap, not the component's.
  */
 beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
@@ -22,15 +23,61 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   setFullscreenEnabled(false);
+  vi.restoreAllMocks();
 });
 
 /**
- * `document.fullscreenEnabled` is what `useFullscreen` reads to decide whether
- * the API exists at all, and jsdom reports it false — which is the same answer
- * an iPhone gives, and the case worth pinning.
+ * `document.fullscreenEnabled` is what Video.js reads to decide whether the
+ * element API exists at all, and jsdom reports it undefined — which is the
+ * same answer an iPhone gives, and the case worth pinning.
  */
 function setFullscreenEnabled(value: boolean) {
   Object.defineProperty(document, "fullscreenEnabled", { value, configurable: true });
+}
+
+/**
+ * The element Fullscreen API, as far as a test needs it: a request records the
+ * element and says so, an exit clears it and says so. Video.js listens to
+ * `fullscreenchange` on the document rather than trusting its own call, so
+ * both halves have to fire.
+ */
+function stubElementFullscreen() {
+  setFullscreenEnabled(true);
+  let current: Element | null = null;
+  Object.defineProperty(document, "fullscreenElement", {
+    get: () => current,
+    configurable: true,
+  });
+  Element.prototype.requestFullscreen = vi.fn(async function (this: Element) {
+    current = this; // eslint-disable-line @typescript-eslint/no-this-alias -- the element the request was made on IS the fullscreen element.
+    document.dispatchEvent(new Event("fullscreenchange"));
+  });
+  document.exitFullscreen = vi.fn(async () => {
+    current = null;
+    document.dispatchEvent(new Event("fullscreenchange"));
+  });
+}
+
+/**
+ * The iPhone: no element API, and a `<video>` that can be handed to the
+ * system player. `webkitSetPresentationMode` is what Video.js falls back to,
+ * and `webkitpresentationmodechanged` is how it hears the answer.
+ */
+function stubWebKitPresentation() {
+  setFullscreenEnabled(false);
+  const proto = HTMLVideoElement.prototype as unknown as {
+    webkitPresentationMode?: string;
+    webkitSetPresentationMode?: (mode: string) => void;
+  };
+  proto.webkitPresentationMode = "inline";
+  proto.webkitSetPresentationMode = vi.fn(function (this: HTMLVideoElement, mode: string) {
+    (this as unknown as { webkitPresentationMode: string }).webkitPresentationMode = mode;
+    this.dispatchEvent(new Event("webkitpresentationmodechanged"));
+  });
+  return () => {
+    delete proto.webkitPresentationMode;
+    delete proto.webkitSetPresentationMode;
+  };
 }
 
 const CLIP = {
@@ -44,12 +91,21 @@ function play() {
   return screen.getByRole("button", { name: "Play cut_03.mp4" });
 }
 
+/**
+ * The package's store batches its notifications on a microtask, so anything a
+ * press changes lands one tick after the press. Awaited after every store
+ * change; `act` is what makes React commit the result.
+ */
+async function settle() {
+  await act(async () => {});
+}
+
 function transport() {
   return screen.queryByRole("slider", { name: "Seek" });
 }
 
 describe("poster, play in place, close back to the poster", () => {
-  it("starts as a poster with no transport and nothing to close", () => {
+  it("starts as a poster with no transport and nothing to close", async () => {
     render(<MediaPlayer {...CLIP} />);
 
     expect(play()).toBeTruthy();
@@ -57,58 +113,68 @@ describe("poster, play in place, close back to the poster", () => {
     expect(screen.queryByRole("button", { name: /^Close/ })).toBeNull();
   });
 
-  it("mounts playback in the same box on the first press", () => {
+  it("mounts playback in the same box on the first press, inside the gesture", async () => {
     render(<MediaPlayer {...CLIP} />);
 
     fireEvent.click(play());
+
+    await settle();
 
     expect(transport()).toBeTruthy();
     expect(screen.getByRole("button", { name: "Back 5 seconds" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Forward 5 seconds" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Play cut_03.mp4" })).toBeNull();
+    // The element is under the poster already, so the press is a real `play()`
+    // on a real element inside a real click — the only place sound is granted.
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
   });
 
-  it("offers sound only once something is playing, and starts silent", () => {
+  it("offers sound only once something is playing, and starts silent", async () => {
     render(<MediaPlayer {...CLIP} />);
     expect(screen.queryByRole("button", { name: /mute/i })).toBeNull();
 
     fireEvent.click(play());
 
-    // Muted, so the button offers the opposite. See the header of MediaPlayer
-    // for why sound cannot be granted by the press that mounts the element.
+    await settle();
+
     expect(screen.getByRole("button", { name: "Unmute (m)" })).toBeTruthy();
   });
 
-  it("closes back to the poster without navigating", () => {
+  it("closes back to the poster without navigating", async () => {
     const onClose = vi.fn();
     render(<MediaPlayer {...CLIP} onClose={onClose} />);
 
     fireEvent.click(play());
+
+    await settle();
     fireEvent.click(screen.getByRole("button", { name: "Close cut_03.mp4" }));
+    await settle();
 
     expect(play()).toBeTruthy();
     expect(transport()).toBeNull();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("pauses and rewinds the element it hands back", () => {
+  it("pauses and rewinds the element it hands back", async () => {
     render(<MediaPlayer {...CLIP} />);
 
     fireEvent.click(play());
+
+    await settle();
     const video = document.querySelector("video");
     expect(video).toBeTruthy();
     video!.currentTime = 7;
 
     fireEvent.click(screen.getByRole("button", { name: "Close cut_03.mp4" }));
 
-    // `useMediaPlayback` pauses and rewinds everything that is not current, and
-    // closing is exactly "nothing is current" — which is what makes the poster
-    // the first frame again rather than wherever the clip stopped.
+    await settle();
+
+    // Closing is a return to the first frame, not to wherever the clip stopped.
     expect(video!.currentTime).toBe(0);
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
   });
 
-  it("skips the poster when the caller asked for autoplay", () => {
+  it("skips the poster when the caller asked for autoplay", async () => {
     render(<MediaPlayer {...CLIP} autoPlay />);
 
     expect(transport()).toBeTruthy();
@@ -117,41 +183,77 @@ describe("poster, play in place, close back to the poster", () => {
 });
 
 /**
- * **Maximize is offered everywhere now, and answered two ways.**
+ * **Fullscreen is the package's, and it takes two routes.**
  *
- * It used to be drawn only where `requestFullscreen` works — which is never on
- * an iPhone, since Safari refuses it on anything but a `<video>` — so the one
- * device where a picture is smallest was the one with no way to enlarge it.
- * `useFullscreen` falls back to an in-app expansion there, and jsdom is that
- * case: it defines no `fullscreenEnabled`.
+ * Where the element API exists the CONTAINER goes fullscreen, so our chrome
+ * is painted inside it. Where it does not — an iPhone, on any browser, since
+ * every one of them is WebKit — the `<video>` is handed to the phone's own
+ * player. The old in-app fallback for a clip is gone: it was a box under
+ * Safari's bar, which was the worst of both.
  */
 describe("maximize", () => {
-  it("is offered where the API is unavailable, and expands in the app instead", () => {
+  it("is not drawn where nothing can answer it", async () => {
     render(<MediaPlayer {...CLIP} />);
     fireEvent.click(play());
+    await settle();
+
+    expect(screen.queryByRole("button", { name: /ullscreen/ })).toBeNull();
+  });
+
+  it("fullscreens the container where the API exists, so the chrome is painted in it", async () => {
+    stubElementFullscreen();
+    let container: HTMLElement | null = null;
+    render(<MediaPlayer {...CLIP} onContainerChange={(element) => (container = element)} />);
+    fireEvent.click(play());
+    await settle();
 
     fireEvent.click(screen.getByRole("button", { name: "Fullscreen (f)" }));
 
-    // The app positions the box itself, because the browser has not: the same
-    // state the native path reaches, drawn by us.
-    const exit = screen.getByRole("button", { name: "Exit fullscreen (f)" });
-    const box = exit.closest(".fixed");
-    expect(box).toBeTruthy();
-    // And nothing else positioning it: Tailwind emits `relative` after
-    // `fixed`, so a box wearing both stays put and this whole state is a
-    // screen-sized box hanging off the page's corner.
-    expect(box!.classList.contains("relative")).toBe(false);
-    expect(box!.getAttribute("data-fullscreen")).toBe("app");
+    await settle();
+
+    expect(Element.prototype.requestFullscreen).toHaveBeenCalledTimes(1);
+    expect(document.fullscreenElement).toBe(container);
+    expect((container as HTMLElement | null)?.getAttribute("data-fullscreen")).toBe("native");
+    expect(screen.getByRole("button", { name: "Exit fullscreen (f)" })).toBeTruthy();
   });
 
-  it("is for viewing: transport, sound and the way out — no actions, no Close", () => {
+  it("hands the clip to the phone's own player where there is no element API", async () => {
+    const restore = stubWebKitPresentation();
+    try {
+      render(<MediaPlayer {...CLIP} />);
+      fireEvent.click(play());
+      await settle();
+
+      fireEvent.click(screen.getByRole("button", { name: "Fullscreen (f)" }));
+
+      await settle();
+
+      const video = document.querySelector("video")!;
+      const proto = HTMLVideoElement.prototype as unknown as {
+        webkitSetPresentationMode: (mode: string) => void;
+      };
+      expect(proto.webkitSetPresentationMode).toHaveBeenCalledWith("fullscreen");
+      expect((video as unknown as { webkitPresentationMode: string }).webkitPresentationMode).toBe(
+        "fullscreen",
+      );
+      expect(screen.getByRole("button", { name: "Exit fullscreen (f)" })).toBeTruthy();
+    } finally {
+      restore();
+    }
+  });
+
+  it("is for viewing: transport, sound and the way out — no actions, no Close", async () => {
+    stubElementFullscreen();
     const onClose = vi.fn();
     render(<MediaPlayer {...CLIP} onClose={onClose} actions={<button type="button">Frame</button>} />);
     fireEvent.click(play());
+    await settle();
     expect(screen.getByRole("button", { name: "Frame" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Close cut_03.mp4" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Fullscreen (f)" }));
+
+    await settle();
 
     expect(screen.queryByRole("button", { name: "Frame" })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Close/ })).toBeNull();
@@ -163,34 +265,30 @@ describe("maximize", () => {
 
     // Out again, and the file's chrome is back.
     fireEvent.click(screen.getByRole("button", { name: "Exit fullscreen (f)" }));
+    await settle();
     expect(screen.getByRole("button", { name: "Frame" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Close cut_03.mp4" })).toBeTruthy();
   });
 
-  it("leaves the app's own fullscreen on Escape, and nothing else hears it", () => {
-    const onClose = vi.fn();
-    render(<MediaPlayer {...CLIP} onClose={onClose} />);
-    fireEvent.click(play());
+  it("leaves fullscreen on Close, on the way back to the poster", async () => {
+    stubElementFullscreen();
+    render(<MediaPlayer {...CLIP} autoPlay />);
     fireEvent.click(screen.getByRole("button", { name: "Fullscreen (f)" }));
+    await settle();
+    // Close is not drawn in fullscreen; the page's own keys reach it through
+    // the controls handed up, which is what `close` answers.
+    fireEvent.click(screen.getByRole("button", { name: "Exit fullscreen (f)" }));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Close cut_03.mp4" }));
+    await settle();
 
-    fireEvent.keyDown(window, { key: "Escape" });
-
-    expect(screen.getByRole("button", { name: "Fullscreen (f)" })).toBeTruthy();
-    // One press leaves the picture, not the screen behind it.
-    expect(onClose).not.toHaveBeenCalled();
-  });
-
-  it("renders it where the API is available", () => {
-    setFullscreenEnabled(true);
-    render(<MediaPlayer {...CLIP} />);
-    fireEvent.click(play());
-
-    expect(screen.getByRole("button", { name: "Fullscreen (f)" })).toBeTruthy();
+    expect(document.fullscreenElement).toBeNull();
+    expect(play()).toBeTruthy();
   });
 });
 
 describe("a still", () => {
-  it("draws the image with no poster, no play and no transport", () => {
+  it("draws the image with no poster, no play and no transport", async () => {
     render(<MediaPlayer nodeId="node-2" url="https://example.invalid/a.png" name="a.png" />);
 
     expect(screen.getByRole("img", { name: "a.png" })).toBeTruthy();
@@ -199,12 +297,49 @@ describe("a still", () => {
   });
 
   /**
+   * A still keeps the in-app fullscreen fallback a clip no longer needs: an
+   * iPhone refuses `requestFullscreen` on anything but a `<video>`, and a
+   * picture has no `<video>` to hand the phone.
+   */
+  it("expands in the app where the API is unavailable", async () => {
+    render(<MediaPlayer nodeId="node-2" url="https://example.invalid/a.png" name="a.png" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Fullscreen (f)" }));
+
+    await settle();
+
+    const exit = screen.getByRole("button", { name: "Exit fullscreen (f)" });
+    const box = exit.closest(".fixed");
+    expect(box).toBeTruthy();
+    // And nothing else positioning it: Tailwind emits `relative` after
+    // `fixed`, so a box wearing both stays put and this whole state is a
+    // screen-sized box hanging off the page's corner.
+    expect(box!.classList.contains("relative")).toBe(false);
+    expect(box!.getAttribute("data-fullscreen")).toBe("app");
+  });
+
+  it("leaves the app's own fullscreen on Escape, and nothing else hears it", async () => {
+    const onClose = vi.fn();
+    render(
+      <MediaPlayer nodeId="node-2" url="https://example.invalid/a.png" name="a.png" onClose={onClose} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Fullscreen (f)" }));
+    await settle();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(screen.getByRole("button", { name: "Fullscreen (f)" })).toBeTruthy();
+    // One press leaves the picture, not the screen behind it.
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  /**
    * Every still drags its node to the create sheet — the picture on a
    * viewer's stage included — and a clip drags nothing. The `<img>` itself is
    * not draggable, so the browser's own image drag (a URL, which the sheet
    * refuses) never starts.
    */
-  it("drags its node as a ref, and a clip does not", () => {
+  it("drags its node as a ref, and a clip does not", async () => {
     render(<MediaPlayer nodeId="node-2" url="https://example.invalid/a.png" name="a.png" />);
     const img = screen.getByRole("img", { name: "a.png" });
     expect(img.getAttribute("draggable")).toBe("false");
@@ -227,7 +362,7 @@ describe("a still", () => {
     expect(screen.getByLabelText(/^Play/).parentElement!.getAttribute("draggable")).toBeNull();
   });
 
-  it("drags what it was told to — a run's output keeps its provenance", () => {
+  it("drags what it was told to — a run's output keeps its provenance", async () => {
     render(
       <MediaPlayer
         nodeId="node-2"
@@ -250,7 +385,7 @@ describe("a still", () => {
 });
 
 describe("the fullscreen container is exposed", () => {
-  it("reports its own element, which is what a dialog portals into", () => {
+  it("reports its own element, which is what a dialog portals into", async () => {
     const seen: (HTMLElement | null)[] = [];
     const { unmount } = render(
       <MediaPlayer {...CLIP} onContainerChange={(element) => seen.push(element)} />,
@@ -266,22 +401,26 @@ describe("the fullscreen container is exposed", () => {
     expect(seen.at(-1)).toBeNull();
   });
 
-  it("reports fullscreen by the app's route as well as the browser's", () => {
+  it("reports fullscreen as the package sees it, by either route", async () => {
+    stubElementFullscreen();
     const seen: boolean[] = [];
     render(<MediaPlayer {...CLIP} onFullscreenChange={(on) => seen.push(on)} />);
     fireEvent.click(play());
+    await settle();
     expect(seen).toEqual([false]);
 
-    // No API here (jsdom, and an iPhone), so this is the in-app expansion —
-    // the one `document.fullscreenElement` never reports.
     fireEvent.click(screen.getByRole("button", { name: "Fullscreen (f)" }));
+
+    await settle();
     expect(seen).toEqual([false, true]);
 
     fireEvent.click(screen.getByRole("button", { name: "Exit fullscreen (f)" }));
+
+    await settle();
     expect(seen).toEqual([false, true, false]);
   });
 
-  it("renders an overlay inside that element, so fullscreen paints it", () => {
+  it("renders an overlay inside that element, so fullscreen paints it", async () => {
     let container: HTMLElement | null = null;
     render(
       <MediaPlayer
@@ -299,127 +438,76 @@ describe("the fullscreen container is exposed", () => {
 });
 
 /**
- * **The chrome goes away while a clip runs untouched.**
+ * **The chrome goes away while a clip runs untouched.** The idle model is the
+ * package's now; what is pinned here is that its state reaches our surface
+ * as `invisible` — which is what takes the buttons out of the tab order and
+ * out from under a finger — and the three behaviours a person would notice
+ * if it stopped: gone after the idle time, back under a mouse, up while
+ * paused.
  *
- * jsdom has no `PointerEvent`, so the events below are plain `Event`s with a
- * `pointerType` set on them — which is the property React's synthetic event
- * reads, and the one the hook decides by. It also reports every element as
- * `paused`, so "running" is faked the same way the hook learns it in a
- * browser: the getter says false and a `play` event says so.
+ * jsdom reports every element as `paused`, so "running" is faked the same
+ * way the package learns it in a browser: the getter says false and a `play`
+ * event says so.
  */
 describe("the chrome hides while a clip runs", () => {
+  // jsdom's own getter, put back rather than deleted: `paused` lives on the
+  // prototype, and deleting the override would delete it too.
+  const paused = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "paused")!;
+  const setRunning = (running: boolean) =>
+    Object.defineProperty(
+      HTMLMediaElement.prototype,
+      "paused",
+      running ? { get: () => false, configurable: true } : paused,
+    );
+
   beforeEach(() => {
     vi.useFakeTimers();
-    Object.defineProperty(HTMLMediaElement.prototype, "paused", {
-      get: () => false,
-      configurable: true,
-    });
+    setRunning(true);
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    delete (HTMLMediaElement.prototype as { paused?: unknown }).paused;
+    setRunning(false);
   });
 
-  function pointer(
-    target: Element,
-    type: string,
-    pointerType: "mouse" | "touch",
-    at: { clientX: number; clientY: number } = { clientX: 100, clientY: 100 },
-  ) {
-    const event = new Event(type, { bubbles: true });
-    Object.assign(event, { pointerType, ...at });
-    fireEvent(target, event);
-  }
-
-  /**
-   * A finger down and up. The up carries `0,0`, which is what iOS Safari
-   * sends for a touch — a tap must not be measured off it.
-   */
-  function tap(target: Element) {
-    pointer(target, "pointerdown", "touch", { clientX: 100, clientY: 100 });
-    pointer(target, "pointerup", "touch", { clientX: 0, clientY: 0 });
-  }
-
   function chrome() {
-    return screen.getByRole("slider", { name: "Seek" }).closest(".transition-\\[opacity\\,visibility\\]")!;
+    return document.querySelector("[data-clip-controls]")!;
   }
 
-  function running() {
+  async function running() {
     render(<MediaPlayer {...CLIP} />);
     fireEvent.click(play());
+    await settle();
     const video = document.querySelector("video")!;
     fireEvent(video, new Event("play"));
+    await settle();
     return video;
   }
 
-  it("is drawn on play, gone after the idle time, and back when a mouse moves", () => {
-    const video = running();
+  it("is drawn on play, gone after the idle time, and back when a mouse moves", async () => {
+    const video = await running();
     expect(chrome().className).not.toContain("invisible");
 
-    act(() => vi.advanceTimersByTime(3000));
+    act(() => vi.advanceTimersByTime(2500));
+
+    await settle();
     expect(chrome().className).toContain("invisible");
 
-    pointer(video, "pointermove", "mouse");
+    fireEvent.pointerMove(video, { pointerType: "mouse", clientX: 100, clientY: 100 });
+
+    await settle();
     expect(chrome().className).not.toContain("invisible");
-
-    // Leaving hides at once — the bar is only wanted under a cursor. React
-    // derives `onPointerLeave` from `pointerout`, so that is what is fired.
-    pointer(video.parentElement!, "pointerout", "mouse");
-    expect(chrome().className).toContain("invisible");
   });
 
-  it("stays up while the clip is paused", () => {
-    const video = running();
+  it("stays up while the clip is paused", async () => {
+    const video = await running();
+    setRunning(false);
     fireEvent(video, new Event("pause"));
+    await settle();
 
-    act(() => vi.advanceTimersByTime(3000));
-    expect(chrome().className).not.toContain("invisible");
-  });
+    act(() => vi.advanceTimersByTime(2500));
 
-  it("is a switch under a finger: one tap brings it back, the next puts it away", () => {
-    const video = running();
-    act(() => vi.advanceTimersByTime(3000));
-    expect(chrome().className).toContain("invisible");
-
-    tap(video);
-    expect(chrome().className).not.toContain("invisible");
-
-    tap(video);
-    expect(chrome().className).toContain("invisible");
-  });
-
-  it("a finger that travels is a scroll, not a tap", () => {
-    const video = running();
-    act(() => vi.advanceTimersByTime(3000));
-
-    pointer(video, "pointerdown", "touch", { clientX: 100, clientY: 100 });
-    pointer(video, "pointermove", "touch", { clientX: 100, clientY: 160 });
-    pointer(video, "pointerup", "touch", { clientX: 0, clientY: 0 });
-    expect(chrome().className).toContain("invisible");
-  });
-
-  it("ignores a mouse press on the picture — hover already owns it", () => {
-    const video = running();
-    act(() => vi.advanceTimersByTime(3000));
-    expect(chrome().className).toContain("invisible");
-
-    // Reveals — as any mouse activity over the box does — and the press
-    // itself is not a switch: a second one does not put it away.
-    pointer(video, "pointerdown", "mouse");
-    pointer(video, "pointerup", "mouse");
-    expect(chrome().className).not.toContain("invisible");
-    pointer(video, "pointerdown", "mouse");
-    pointer(video, "pointerup", "mouse");
-    expect(chrome().className).not.toContain("invisible");
-  });
-
-  it("does not vanish under a finger on the seek bar", () => {
-    running();
-    act(() => vi.advanceTimersByTime(2000));
-    pointer(screen.getByRole("slider", { name: "Seek" }), "pointerdown", "touch");
-
-    act(() => vi.advanceTimersByTime(2000));
+    await settle();
     expect(chrome().className).not.toContain("invisible");
   });
 });

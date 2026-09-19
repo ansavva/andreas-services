@@ -24,6 +24,7 @@
   "dependencies": {
     "@lexical/react": "^0.49.0",
     "@tanstack/react-query": "^5.102.7",
+    "@videojs/react": "10.0.0-rc.2",
     "lexical": "^0.49.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

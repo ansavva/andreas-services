@@ -888,27 +888,47 @@ page and a plain textarea over its literal bytes, and never offers fields.
   parent and whether it is the root are read from the trail `GET /api/nodes`
   returns, which the server built by walking `parent_id`. Rebuilding any of it
   client-side would be a second, guessing implementation.
+- **A clip is Video.js v10; a still is ours.** `MediaPlayer` is one name over
+  two players (`components/media/playerShell.tsx` is what they share).
+  `ClipPlayer` composes `@videojs/react`'s primitives — `Container`,
+  `Controls`, `PlayButton`, `SeekButton`, `TimeSlider`, `Time`, `MuteButton`,
+  `FullscreenButton` — each through its `render` prop onto a design-system
+  `IconButton`, so the package brings the behaviour (play, mute inside the
+  gesture, seek, buffered, idle-hide, fullscreen) and the look stays the
+  app's. The feature list is hand-picked, not `videoFeatures`: the preset's
+  audio-track feature attaches to `media.audioTracks`, which jsdom declares
+  without making an `EventTarget`. Nothing about the player was ever chosen
+  before this — the transport was rebuilt "on Replicate's chrome" in #556
+  and everything after was an increment on it. **Fullscreen is why it was
+  worth doing**: the package fullscreens the container where the element
+  API exists (a laptop, and iOS 26's Safari, measured in the simulator), so
+  the chrome is painted inside it; where it does not, it hands the `<video>`
+  to `webkitSetPresentationMode("fullscreen")` and the phone draws its own
+  player. The old in-app fallback was a box *under* Safari's bar.
+  `StillPlayer` keeps that fallback (`useFullscreen`), because a picture has
+  no `<video>` to hand the phone — and keeps `useZoom`, because no video
+  library does pictures.
 - **A full-screen box is sized in `dvh`, never `inset-0`.** `index.html` asks
   for `viewport-fit=cover`, so a `fixed` element pinned to all four sides is
   laid out against the *large* viewport — the one with the browser's toolbars
   hidden — and mobile Safari then draws its bottom toolbar over the result.
-  `MediaPlayer`'s fullscreen shell is `height: 100dvh; max-height: 100dvh` and
-  its two chrome rows carry `env(safe-area-inset-*)` padding — only while it
-  owns the screen, because a landscape iPhone reports a 44px left inset that
-  would be nonsense inside a 300px player nowhere near a bezel. **Sound is in
-  the top row, not the bottom one**: the bottom edge is where a browser puts
-  its own chrome, so keep controls you press *while a clip is playing* out of
-  it.
+  `StillPlayer`'s in-app fullscreen shell is `height: 100dvh; max-height:
+  100dvh`, and both players' chrome rows carry `env(safe-area-inset-*)`
+  padding — only while they own the screen, because a landscape iPhone
+  reports a 44px left inset that would be nonsense inside a 300px player
+  nowhere near a bezel. **Sound is in the top row, not the bottom one**: the
+  bottom edge is where a browser puts its own chrome, so keep controls you
+  press *while a clip is playing* out of it.
 - **Do not "fix" the mobile focus-zoom with `maximum-scale` in the viewport
   meta.** That disables pinch-zoom, which is a WCAG 1.4.4 failure. The fix is
   16px inputs and it is upstream in the design system.
 - **Unmuting has to happen inside the click, not in an effect afterwards.**
-  `useMediaPlayback.toggleMuted` sets `video.muted` on the element synchronously
-  and lets React state follow. A passive effect is a later task, and Safari
-  grants sound only within the gesture's own turn of the event loop. A refused
-  `play()` is caught, not swallowed: playback falls back to muted and `blocked`
-  is raised so the UI can say why. Check `volume` too, since a muted element
-  sitting at `volume === 0` is still silent after unmuting.
+  Video.js's volume feature sets `video.muted` on the element synchronously in
+  the press and lets state follow — the same rule our own `useMediaPlayback`
+  learnt three bugs at a time before the package replaced it. Safari grants
+  sound only within the gesture's own turn of the event loop. The poster's
+  press is the same: the `<video>` is mounted under it, so `player.play()`
+  runs on a real element inside a real click.
 - **`/o/<id>` is the viewer, in the app shell.** `ObjectPage` renders
   `ViewerFrame` inside `AppLayout`: one `MediaPlayer` on the stage, the crumb
   (`PageBar`) and the file's own words in the rail, and the neighbours as a
@@ -1046,9 +1066,8 @@ page and a plain textarea over its literal bytes, and never offers fields.
   sixty range requests on a folder of sixty clips, while `preload="metadata"`
   is how a poster frame arrives for a clip stored before the worker made
   posters (the bucket's one derivative — see the poster notes above).
-  Ref callbacks are memoised per key in `useMediaPlayback.register`: an inline
-  arrow is a new identity every render, which would detach and re-attach the
-  element on every tick of the scrub bar.
+  `ClipPlayer` withholds `src` the same way and hands the element to Video.js
+  through `<Video ref>`; the poster's press then plays what is already loaded.
 - **A date sort has no tie-break, and should not get one.** `catalog._now`
   stamps microseconds, so `_sort_records` is one pass and equal timestamps mean
   equal *instants*. Python's stable sort leaves those in the order the query
@@ -1450,8 +1469,8 @@ covered: the route table (`routes.test.tsx`), the id↔URL mapping
 (`apis/client.test.ts`), node addressing (`apis/studio.test.ts`,
 `components/NodeAddressing.test.tsx`), the upload sequence
 (`apis/upload.test.ts`), the run surface (`components/run/*.test.tsx`,
-`components/project/RunFeed.test.tsx`, `components/run/RunLightbox.test.tsx`), the player (`components/media/*.test.tsx`,
-`hooks/useMediaPlayback.test.ts`), and the entity pages
+`components/project/RunFeed.test.tsx`, `components/run/RunLightbox.test.tsx`), the player (`components/media/*.test.tsx`),
+and the entity pages
 (`pages/{Character,Project,Scene,Movie,Object,Templates}Page.test.tsx`).
 
 Two things follow for anyone adding to this. The route table lives in
