@@ -163,6 +163,16 @@ def check(payload: dict, bindings: dict, model: str, props: dict,
         allowed = enum_of(spec, schemas)
         if allowed and value not in allowed:
             raise SchemaError(f"{model}: {key}={value!r} is not one of {allowed}")
+        # A list field given a scalar. The trainer's `sample_prompts` is the
+        # one payload array so far, and a string there reached `dispatch`
+        # and wedged the run at `pending` — this is the check before it.
+        if spec.get("type") == "array":
+            items = (spec.get("items") or {}).get("type")
+            if not isinstance(value, list) or (
+                    items == "string" and not all(isinstance(v, str) for v in value)):
+                raise SchemaError(
+                    f"{model}: {key} takes a list{' of strings' if items == 'string' else ''}; "
+                    f"got {value!r}")
         if spec.get("type") in ("integer", "number") and isinstance(value, (int, float)):
             low, high = spec.get("minimum"), spec.get("maximum")
             if low is not None and value < low or high is not None and value > high:

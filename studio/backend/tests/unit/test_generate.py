@@ -1266,18 +1266,31 @@ def test_a_training_run_rents_a_pod_writes_a_manifest_and_pre_makes_its_outputs(
     assert manifest["trigger"] == "ohwx_sa" and manifest["steps"] == 500
     assert [d["caption"] for d in manifest["dataset"]][0] == "ohwx_sa, grey t-shirt, three-quarter view, scene 0"
     assert all(d["url"].startswith("http") for d in manifest["dataset"])
-    # 500 steps saving every 250: one periodic pair (250) and the final pair.
-    assert sorted(manifest["outputs"]) == sorted(training.expected_files(manifest["stem"], 500, 250))
-    assert len(manifest["outputs"]) == 4
+    # 500 steps saving every 250: one periodic pair (250) and the final pair,
+    # and at each of those two save points one sample per default prompt.
+    stem = manifest["stem"]
+    weights = training.expected_files(stem, 500, 250)
+    samples = training.expected_samples(stem, 500, 250, training.SAMPLE_PROMPTS)
+    assert sorted(manifest["outputs"]) == sorted(weights + samples)
+    assert len(weights) == 4 and len(samples) == 8
+    assert samples[0] == f"{stem}_000000250_sample_0.jpg" and samples[-1] == f"{stem}_sample_3.jpg"
     assert manifest["pod"]["id"] == body["prediction_id"]
     assert "script" in manifest and "run.py" in manifest["script"]
+    # The prompts travel with the trigger already in them, plus the two knobs.
+    assert manifest["sample_prompts"][0] == "ohwx_sa, cooking in a bright kitchen, medium shot"
+    assert len(manifest["sample_prompts"]) == 4
+    assert manifest["sample_seed"] == 42 and manifest["sample_steps"] == 20
 
-    # The output nodes exist under the character's models/ folder, empty.
+    # The output nodes exist under the character's models/ folder, empty —
+    # the weights in models/ itself, the samples in models/samples/.
     record = catalog.entity(catalog.ENTITY_RUN, run["id"])
     made = record["payload"]["training"]["outputs"]
     assert set(made) == set(manifest["outputs"])
-    first = catalog.node(next(iter(made.values())))
-    assert catalog.node(first["parent_id"])["name"] == "models"
+    models = catalog.node(catalog.node(made[weights[0]])["parent_id"])
+    assert models["name"] == "models"
+    samples_folder = catalog.node(catalog.node(made[samples[0]])["parent_id"])
+    assert samples_folder["name"] == "samples" and samples_folder["parent_id"] == models["node_id"]
+    assert all("size" not in catalog.node(node_id) for node_id in made.values())
 
 
 def test_a_training_run_closes_by_adopting_the_checkpoints_the_pod_uploaded(
@@ -1292,7 +1305,7 @@ def test_a_training_run_closes_by_adopting_the_checkpoints_the_pod_uploaded(
     made = record["payload"]["training"]["outputs"]
 
     # The pod uploads the final pair only (a run cut short), then reports.
-    uploaded = [n for n in made if "_0000" not in n]
+    uploaded = [n for n in made if "_0000" not in n and n.endswith(".safetensors")]
     for name in uploaded:
         media_bucket.put_object(Bucket=config.media_bucket(),
                                 Key=catalog.node(made[name])["blob_key"], Body=b"weights")
@@ -1396,9 +1409,11 @@ def _running_training(api, media_bucket):
 
 
 def _land(media_bucket, made, names, body=b"weights"):
+    # The pod's PUT declares the type the grant signed: a JPEG for a sample.
     for name in names:
-        media_bucket.put_object(Bucket=config.media_bucket(),
-                                Key=catalog.node(made[name])["blob_key"], Body=body)
+        media_bucket.put_object(
+            Bucket=config.media_bucket(), Key=catalog.node(made[name])["blob_key"], Body=body,
+            ContentType="image/jpeg" if name.endswith(".jpg") else "application/octet-stream")
 
 
 def _progress(record, uploaded):
@@ -1415,7 +1430,7 @@ def test_a_progress_callback_confirms_only_what_landed_and_keeps_the_run_running
         empty_api, media_bucket):
     from studio_core.services import callbacks
     record, made = _running_training(empty_api, media_bucket)
-    first_pair = sorted(n for n in made if "_000000250_" in n)
+    first_pair = sorted(n for n in made if "_000000250_" in n and n.endswith(".safetensors"))
     # The pod says the first pair is up, but only the high-noise half has
     # reached the bucket — the other PUT is still in flight.
     _land(media_bucket, made, first_pair[:1])
@@ -1439,7 +1454,7 @@ def test_a_progress_callback_confirms_only_what_landed_and_keeps_the_run_running
 def test_a_repeated_progress_callback_changes_nothing(empty_api, media_bucket):
     from studio_core.services import callbacks
     record, made = _running_training(empty_api, media_bucket)
-    first_pair = sorted(n for n in made if "_000000250_" in n)
+    first_pair = sorted(n for n in made if "_000000250_" in n and n.endswith(".safetensors"))
     _land(media_bucket, made, first_pair)
 
     once = callbacks.process(_pod_message(record["id"], _progress(record, first_pair)))
@@ -1457,8 +1472,8 @@ def test_the_final_report_after_progress_closes_with_every_file_once_and_drops_t
     from studio_core.services import callbacks
     record, made = _running_training(empty_api, media_bucket)
     monkeypatch.setattr(runpod_pods, "terminate", lambda pod_id: None)
-    first_pair = sorted(n for n in made if "_000000250_" in n)
-    final_pair = sorted(n for n in made if "_0000" not in n)
+    first_pair = sorted(n for n in made if "_000000250_" in n and n.endswith(".safetensors"))
+    final_pair = sorted(n for n in made if "_0000" not in n and n.endswith(".safetensors"))
     _land(media_bucket, made, first_pair)
     callbacks.process(_pod_message(record["id"], _progress(record, first_pair)))
     # The trainer stops before the final pair's low-noise half is written.
@@ -1486,7 +1501,7 @@ def test_reconcile_on_a_running_training_run_confirms_what_landed(empty_api, med
     """A lost progress callback is not a lost view: `reconcile` finds no result
     yet and the pod alive, and files whatever is in the bucket."""
     record, made = _running_training(empty_api, media_bucket)
-    first_pair = sorted(n for n in made if "_000000250_" in n)
+    first_pair = sorted(n for n in made if "_000000250_" in n and n.endswith(".safetensors"))
     _land(media_bucket, made, first_pair)
 
     body = empty_api.post(f"/api/runs/{record['id']}/reconcile").get_json()
@@ -1501,6 +1516,188 @@ def test_reconcile_on_a_running_training_run_confirms_what_landed(empty_api, med
     assert again["status"] == "running"
 
 
+# ── samples: a picture beside every pair ────────────────────────────────────
+#
+# The trainer renders one still per `sample_prompts` entry at every save
+# point, and the pod files it under `<character>/models/samples/` through a
+# grant minted at dispatch like a checkpoint's. It is confirmed as an image
+# as it lands — content type off the PUT, a poster queued — and a sample
+# node the pod never filled goes at close like an unfilled pair.
+
+
+def test_a_progress_callback_naming_a_sample_confirms_it_as_an_image_and_queues_its_poster(
+        empty_api, media_bucket, monkeypatch):
+    from studio_core.services import callbacks, render
+    record, made = _running_training(empty_api, media_bucket)
+    sample = next(n for n in made if n.endswith("_000000250_sample_0.jpg"))
+    _land(media_bucket, made, [sample], body=b"\xff\xd8jpeg")
+    queued = []
+    monkeypatch.setattr(render, "queue_poster", lambda lib, node_id: queued.append((lib, node_id)))
+
+    updated = callbacks.process(_pod_message(record["id"], _progress(record, [sample])))
+
+    assert updated["status"] == "running"
+    assert updated["outputs"] == [made[sample]]
+    node = catalog.node(made[sample])
+    assert node["content_type"] == "image/jpeg" and node["size"] == 6
+    assert queued == [(record["lib"], made[sample])]
+    body = empty_api.get(f"/api/runs/{record['id']}").get_json()
+    assert body["outputs"][0]["name"] == sample
+    assert body["outputs"][0]["content_type"] == "image/jpeg"
+    assert body["outputs"][0]["url"].startswith("http")
+
+
+def test_the_close_keeps_the_samples_that_came_and_drops_the_rest(
+        empty_api, media_bucket, monkeypatch):
+    from studio_core.clients import runpod_pods
+    from studio_core.services import callbacks
+    record, made = _running_training(empty_api, media_bucket)
+    monkeypatch.setattr(runpod_pods, "terminate", lambda pod_id: None)
+    weights = sorted(n for n in made if n.endswith(".safetensors"))
+    samples = sorted(n for n in made if n.endswith(".jpg"))
+    # The trainer got as far as the first save point and its samples, then died.
+    landed = [n for n in weights if "_000000250_" in n] + [n for n in samples if "_000000250_" in n]
+    _land(media_bucket, made, landed)
+    report = {"id": record["prediction_id"], "status": "COMPLETED",
+              "output": {"uploaded": landed, "cost": 1.2, "seconds": 2700, "rate": 1.59}}
+
+    closed = callbacks.process(_pod_message(record["id"], report))
+
+    assert closed["status"] == "succeeded", closed
+    assert sorted(closed["outputs"]) == sorted(made[n] for n in landed)
+    assert len(landed) == 2 + 4
+    for name in samples:
+        if name in landed:
+            assert catalog.node(made[name])["content_type"] == "image/jpeg"
+        else:
+            with pytest.raises(NotFoundError):
+                catalog.node(made[name])
+
+
+def test_no_sample_prompts_means_no_sample_nodes_and_sampling_off(empty_api, media_bucket, tmp_path):
+    from studio_core.services import training
+    project = _project(empty_api)
+    character = _character(empty_api)
+    run = _training_draft(empty_api, project, character, _dataset(empty_api, character),
+                          sample_prompts=[])
+    empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    manifest = json.loads(media_bucket.get_object(
+        Bucket=config.media_bucket(), Key=training.MANIFEST_KEY.format(run=run["id"]))["Body"].read())
+    assert manifest["sample_prompts"] == []
+    assert sorted(manifest["outputs"]) == sorted(training.expected_files(manifest["stem"], 500, 250))
+    made = catalog.entity(catalog.ENTITY_RUN, run["id"])["payload"]["training"]["outputs"]
+    assert not any(n.endswith(".jpg") for n in made)
+    # No samples/ folder was made for nothing.
+    root = empty_api.get(f"/api/characters/{character['id']}").get_json()["root"]
+    models = catalog.child_by_name(root, "models")
+    with pytest.raises(NotFoundError):
+        catalog.child_by_name(models["node_id"], "samples")
+    # And the config the pod writes says so.
+    cfg = _written_config(tmp_path, manifest)
+    assert cfg["train"]["disable_sampling"] is True
+    assert cfg["sample"]["prompts"] == []
+
+
+def test_a_sample_prompts_value_that_is_not_a_list_of_prompts_is_refused_as_a_draft(empty_api):
+    project = _project(empty_api)
+    character = _character(empty_api)
+    run = _training_draft(empty_api, project, character, _dataset(empty_api, character),
+                          sample_prompts="{trigger} on a beach")
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+    assert resp.status_code == 400, resp.get_data(as_text=True)
+    assert "sample_prompts" in resp.get_data(as_text=True)
+    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["status"] == "draft"
+
+
+def _config_source():
+    """The first Python pass of the job — the one that writes ai-toolkit's
+    config — lifted out of the bash it is embedded in."""
+    from studio_core.services import training
+    marker = "python3 - <<'PYEOF'\n"
+    start = training.JOB_SCRIPT.index(marker) + len(marker)
+    return training.JOB_SCRIPT[start:training.JOB_SCRIPT.index("\nPYEOF", start)]
+
+
+def _written_config(tmp_path, manifest):
+    """Execute the config-writing pass against `manifest` and return the one
+    process block of the config it wrote. The dataset fetch is stubbed; the
+    yaml module is stood in for by JSON when the suite's venv lacks it."""
+    import sys
+    import types
+    import urllib.request
+    job = tmp_path / "job.json"
+    job.write_text(json.dumps(manifest))
+    dataset = tmp_path / "dataset"
+    written = tmp_path / "train.yaml"
+    fetched = []
+    stub = types.ModuleType("yaml")
+    stub.safe_dump = lambda data, stream: stream.write(json.dumps(data))
+    saved = sys.modules.get("yaml")
+    sys.modules["yaml"] = stub
+    real = urllib.request.urlretrieve
+    urllib.request.urlretrieve = lambda url, path: fetched.append((url, path))
+    try:
+        source = (_config_source()
+                  .replace("/tmp/job.json", str(job))
+                  .replace("/workspace/dataset", str(dataset))
+                  .replace("/tmp/train.yaml", str(written))
+                  .replace("/tmp/uploader.py", str(tmp_path / "uploader.py")))
+        dataset.mkdir()
+        exec(compile(source, "job-config.py", "exec"), {"__name__": "__main__"})
+    finally:
+        urllib.request.urlretrieve = real
+        if saved is None:
+            del sys.modules["yaml"]
+        else:
+            sys.modules["yaml"] = saved
+    assert [url for url, _ in fetched] == [d["url"] for d in manifest["dataset"]]
+    return json.loads(written.read_text())["config"]["process"][0]
+
+
+def test_the_job_writes_a_config_that_samples_at_every_save_point(tmp_path):
+    """ai-toolkit's `SampleConfig` fields, filled from the manifest: sampling
+    on, at the save interval, the trigger already in each prompt, one seed
+    held across the run, and no baseline before training."""
+    manifest = {
+        "stem": "ohwx-sa-1234", "trigger": "ohwx_sa", "steps": 1000, "save_every": 250,
+        "rank": 16, "lr": 1e-4, "resolution": 512, "base": "i2v",
+        "sample_prompts": ["ohwx_sa, cooking in a bright kitchen, medium shot",
+                           "ohwx_sa, sitting on a beach at sunset, full body"],
+        "sample_seed": 7, "sample_steps": 12,
+        "dataset": [{"name": "a.png", "url": "https://bucket.test/a.png?x", "caption": "ohwx_sa, grey t-shirt"}],
+    }
+
+    cfg = _written_config(tmp_path, manifest)
+
+    assert cfg["train"]["disable_sampling"] is False
+    assert cfg["train"]["skip_first_sample"] is True
+    sample = cfg["sample"]
+    assert sample["sample_every"] == 250
+    assert sample["prompts"] == manifest["sample_prompts"]
+    assert sample["seed"] == 7 and sample["walk_seed"] is False
+    assert sample["sample_steps"] == 12
+    assert sample["width"] == 512 and sample["height"] == 512
+    assert sample["num_frames"] == 1 and sample["neg"] == "" and sample["format"] == "jpg"
+    assert "guidance_scale" not in sample
+    assert (tmp_path / "dataset" / "a.txt").read_text() == "ohwx_sa, grey t-shirt"
+    assert cfg["save"]["save_every"] == 250 and cfg["network"]["linear"] == 16
+
+
+def test_sample_names_are_one_per_prompt_per_save_point_and_the_final_set_is_unnumbered():
+    from studio_core.services import training
+    names = training.expected_samples("stem", 750, 250, ["a", "b"])
+    assert names == [
+        "stem_000000250_sample_0.jpg", "stem_000000250_sample_1.jpg",
+        "stem_000000500_sample_0.jpg", "stem_000000500_sample_1.jpg",
+        "stem_sample_0.jpg", "stem_sample_1.jpg",
+    ]
+    assert training.expected_samples("stem", 750, 250, []) == []
+    # What the trainer itself writes, and what the uploader parses.
+    assert training.SAMPLE_FILE.match("1758300000000__000000250_0.jpg").groups() == ("000000250", "0")
+    assert training.SAMPLE_FILE.match("stem_000000250_sample_0.jpg") is None
+
+
 def _uploader_source():
     """The uploader the pod runs, lifted out of the job script it is embedded in."""
     from studio_core.services import training
@@ -1512,18 +1709,31 @@ def _uploader_source():
 def test_the_pods_uploader_posts_progress_to_the_callback_after_each_put(tmp_path, monkeypatch):
     """The embedded script, executed: every checkpoint goes through its grant,
     and after each one the callback URL hears what has landed so far. A
-    refused progress POST is printed and does not stop the uploads."""
+    refused progress POST is printed and does not stop the uploads. A sample
+    goes up under studio's name — `<stem>_<step>_sample_<i>.jpg`, unnumbered
+    at the final step — as a JPEG, and the trainer's scratch under
+    `samples/.tmp` is never swept."""
     import urllib.request
     out = tmp_path / "output" / "stem"
-    out.mkdir(parents=True)
-    names = ["stem_000000250_high_noise.safetensors", "stem_000000250_low_noise.safetensors",
-             "stem_high_noise.safetensors", "stem_low_noise.safetensors"]
-    for name in names:
+    (out / "samples" / ".tmp").mkdir(parents=True)
+    weights = ["stem_000000250_high_noise.safetensors", "stem_000000250_low_noise.safetensors",
+               "stem_high_noise.safetensors", "stem_low_noise.safetensors"]
+    for name in weights:
         (out / name).write_bytes(b"w" * 16)
     (out / "optimizer.pt").write_bytes(b"not a checkpoint")
+    # What ai-toolkit writes: `<ms>__<step:09d>_<i>.jpg`, the final step numbered.
+    trainer_samples = {"1758300000000__000000250_0.jpg": "stem_000000250_sample_0.jpg",
+                       "1758300000000__000000250_1.jpg": "stem_000000250_sample_1.jpg",
+                       "1758300099000__000000500_0.jpg": "stem_sample_0.jpg",
+                       "1758300099000__000000500_1.jpg": "stem_sample_1.jpg"}
+    for name in trainer_samples:
+        (out / "samples" / name).write_bytes(b"j" * 16)
+    (out / "samples" / ".tmp" / "1758300099000__000000500_2.jpg").write_bytes(b"half")
+    (out / "samples" / "config.yaml").write_text("not a sample")
+    names = weights + sorted(trainer_samples.values())
     job = tmp_path / "job.json"
     job.write_text(json.dumps({
-        "pod": {"id": "pod-1"}, "stem": "stem",
+        "pod": {"id": "pod-1"}, "stem": "stem", "steps": 500,
         "outputs": {name: f"https://bucket.test/{name}?grant" for name in names},
         "callback": "https://hooks.test/api/hooks/runpod-pod/run-x?sig=abc",
     }))
@@ -1536,7 +1746,7 @@ def test_the_pods_uploader_posts_progress_to_the_callback_after_each_put(tmp_pat
             return b""
 
     def urlopen(req, timeout=None):
-        calls.append((req.get_method(), req.full_url, req.data))
+        calls.append((req.get_method(), req.full_url, req.data, req.get_header("Content-type")))
         if req.get_method() == "POST" and len(calls) == 2:
             raise OSError("hook down")  # the first progress POST fails
         return _Answer()
@@ -1549,10 +1759,12 @@ def test_the_pods_uploader_posts_progress_to_the_callback_after_each_put(tmp_pat
               .replace("/tmp/uploaded.json", str(uploaded_json)))
     exec(compile(source, "uploader.py", "exec"), {"__name__": "__main__"})
 
-    puts = [(url, data) for method, url, data in calls if method == "PUT"]
-    assert [url for url, _ in puts] == [f"https://bucket.test/{n}?grant" for n in names]
-    assert all(data == b"w" * 16 for _, data in puts)
-    posts = [json.loads(data) for method, url, data in calls if method == "POST"]
+    puts = [(url, data, kind) for method, url, data, kind in calls if method == "PUT"]
+    assert [url for url, _, _ in puts] == [f"https://bucket.test/{n}?grant" for n in names]
+    assert all(data == b"w" * 16 for _, data, _ in puts[:4])
+    assert all(data == b"j" * 16 and kind == "image/jpeg" for _, data, kind in puts[4:])
+    assert all(kind == "application/octet-stream" for _, _, kind in puts[:4])
+    posts = [json.loads(data) for method, url, data, kind in calls if method == "POST"]
     assert len(posts) == len(names)
     assert all(p["status"] == "IN_PROGRESS" and p["id"] == "pod-1" for p in posts)
     assert posts[0]["output"]["uploaded"] == names[:1]

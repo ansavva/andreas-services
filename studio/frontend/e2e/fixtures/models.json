@@ -2118,6 +2118,14 @@
         "max_hours": 6,
         "rank": 32,
         "resolution": 768,
+        "sample_prompts": [
+          "{trigger}, cooking in a bright kitchen, medium shot",
+          "{trigger}, walking down a city street at night, neon signs, waist-up",
+          "{trigger}, in a dark suit and tie at a formal event, head and shoulders",
+          "{trigger}, sitting on a beach at sunset, full body"
+        ],
+        "sample_seed": 42,
+        "sample_steps": 20,
         "save_every": 250,
         "steps": 2000
       },
@@ -2214,6 +2222,34 @@
             "title": "Resolution",
             "type": "integer"
           },
+          "sample_prompts": {
+            "default": [
+              "{trigger}, cooking in a bright kitchen, medium shot",
+              "{trigger}, walking down a city street at night, neon signs, waist-up",
+              "{trigger}, in a dark suit and tie at a formal event, head and shoulders",
+              "{trigger}, sitting on a beach at sunset, full body"
+            ],
+            "description": "One still per prompt at every save point, rendered by the trainer with the checkpoint just written and filed beside the pair under `<character>/models/samples/` \u2014 the face emerging, without a video run by hand. `{trigger}` is replaced with the run's trigger. Scenes the dataset does NOT contain, so a sample shows whether the face travels rather than whether a photo was memorised. `[]` disables sampling. Each prompt adds ~20 sampler steps of a 14B model per save point (about a minute on an A100).",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sample prompts",
+            "type": "array"
+          },
+          "sample_seed": {
+            "default": 42,
+            "description": "The seed every sample is drawn with, the same at every save point, so the only thing that changes down the column is the LoRA.",
+            "title": "Sample seed",
+            "type": "integer"
+          },
+          "sample_steps": {
+            "default": 20,
+            "description": "Sampler steps per sample. 20 is enough to judge a face; more is slower for no more judgement.",
+            "maximum": 50,
+            "minimum": 1,
+            "title": "Sample steps",
+            "type": "integer"
+          },
           "save_every": {
             "default": 250,
             "description": "A checkpoint pair is written every this many steps \u2014 the candidates the evaluation compares.",
@@ -2245,7 +2281,7 @@
       "key": "wan-2.2-lora-train",
       "kind": "training",
       "model": "runpod-pod/ai-toolkit-wan22-14b",
-      "note": "Not a model: a TRAINER. Rents a Runpod GPU pod from the official ai-toolkit image, trains a Wan 2.2 14B LoRA pair (high-noise and low-noise experts, the pair `wan-2.2-i2v-lora` loads) on the character's images tagged `dataset`, uploads every checkpoint pair into `<character>/models/`, and terminates the pod. Captions are each file's description with the trigger in front \u2014 scene only, never the face. No prompt. Billed by the hour: an A100 80GB is ~$1.59/h and 2000 steps take roughly 1\u20132 h plus ~15 min of setup, so ~$3\u20135 an attempt; the run records pod-hours \u00d7 rate. `max_hours` caps it on the pod itself. Runs ONLY where the API can reach Runpod's pod API and receive a callback; locally `studio runs reconcile` reads the pod's result from the bucket.",
+      "note": "Not a model: a TRAINER. Rents a Runpod GPU pod from the official ai-toolkit image, trains a Wan 2.2 14B LoRA pair (high-noise and low-noise experts, the pair `wan-2.2-i2v-lora` loads) on the character's images tagged `dataset`, uploads every checkpoint pair into `<character>/models/` and, at every save point, one sample still per `sample_prompts` entry into `<character>/models/samples/` (the run page shows them beside the pair), and terminates the pod. Captions are each file's description with the trigger in front \u2014 scene only, never the face. No prompt. Billed by the hour: an A100 80GB is ~$1.59/h and 2000 steps take roughly 1\u20132 h plus ~15 min of setup, so ~$3\u20135 an attempt; the run records pod-hours \u00d7 rate. `max_hours` caps it on the pod itself. Runs ONLY where the API can reach Runpod's pod API and receive a callback; locally `studio runs reconcile` reads the pod's result from the bucket.",
       "prompt": null,
       "provider": "runpod-pod",
       "skill": "studio-media-lora-train",
@@ -2298,6 +2334,22 @@
             768,
             1024
           ]
+        },
+        "sample_prompts": {
+          "default": [
+            "{trigger}, cooking in a bright kitchen, medium shot",
+            "{trigger}, walking down a city street at night, neon signs, waist-up",
+            "{trigger}, in a dark suit and tie at a formal event, head and shoulders",
+            "{trigger}, sitting on a beach at sunset, full body"
+          ]
+        },
+        "sample_seed": {
+          "default": 42
+        },
+        "sample_steps": {
+          "default": 20,
+          "maximum": 50,
+          "minimum": 1
         },
         "save_every": {
           "default": 250,
