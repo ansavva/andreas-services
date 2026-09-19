@@ -611,6 +611,32 @@ describe("a pointer at a node that is gone", () => {
    * `undefined.split("?")` in the fallback. `Cannot read properties of
    * undefined (reading 'split')`, and nothing on the page rendered.
    */
+  it("draws a LoRA pair as one line under the pictures, not two image-sized tiles", async () => {
+    await draw([
+      row({
+        kind: "video",
+        sends: [
+          { node: "node-f", order: 1, field: "image", role: "start", name: "frame.jpg", url: "/f", source: { kind: "object" } },
+          { node: "node-h", order: 2, field: "high_noise_loras", role: "lora", name: "ohwx-1234_000001500_high_noise.safetensors", url: "/h", source: { kind: "object" } },
+          { node: "node-l", order: 3, field: "low_noise_loras", role: "lora", name: "ohwx-1234_000001500_low_noise.safetensors", url: "/l", source: { kind: "object" } },
+        ],
+      }),
+    ]);
+
+    const article = await screen.findByRole("article");
+    const sent = within(article).getByLabelText("Sent");
+    // The picture row holds the frame alone.
+    expect(within(sent).getByText("Start")).toBeTruthy();
+    expect(within(sent).queryByText(/noise/)).toBeNull();
+    // The pair is one item: the stem, the save point, the two files as links.
+    const loras = within(article).getByLabelText("LoRA");
+    expect(within(loras).getAllByRole("listitem")).toHaveLength(1);
+    expect(within(loras).getByText("ohwx-1234")).toBeTruthy();
+    expect(within(loras).getByText("step 1500")).toBeTruthy();
+    expect(within(loras).getByRole("link", { name: /high-noise LoRA/ }).getAttribute("href")).toBe("/o/node-h");
+    expect(within(loras).getByRole("link", { name: /low-noise LoRA/ }).getAttribute("href")).toBe("/o/node-l");
+  });
+
   it("draws the row, with the send marked unavailable rather than crashing it", async () => {
     await draw([
       row({

@@ -9,6 +9,7 @@ import { pressInApp } from "../common/pressInApp";
 import { ROLE_WORDS } from "../create/roles";
 import { TILE_BOX, TILE_CAPTION, TILE_ROW } from "../create/tile";
 import { MediaThumb } from "../media/MediaThumb";
+import { checkpointName } from "./CheckpointList";
 
 /**
  * The order the roles are drawn in, and what each one is called under a
@@ -90,10 +91,17 @@ export function SendThumbs({ sends }: { sends: readonly RunSend[] }) {
   });
 
   let references = 0;
+  // Weights are not pictures. A LoRA pair in the tile row was two image-sized
+  // boxes with a filename in each; it is one line under the pictures now —
+  // which checkpoint, and the two files as links.
+  const pictures = ordered.filter((send) => send.role !== "lora");
+  const loras = ordered.filter((send) => send.role === "lora");
 
   return (
+    <div className="flex min-w-0 flex-col gap-2">
+    {pictures.length > 0 && (
     <div className={TILE_ROW} aria-label="Sent">
-      {ordered.map((send) => {
+      {pictures.map((send) => {
         // A reference's number is its position among the references, which is
         // how a prompt cites it — not its position among every send.
         if (send.role === "reference") references += 1;
@@ -107,29 +115,7 @@ export function SendThumbs({ sends }: { sends: readonly RunSend[] }) {
             : (ROLE_CAPTION[send.role ?? ""] ?? word);
 
         const title = `${word} · ${assetLabel(send.name)}`;
-        // A LoRA is weights, not a picture: nothing to draw, so the tile says
-        // what it is and names the file. Still a send — it is in the row, in
-        // order, because the run was given it.
-        const tile =
-          send.role === "lora" ? (
-            <>
-              <span className="relative flex h-full w-40 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-md bg-fill px-2 pb-5 text-center">
-                <Text variant="caption" weight="medium">
-                  LoRA
-                </Text>
-                <Text variant="caption" family="mono" tone="muted" className="w-full truncate text-[11px]">
-                  {assetLabel(send.name)}
-                </Text>
-              </span>
-              <span role="presentation" className={`${TILE_CAPTION} pointer-events-none`}>
-                {send.field === "high_noise_loras"
-                  ? "High noise"
-                  : send.field === "low_noise_loras"
-                    ? "Low noise"
-                    : word}
-              </span>
-            </>
-          ) : (
+        const tile = (
             <>
               {/* Whole, not cropped, at its own width: what went in is what a
                   person is checking the output against, and which take it
@@ -147,7 +133,7 @@ export function SendThumbs({ sends }: { sends: readonly RunSend[] }) {
                 {caption}
               </span>
             </>
-          );
+        );
 
         if (!send.url) {
           return (
@@ -172,5 +158,70 @@ export function SendThumbs({ sends }: { sends: readonly RunSend[] }) {
         );
       })}
     </div>
+    )}
+    {loras.length > 0 && <LoraSends sends={loras} />}
+    </div>
+  );
+}
+
+/**
+ * The LoRA pairs a run was handed, one line each: the checkpoint they are —
+ * the stem and the save point read off the file name — and `high` / `low`
+ * as links to the files. A pair is one thing to a person even though it is
+ * two sends, so the two are grouped by stem and step.
+ */
+function LoraSends({ sends }: { sends: readonly RunSend[] }) {
+  const navigate = useNavigate();
+  const pairs = new Map<string, { stem: string; step: number | null; files: Partial<Record<"high" | "low", RunSend>> }>();
+  for (const send of sends) {
+    const parsed = checkpointName(send.name ?? "");
+    const key = parsed ? `${parsed.stem}:${parsed.step ?? "final"}` : (send.name ?? send.node);
+    const entry = pairs.get(key) ?? { stem: parsed?.stem ?? assetLabel(send.name), step: parsed?.step ?? null, files: {} };
+    entry.files[parsed?.expert ?? "high"] = send;
+    pairs.set(key, entry);
+  }
+  return (
+    <ul className="flex flex-wrap gap-1.5" aria-label="LoRA">
+      {[...pairs.values()].map((pair) => (
+        <li
+          key={`${pair.stem}:${pair.step ?? "final"}`}
+          className="flex items-center gap-2 rounded-md border border-line bg-card px-2 py-1"
+          data-lora-send=""
+        >
+          <Text variant="caption" weight="medium">
+            LoRA
+          </Text>
+          <Text variant="caption" family="mono" tone="muted" className="max-w-[12rem] truncate">
+            {pair.stem}
+          </Text>
+          <Text variant="caption" tone="muted" className="whitespace-nowrap tabular-nums">
+            {pair.step === null ? "final" : `step ${pair.step}`}
+          </Text>
+          {(["high", "low"] as const).map((expert) => {
+            const send = pair.files[expert];
+            if (!send) return null;
+            if (!send.url) {
+              return (
+                <Text key={expert} variant="caption" tone="muted" className="font-mono line-through">
+                  {expert}
+                </Text>
+              );
+            }
+            const to = objectPath(send.node);
+            return (
+              <a
+                key={expert}
+                href={to}
+                onClick={pressInApp(navigate, to)}
+                aria-label={`Open ${expert}-noise LoRA — ${assetLabel(send.name)}`}
+                className="rounded-sm border border-line px-1.5 py-0.5 font-mono text-xs hover:bg-surface-alt focus-visible:outline focus-visible:outline-2"
+              >
+                {expert}
+              </a>
+            );
+          })}
+        </li>
+      ))}
+    </ul>
   );
 }
