@@ -162,7 +162,7 @@ export function PreviewBox({
       <Field.Description>{description}</Field.Description>
       <div
         aria-label={ariaLabel}
-        className="border border-line bg-card p-2 font-mono text-sm leading-6 whitespace-pre-wrap"
+        className="rounded-md border border-line bg-card p-2 font-mono text-sm leading-6 whitespace-pre-wrap"
       >
         {children}
       </div>

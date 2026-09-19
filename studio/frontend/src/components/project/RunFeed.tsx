@@ -275,7 +275,15 @@ export function RunFeed({ projectId, characters, heroes, onOpen }: Props) {
         {/* The prompt search, where the mockup puts it: on the feed, always
             open, under "Search prompts … in this project". Applies on Enter —
             a request per keystroke against a route that scans envelopes is
-            the wrong bargain. */}
+            the wrong bargain.
+
+            `h-8`, because this strip is the 32px line the `sm` layout pair
+            and the filter button already sit on, not a field row. The
+            package's `Input` composes its classes through `cn` (tailwind-
+            merge), so `h-8` DISPLACES its own `h-10` rather than joining it
+            — measured: the rendered element carries `h-8` and no `h-10` — and
+            `app.css`'s `input.h-10 { height: 2.75rem }` then has nothing to
+            match. One class on the input, no selector in the stylesheet. */}
         <div className="relative min-w-48 flex-1">
           <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 fill-none stroke-current stroke-[1.5] text-muted" />
           <Input
@@ -283,7 +291,7 @@ export function RunFeed({ projectId, characters, heroes, onOpen }: Props) {
             onValueChange={setQ}
             placeholder="Search prompts in this project…"
             aria-label="Search prompts"
-            className="pl-8"
+            className="h-8 pl-8"
             onKeyDown={(event: React.KeyboardEvent) => {
               if (event.key === "Enter") filters.setQ(q.trim());
             }}
@@ -696,7 +704,8 @@ function InFlightTiles({ row, now }: { row: RunFeedRow; now: number }) {
           key={i}
           data-testid="in-flight-tile"
           style={{ aspectRatio: ratio }}
-          className="studio-shimmer flex flex-col items-center justify-center gap-2 border border-line"
+          // `md`, the corner `RunTiles` gives the same run on the wall.
+          className="studio-shimmer flex flex-col items-center justify-center gap-2 rounded-md border border-line"
         >
           {i === 0 && (
             <>
@@ -739,7 +748,8 @@ function DraftTiles({ row }: { row: RunFeedRow }) {
           key={i}
           data-testid="draft-tile"
           style={{ aspectRatio: ratio }}
-          className="flex flex-col items-center justify-center border border-dashed border-line bg-surface-alt/40"
+          // `md`, the corner `RunTiles` gives the same draft on the wall.
+          className="flex flex-col items-center justify-center rounded-md border border-dashed border-line bg-surface-alt/40"
         >
           {i === 0 && (
             <Text variant="caption" tone="muted">

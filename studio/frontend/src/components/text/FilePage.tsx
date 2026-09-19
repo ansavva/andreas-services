@@ -1,12 +1,13 @@
 import { useState } from "react";
 
-import { Badge, Button, Text } from "@ansavva/design-system";
+import { Badge, IconButton, Text } from "@ansavva/design-system";
 
 import type { FileEntry } from "../../types";
 import { downloadNode } from "../../utils/download";
 import { formatBytes } from "../../utils/format";
 import { describeBinary, extensionOf } from "../../utils/media";
 import { CopyKeyButton } from "../common/CopyKeyButton";
+import { CloseIcon, DownloadIcon } from "../common/icons";
 import { PageBar, type Crumb } from "../layout/PageBar";
 
 interface Props {
@@ -25,6 +26,12 @@ interface Props {
  * this is to know what it is, how big it is, where it sits, and to get it —
  * so that is the whole page. The same bar the text page draws, so the two
  * kinds of non-media file open alike.
+ *
+ * **The bar's controls are glyphs, the same ones the media viewer draws.**
+ * They were labelled buttons — "Download", "Close" — and with the extension
+ * badge beside them the row took a phone's width and the title truncated to
+ * one letter. The badge is a fact about the file, so it sits in `meta` with
+ * the path, as every other page's badges do.
  */
 export function FilePage({ file, onClose, crumbs }: Props) {
   const [downloading, setDownloading] = useState(false);
@@ -50,28 +57,35 @@ export function FilePage({ file, onClose, crumbs }: Props) {
         crumbs={crumbs}
         title={file.name}
         meta={
-          <Text variant="caption" tone="muted" className="min-w-0 truncate font-mono">
-            {file.key}
-          </Text>
-        }
-        actions={
           <>
             <Badge intent="neutral" className="font-mono">
               {ext}
             </Badge>
+            <Text variant="caption" family="mono" tone="muted" className="min-w-0 truncate">
+              {file.key}
+            </Text>
+          </>
+        }
+        actions={
+          <>
             <CopyKeyButton value={file.key} />
-            <Button size="sm" disabled={downloading} onClick={() => void download()}>
-              {downloading ? "Fetching…" : "Download"}
-            </Button>
-            <Button intent="secondary" size="sm" onClick={onClose} aria-label="Close (Esc)">
-              Close
-            </Button>
+            <IconButton
+              label={downloading ? "Fetching…" : "Download"}
+              size="sm"
+              disabled={downloading}
+              onClick={() => void download()}
+            >
+              <DownloadIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+            </IconButton>
+            <IconButton label="Close (Esc)" size="sm" onClick={onClose}>
+              <CloseIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+            </IconButton>
           </>
         }
       />
 
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-4" data-file-page="">
-        <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 border border-line bg-card p-4">
+        <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 rounded-md border border-line bg-card p-4">
           <dt>
             <Text variant="caption" tone="muted">
               Kind

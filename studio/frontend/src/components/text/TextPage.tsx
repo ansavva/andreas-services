@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { Alert, Badge, Button, Text, Textarea } from "@ansavva/design-system";
+import { Alert, Badge, Button, IconButton, Text, Textarea } from "@ansavva/design-system";
 
 import { SectionLoading } from "../common/SectionLoading";
 import { getNodeText, saveNodeText } from "../../apis/studio";
@@ -8,6 +8,7 @@ import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { formatTextContent } from "../../utils/format";
 import type { FileEntry, TextResponse } from "../../types";
 import { CopyKeyButton } from "../common/CopyKeyButton";
+import { CloseIcon, CopyIcon, PencilIcon } from "../common/icons";
 import { PageBar, type Crumb } from "../layout/PageBar";
 import { MarkdownView } from "./MarkdownView";
 
@@ -32,6 +33,14 @@ interface Props {
  * this follows: a `profile.yaml` is a thing you sit and read, and reading it
  * behind its own header — with the same crumb back to the folder every other
  * screen draws — is the app's one shape rather than a second one for text.
+ *
+ * **The bar's controls are glyphs, the same ones the media viewer's rail
+ * draws** — copy, a pencil, an ×. They were labelled buttons, and with the
+ * language badge beside them the row took a phone's width and the title
+ * truncated to one letter. The badge is a fact about the file and sits in
+ * `meta` with the path. Save and Cancel keep their words while editing: they
+ * are a form's row, secondary first and primary last, and a glyph for "save"
+ * is not a thing anyone reads.
  *
  * Two decisions inside the editor are worth knowing:
  *
@@ -152,22 +161,25 @@ export function TextPage({ file, onClose, onSaved, crumbs }: Props) {
         crumbs={crumbs}
         title={file.name}
         meta={
-          // The name path — the thing `CopyKeyButton` beside it copies, and
-          // the thing a `studio` command is handed.
-          <Text variant="caption" tone="muted" className="min-w-0 truncate font-mono">
-            {file.key}
-          </Text>
-        }
-        actions={
           <>
             {data && (
               <Badge intent="neutral" className="font-mono">
                 {data.language}
               </Badge>
             )}
-
+            {/* The name path — the thing `CopyKeyButton` beside it copies, and
+                the thing a `studio` command is handed. */}
+            <Text variant="caption" family="mono" tone="muted" className="min-w-0 truncate">
+              {file.key}
+            </Text>
+          </>
+        }
+        actions={
+          <>
             {/* Rendered/raw is a *reading* choice, so it is gone while editing —
-                there is only one way to edit markdown and it is as markdown. */}
+                there is only one way to edit markdown and it is as markdown. A
+                word rather than a glyph: it is a toggle between two views, and
+                no icon says which one is up. */}
             {isMarkdown && !editing && (
               <Button intent="secondary" size="sm" onClick={() => setRaw((value) => !value)}>
                 {raw ? "Rendered" : "Raw"}
@@ -178,20 +190,17 @@ export function TextPage({ file, onClose, onSaved, crumbs }: Props) {
                 file's contents, and the key that names the file. */}
             <CopyKeyButton value={file.key} />
             {data && !editing && (
-              <Button
-                intent="secondary"
+              <IconButton
+                label={copyLabel(contentCopy.status, "Copy text")}
                 size="sm"
                 onClick={() => void contentCopy.copy(data.content)}
               >
-                {copyLabel(contentCopy.status, "Copy text")}
-              </Button>
+                <CopyIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+              </IconButton>
             )}
 
             {editing ? (
               <>
-                <Button size="sm" disabled={saving || !dirty} onClick={save}>
-                  {saving ? "Saving…" : dirty ? "Save" : "Saved"}
-                </Button>
                 <Button
                   intent="secondary"
                   size="sm"
@@ -204,12 +213,15 @@ export function TextPage({ file, onClose, onSaved, crumbs }: Props) {
                 >
                   Cancel
                 </Button>
+                <Button size="sm" disabled={saving || !dirty} onClick={save}>
+                  {saving ? "Saving…" : dirty ? "Save" : "Saved"}
+                </Button>
               </>
             ) : (
               editable && (
-                <Button size="sm" onClick={() => setDraft(data.content)}>
-                  Edit
-                </Button>
+                <IconButton label="Edit" size="sm" onClick={() => setDraft(data.content)}>
+                  <PencilIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+                </IconButton>
               )
             )}
 
@@ -218,9 +230,9 @@ export function TextPage({ file, onClose, onSaved, crumbs }: Props) {
                 Leave without saving
               </Button>
             ) : (
-              <Button intent="secondary" size="sm" onClick={close} aria-label="Close (Esc)">
-                Close
-              </Button>
+              <IconButton label="Close (Esc)" size="sm" onClick={close}>
+                <CloseIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+              </IconButton>
             )}
           </>
         }

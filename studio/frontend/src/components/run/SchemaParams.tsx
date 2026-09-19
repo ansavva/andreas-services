@@ -229,7 +229,7 @@ function Param({
       {/* The raw key, kept visible: it is what the model's own docs and error
           messages say, and a person cross-checking against those should not
           have to reverse the label back into it. */}
-      <Text variant="caption" tone="muted" className="font-mono">
+      <Text variant="caption" family="mono" tone="muted">
         {name}
       </Text>
 

@@ -183,7 +183,7 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
   return (
     <div ref={box} className="relative flex flex-col gap-1.5">
       <div
-        className="flex min-h-10 flex-wrap items-center gap-1.5 border border-line
+        className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border border-line
                    bg-card px-2 py-1.5"
         onClick={() => setOpen(true)}
       >
@@ -244,7 +244,7 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
           role="listbox"
           aria-label="Tags"
           className="absolute top-full z-20 mt-1 flex max-h-72 w-full flex-col gap-1
-                     overflow-auto border border-line bg-card p-1 shadow-lg"
+                     overflow-auto rounded-md border border-line bg-card p-1 shadow-lg"
         >
           {offered.length === 0 && !isNew && (
             <EmptyState

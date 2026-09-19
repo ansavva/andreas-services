@@ -139,14 +139,15 @@ export function OutputTile({
         aria-label={`Open ${label} — ${assetLabel(asset.name)}`}
         // A square beside the other outputs; at a phone width, where one output
         // fills the column, a square is 340px of dark for one filename — so
-        // there it is a band.
-        className="flex flex-col items-center justify-center gap-1 border border-line bg-card px-2 py-8 text-center sm:aspect-square sm:py-2"
+        // there it is a band. The same `md` corner as the media tile beside it
+        // and as the Tiles wall's, so one run looks the same in both layouts.
+        className="flex flex-col items-center justify-center gap-1 rounded-md border border-line bg-card px-2 py-8 text-center sm:aspect-square sm:py-2"
         data-output-file=""
       >
         <Text variant="caption" weight="medium">
           {/_high_noise/.test(asset.name ?? "") ? "LoRA · high noise" : /_low_noise/.test(asset.name ?? "") ? "LoRA · low noise" : "File"}
         </Text>
-        <Text variant="caption" tone="muted" className="w-full truncate font-mono text-[10px]">
+        <Text variant="caption" family="mono" tone="muted" className="w-full truncate text-[11px]">
           {assetLabel(asset.name)}
         </Text>
       </a>
@@ -161,7 +162,9 @@ export function OutputTile({
     // `overflow-hidden` around both would cut the panel off at the tile's edge
     // — which is exactly what a menu opening downward out of a 150px tile does.
     <div className="group relative">
-      <div className="overflow-hidden border border-line bg-card">
+      {/* `md`, the Tiles wall's corner (`RunTiles`), so the same run reads the
+          same in the feed and on the wall. */}
+      <div className="overflow-hidden rounded-md border border-line bg-card">
         {/* The tile is the opening button; its frame is on the box around it. */}
         <button
           type="button"

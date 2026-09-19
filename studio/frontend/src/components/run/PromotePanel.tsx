@@ -311,7 +311,7 @@ export function PromotePanel({
 
   if (done) {
     return (
-      <section className="flex flex-col gap-2 border border-line bg-card p-3">
+      <section className="flex flex-col gap-2 rounded-md border border-line bg-card p-3">
         <Alert.Root intent="success">
           <Alert.Title>Copied into {done.where}</Alert.Title>
           <Alert.Description>
@@ -488,12 +488,15 @@ export function PromotePanel({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button disabled={!character || !folder || busy} onClick={() => void copy()}>
-          {busy ? "Copying…" : "Copy"}
-        </Button>
-        <Button intent="secondary" disabled={busy} onClick={onClose}>
+      {/* Secondary first, primary last, right-aligned — the app's order for
+          a form's row — and `sm`, dense chrome on a panel rather than a
+          field row. */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button intent="secondary" size="sm" disabled={busy} onClick={onClose}>
           Cancel
+        </Button>
+        <Button size="sm" disabled={!character || !folder || busy} onClick={() => void copy()}>
+          {busy ? "Copying…" : "Copy"}
         </Button>
       </div>
 

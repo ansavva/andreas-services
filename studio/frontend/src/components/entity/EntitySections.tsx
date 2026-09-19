@@ -1,9 +1,8 @@
 import { useCallback } from "react";
 import type { ReactNode } from "react";
 
-import { Text } from "@ansavva/design-system";
-
 import { EmptyState } from "../common/EmptyState";
+import { SectionHeading } from "../common/SectionHeading";
 import { SectionLoading } from "../common/SectionLoading";
 import { getCharacters, getProjects } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
@@ -74,19 +73,7 @@ function Section({
 }) {
   return (
     <section className="flex flex-col gap-3">
-      {/* A hairline under the heading, the same rule `PageBar` draws under a
-          page title. It is what makes a column of sections read as one ruled
-          page rather than as headings floating over grids. */}
-      {heading && (
-        <div className="border-b border-line pb-2">
-          <Text variant="title">
-            {title}{" "}
-            {count !== undefined && (
-              <span className="font-mono text-sm text-muted tabular-nums">({count})</span>
-            )}
-          </Text>
-        </div>
-      )}
+      {heading && <SectionHeading title={title} count={count} />}
 
       {loading && <SectionLoading label={`Loading ${title.toLowerCase()}`} />}
       {error && <LoadError what={errorTitle.replace("Could not load ", "")} message={error} onRetry={onRetry} />}

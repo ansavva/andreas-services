@@ -50,6 +50,15 @@ it("truncates a string title rather than wrapping it", () => {
   expect(title.className).toContain("truncate");
 });
 
+/**
+ * Object hands the bar its crumbs and nothing else, and a cold `/o/<id>` link
+ * has none — which used to leave a lone hairline over an empty line.
+ */
+it("renders nothing at all when it has nothing to say", () => {
+  const { container } = renderBar({ crumbs: [] });
+  expect(container.innerHTML).toBe("");
+});
+
 it("draws no back arrow", () => {
   renderBar({ title: "A project" });
   expect(screen.queryByRole("button", { name: "Back" })).toBeNull();

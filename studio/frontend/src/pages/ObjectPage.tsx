@@ -587,7 +587,17 @@ export function ObjectPage() {
                   isVideo={isVideo}
                   aspect="auto"
                   zoomable
-                  className="h-full w-full border border-line"
+                  // The clip's corners are the Video.js skin's own —
+                  // `--media-video-border-radius`, 28px on the default theme,
+                  // measured in `@videojs/react/video/skin.css` — with a 1px
+                  // inset frame the skin draws itself. A still has no skin,
+                  // so it drew as a square box beside a rounded one. `lg` is
+                  // the largest step on the app's scale (16px; lint rule 1
+                  // refuses an arbitrary value), applied to the still only:
+                  // the same class on the clip would override the skin's
+                  // radius, and the skin is not restyled. The hairline stays
+                  // on both, since the clip carries one too.
+                  className={`h-full w-full border border-line ${isVideo ? "" : "rounded-lg"}`}
                   onContainerChange={setStage}
                   onControlsChange={setControls}
                   onFullscreenChange={setFullscreen}
@@ -616,7 +626,10 @@ export function ObjectPage() {
       >
         {/*
           Crumbs and nothing else. What a bar can say that the column cannot
-          is where the page sits.
+          is where the page sits — and with no crumbs (a cold `/o/<id>` link)
+          the bar draws nothing at all, rather than a rule over an empty line.
+          Nothing below measures the bar: the rail is a flex column with a
+          gap, and a missing child just closes it.
         */}
         <PageBar crumbs={crumbs} />
 

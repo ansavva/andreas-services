@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 
+import type { NodeOwner } from "../../types";
 import { describeFolder } from "../../utils/format";
 import { EntityRow } from "../entity/EntityRow";
 import { ItemActions } from "../common/ItemActions";
@@ -26,6 +27,12 @@ interface Props {
    * the browser, which is the one address that works from anywhere.
    */
   link: string;
+  /**
+   * The entity this folder sits in, when the listing knows — the row's own
+   * `owner`. A root folder is named by its owner's id, and this is what lets
+   * it be titled by the owner's name instead. See `describeFolder`.
+   */
+  owner?: NodeOwner | null;
   onOpen: () => void;
   onRename: (name: string) => Promise<unknown>;
   /** Asks the page to open its destination picker on this folder. */
@@ -43,8 +50,8 @@ interface Props {
  * than a URL — see `BrowserNav` — so opening one is always `onOpen`), and the
  * ⋯ menu rides in the `trailing` slot the same way a file's does.
  */
-export function FolderCard({ name, prefix, link, onOpen, onRename, onMove, onDelete }: Props) {
-  const { title, subtitle } = describeFolder(name);
+export function FolderCard({ name, prefix, link, owner, onOpen, onRename, onMove, onDelete }: Props) {
+  const { title, subtitle } = describeFolder(name, owner);
   const [renaming, setRenaming] = useState(false);
   const stopRenaming = useCallback(() => setRenaming(false), []);
 
@@ -70,11 +77,13 @@ export function FolderCard({ name, prefix, link, onOpen, onRename, onMove, onDel
         />
       }
     >
-      {/* Renaming edits the folder's real name, not the prettified `title` a run
-          folder is displayed under — `describeFolder` splits
-          `2026-08-14_16-32-11_kling-yqp1jqf5` into a date and a slug for reading,
-          and offering the slug alone as the thing to edit would drop the
-          timestamp the whole library sorts on. */}
+      {/* Renaming edits the folder's real name, not the prettified `title` it
+          is displayed under — `describeFolder` shows an entity root by its
+          owner's name rather than the id it is stored as, and splits
+          `2026-08-14_16-32-11_kling-yqp1jqf5` into a date and a slug for
+          reading. Offering either title as the thing to edit would rename
+          the folder to its own caption, or drop the timestamp the whole
+          library sorts on. */}
       {renaming && (
         <RenameForm
           name={name}

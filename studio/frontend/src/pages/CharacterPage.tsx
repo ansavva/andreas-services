@@ -147,7 +147,11 @@ export function CharacterPage() {
   const record = character.data;
 
   return (
-    <>
+    // `defaultValue` as well as `value`, which the package requires even
+    // when controlled: it seeds `useControllableState`, and Tabs does not
+    // introspect its List to guess a first tab. The root wraps the bar too,
+    // so the strip handed to `tabs` shares its context — see `PageBar`.
+    <Tabs.Root value={tab} defaultValue="profile" onValueChange={setTab}>
       {/*
         Delete lives in the menu now, behind `⋯` — the button itself moved,
         the confirmation did not: it is still `ConfirmDestroyDialog`, still
@@ -170,6 +174,18 @@ export function CharacterPage() {
               danger: true,
               onSelect: () => setDeleteOpen(true),
             }]}
+        tabs={
+          // Scrolls rather than wraps. Three labels fit a 390px screen and five
+          // do not, which is exactly why this was already written to scroll: a
+          // tab strip that grows a second row draws a second underline, and that
+          // reads as two strips. The strip's underline is the bar's hairline —
+          // drawn below the bar it was a rule under the title, a gap, and a
+          // second rule under the tabs.
+          <Tabs.List className="overflow-x-auto border-b border-line">
+            <Tabs.Tab value="profile">Profile</Tabs.Tab>
+            <Tabs.Tab value="files">Files</Tabs.Tab>
+          </Tabs.List>
+        }
       />
 
       <ConfirmDestroyDialog
@@ -189,43 +205,29 @@ export function CharacterPage() {
         }}
       />
 
-      {/* `defaultValue` as well as `value`, which the package requires even
-          when controlled: it seeds `useControllableState`, and Tabs does not
-          introspect its List to guess a first tab. */}
-      <Tabs.Root value={tab} defaultValue="profile" onValueChange={setTab}>
-        {/* Scrolls rather than wraps. Three labels fit a 390px screen and five
-            do not, which is exactly why this was already written to scroll: a
-            tab strip that grows a second row draws a second underline, and that
-            reads as two strips. */}
-        <Tabs.List className="overflow-x-auto border-b border-line">
-          <Tabs.Tab value="profile">Profile</Tabs.Tab>
-          <Tabs.Tab value="files">Files</Tabs.Tab>
-        </Tabs.List>
+      <Tabs.Panel value="profile">
+        <ProfileForm
+          // Remounted when the record changes revision, so a save that
+          // succeeded leaves the form holding what the API returned rather
+          // than a draft it has to be reconciled against.
+          key={record.rev}
+          identity={{ name: record.name }}
+          profile={record.profile}
+          rev={record.rev}
+          onSave={saveCharacter}
+          conflict={conflict}
+          onReload={character.reload}
+          template={template.data}
+        />
+      </Tabs.Panel>
 
-        <Tabs.Panel value="profile">
-          <ProfileForm
-            // Remounted when the record changes revision, so a save that
-            // succeeded leaves the form holding what the API returned rather
-            // than a draft it has to be reconciled against.
-            key={record.rev}
-            identity={{ name: record.name }}
-            profile={record.profile}
-            rev={record.rev}
-            onSave={saveCharacter}
-            conflict={conflict}
-            onReload={character.reload}
-            template={template.data}
-          />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="files">
-          {/* The raw browser at the character's root, with the root's own
-              subfolders as chips above it: create, upload, rename, move, copy,
-              delete, exactly as anywhere else. */}
-          <FolderTab rootId={record.root} label={record.name} />
-        </Tabs.Panel>
-      </Tabs.Root>
-    </>
+      <Tabs.Panel value="files">
+        {/* The raw browser at the character's root, with the root's own
+            subfolders as chips above it: create, upload, rename, move, copy,
+            delete, exactly as anywhere else. */}
+        <FolderTab rootId={record.root} label={record.name} />
+      </Tabs.Panel>
+    </Tabs.Root>
   );
 }
 

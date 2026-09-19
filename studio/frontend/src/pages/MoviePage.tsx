@@ -8,6 +8,7 @@ import { LoadError } from "../components/common/LoadError";
 import { PageLoading } from "../components/common/PageLoading";
 import { deleteMovie, getMovie } from "../apis/studio";
 import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
+import { SectionHeading } from "../components/common/SectionHeading";
 import { PageBar, useCopyLinkItem } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
 import { MediaThumb } from "../components/media/MediaThumb";
@@ -59,7 +60,7 @@ export function MoviePage() {
             <Badge intent="neutral" className="font-mono">
               {data.status}
             </Badge>
-            <Text variant="caption" tone="muted" className="font-mono">
+            <Text variant="caption" family="mono" tone="muted">
               {formatDate(data.created)}
             </Text>
           </>
@@ -87,15 +88,13 @@ export function MoviePage() {
 
       {data.output && (
         <section className="flex flex-col gap-3">
-          <Text variant="title" className="border-b border-line pb-2">
-            The piece
-          </Text>
+          <SectionHeading title="The piece" />
           {/* eslint-disable-next-line studio/no-hand-rolled-button -- a media
               tile, the same button-as-tile shape as MediaTile. */}
           <button
             type="button"
             onClick={() => navigate(objectPath(data.output!.node))}
-            className="w-full max-w-2xl overflow-hidden border border-line bg-card
+            className="w-full max-w-2xl overflow-hidden rounded-md border border-line bg-card
                        focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <MediaThumb
@@ -106,7 +105,7 @@ export function MoviePage() {
               isVideo
               aspect="video"
             />
-            <Text variant="caption" tone="muted" className="truncate px-2 py-1 font-mono">
+            <Text variant="caption" family="mono" tone="muted" className="truncate px-2 py-1">
               {data.output.name}
             </Text>
           </button>
@@ -114,9 +113,7 @@ export function MoviePage() {
       )}
 
       <section className="flex flex-col gap-3">
-        <Text variant="title" className="border-b border-line pb-2">
-          Scenes
-        </Text>
+        <SectionHeading title="Scenes" />
         {data.scenes.length === 0 ? (
           <EmptyState title="No scenes yet." hint="A movie is scenes cut into one piece." />
         ) : (

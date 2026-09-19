@@ -65,7 +65,7 @@ export function OutputPanel({
   };
 
   return (
-    <div className="flex min-w-0 flex-col gap-1 border border-line bg-card p-1">
+    <div className="flex min-w-0 flex-col gap-1 rounded-md border border-line bg-card p-1">
       <a
         href={to}
         onClick={open}
@@ -97,16 +97,16 @@ export function OutputPanel({
         className="flex min-w-0 flex-col hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         <span className="flex min-w-0 items-center gap-2">
-          <Text variant="caption" tone="muted" className="truncate font-mono">
+          <Text variant="caption" family="mono" tone="muted" className="truncate">
             {assetLabel(asset.name)}
           </Text>
           {badge}
         </span>
         {asset.size !== undefined && (
           <Text
-            variant="caption"
+            variant="caption" family="mono"
             tone="muted"
-            className="font-mono tabular-nums"
+            className="tabular-nums"
           >
             {formatBytes(asset.size)}
           </Text>

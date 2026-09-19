@@ -25,6 +25,7 @@ import { EmptyState } from "../common/EmptyState";
 import { FilterBar } from "../common/FilterBar";
 import { LoadError } from "../common/LoadError";
 import { PageLoading } from "../common/PageLoading";
+import { SectionHeading } from "../common/SectionHeading";
 import { useCreateBar } from "../../context/CreateBarContext";
 import { useFrameGrab } from "../../hooks/useFrameGrab";
 import { useFavorites } from "../../hooks/useFavorites";
@@ -840,7 +841,10 @@ export function FolderBrowser({
         this folder, make one) collapse into the `⋯` beside it, alongside
         `Select all` for a folder nothing is picked in yet.
       */}
-      <div className="flex flex-wrap items-center gap-1.5 border-t border-line py-2 sm:gap-2">
+      {/* No `border-t` of its own: the `PageBar` and the tab strip above
+          already rule the page twice, and a third hairline here read as a
+          third bar rather than as spacing. The `py-2` keeps the rhythm. */}
+      <div className="flex flex-wrap items-center gap-1.5 py-2 sm:gap-2">
         {/*
           **Two views of one folder, and the pair is the whole control.**
 
@@ -953,7 +957,7 @@ export function FolderBrowser({
             if (event.key === "Escape") setNewFolder(null);
           }}
           aria-label="New folder"
-          className="flex flex-wrap items-center gap-2 border border-line bg-card p-3"
+          className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-card p-3"
         >
           <Text variant="caption" tone="muted">
             New folder in {prefix ?? "…"}
@@ -965,17 +969,24 @@ export function FolderBrowser({
               placeholder="folder name"
             />
           </div>
-          <Button type="submit" size="sm">
-            Create
-          </Button>
-          <Button
-            type="button"
-            intent="secondary"
-            size="sm"
-            onClick={() => setNewFolder(null)}
-          >
-            Cancel
-          </Button>
+          {/* Cancel first, the primary last and right-aligned — the order
+              every save/cancel row in the app (`FormBar`) reads in. `ml-auto`
+              rather than `justify-end` on the pair: this is a flex ITEM of a
+              wrapping row, and once the input has pushed it onto its own line
+              a margin is what puts it at the right edge. */}
+          <div className="ml-auto flex gap-2">
+            <Button
+              type="button"
+              intent="secondary"
+              size="sm"
+              onClick={() => setNewFolder(null)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" size="sm">
+              Create
+            </Button>
+          </div>
         </form>
       )}
 
@@ -1023,12 +1034,12 @@ export function FolderBrowser({
       {selection.count > 0 && (
         <div
           className="sticky top-[var(--header-h)] z-20 flex flex-wrap items-center gap-2
-                     border border-line bg-card px-3 py-2"
+                     rounded-md border border-line bg-card px-3 py-2"
         >
           <Text
-            variant="caption"
+            variant="caption" family="mono"
             tone="muted"
-            className="font-mono tabular-nums"
+            className="tabular-nums"
             aria-live="polite"
           >
             {selection.count} selected
@@ -1118,9 +1129,13 @@ export function FolderBrowser({
         </div>
       )}
 
+      {/* The three headings below are `SectionHeading`, the one every other
+          section in the app wears. They were unruled, `gap-2`, with the count
+          in body face, so the browser read as a different page from the one
+          around it. */}
       {folders.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <Text variant="title">Folders</Text>
+        <section className="flex flex-col gap-3">
+          <SectionHeading title="Folders" count={folders.length} />
           {/* A ruled list, like the files below it — not a grid of its own. A
               folder and a file are the same row shape now, so a folder of
               folders no longer reads as a different kind of listing from a
@@ -1132,6 +1147,7 @@ export function FolderBrowser({
                 name={folder.name}
                 prefix={folder.prefix}
                 link={folderPath(folder.id)}
+                owner={folder.owner}
                 onOpen={() => goToFolder(folder.id)}
                 onRename={(name) => run(renameNode(folder.id, name))}
                 onMove={() =>
@@ -1150,16 +1166,11 @@ export function FolderBrowser({
       )}
 
       {media.length > 0 && (
-        <section className="flex flex-col gap-2">
+        <section className="flex flex-col gap-3">
           {/* "Media" was the API's word for it — `kind` is image | video |
               text | other — and it leaked into the page as a heading that names
               a type union rather than a thing. */}
-          <Text variant="title">
-            Photos &amp; video{" "}
-            <span className="font-body text-sm text-muted">
-              ({media.length})
-            </span>
-          </Text>
+          <SectionHeading title="Photos & video" count={media.length} />
 
           <div className={MEDIA_GRID}>
             {media.map((file) => (
@@ -1181,9 +1192,11 @@ export function FolderBrowser({
       )}
 
       {others.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <Text variant="title">Files</Text>
-          <div className="flex flex-col gap-2">
+        <section className="flex flex-col gap-3">
+          <SectionHeading title="Files" count={others.length} />
+          {/* Flush, like the folders above: each row draws its own `border-b`,
+              and a `gap-2` between them put daylight under every hairline. */}
+          <div className="flex flex-col">
             {others.map((file) => (
               <FileRow
                 key={file.id}

@@ -1271,6 +1271,24 @@ def test_resolve_reports_the_owner_too(catalog_table, signed_in):
     assert resolved["owner"]["id"] == character["id"]
 
 
+def test_an_entity_roots_crumb_carries_its_owner(catalog_table, signed_in):
+    """The trail names a character by its name, not by the id its folder wears.
+
+    A root folder is named by the entity id, so the crumb for it is the one
+    string in a trail nobody can read. It carries the same `owner` a listing's
+    rows do; the SPA writes the name in its place.
+    """
+    character = _character("subject-a")
+    reference = _child(character["root"], "reference")
+
+    listing = _get(f"/api/nodes?under={reference['node_id']}").get_json()
+
+    root, leaf = listing["breadcrumbs"][1], listing["breadcrumbs"][2]
+    assert root["name"] == character["id"]
+    assert root["owner"] == {"kind": "character", "id": character["id"], "name": "subject-a"}
+    assert "owner" not in leaf
+
+
 # ───────────────────── the blob key an owner stamps ─────────────────────
 
 

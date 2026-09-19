@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type HTMLAttributes } from "react";
+import { createContext, useContext, useEffect, useState, type HTMLAttributes } from "react";
 
 import { useShellSidebar } from "../../context/SidebarContext";
 
@@ -15,8 +15,11 @@ import { useShellSidebar } from "../../context/SidebarContext";
  * pieces in that order; the frame places them.
  *
  * **The sidebar collapses to its rail for as long as this is up**, and comes
- * back as it was on close. `setCollapsed` is stable; what was captured on the
- * first render is what comes back.
+ * back as it was on close. Through `force`, not `setCollapsed`: the latter
+ * is the person's preference and writes to storage, so a reload or a closed
+ * tab inside a viewer used to leave the rail collapsed on every page after.
+ * The override is lifted on unmount and the stored preference stands again
+ * — which is also what a toggle pressed while the viewer was up has set.
  *
  * `md:left-16` is the rail's width. The frame is `fixed`, and a fixed box
  * cannot take the column's width for free the way a sticky one can — so it
@@ -52,14 +55,12 @@ export function ViewerFrame({
   children,
   ...rest
 }: HTMLAttributes<HTMLDivElement>) {
-  const { collapsed, setCollapsed } = useShellSidebar();
-  const restore = useRef(collapsed);
+  const { force } = useShellSidebar();
   const [lifted, setLifted] = useState(false);
   useEffect(() => {
-    const prior = restore.current;
-    setCollapsed(true);
-    return () => setCollapsed(prior);
-  }, [setCollapsed]);
+    force(true);
+    return () => force(null);
+  }, [force]);
 
   return (
     <LiftContext.Provider value={setLifted}>

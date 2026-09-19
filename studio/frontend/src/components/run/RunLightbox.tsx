@@ -445,7 +445,7 @@ function Opened({
           {flying ? (
             <div
               data-testid="in-flight-stage"
-              className={`studio-shimmer flex w-full max-w-xl flex-col items-center justify-center gap-2 border border-line ${
+              className={`studio-shimmer flex w-full max-w-xl flex-col items-center justify-center gap-2 rounded-md border border-line ${
                 row.kind === "video" ? "aspect-video" : "aspect-[3/4]"
               }`}
             >
@@ -487,7 +487,7 @@ function Opened({
                   zoomable
                   onControlsChange={onControlsChange}
                   drag={refOfOutput(row, asset, output)}
-                  className="h-full w-full border border-line"
+                  className="h-full w-full rounded-md border border-line"
                   // On a clip: the menu that takes THIS frame, beside the
                   // frame — the rail's cells are a screen down on a phone.
                   actions={
@@ -1008,12 +1008,14 @@ function RunStrip({
               aria-current={current ? "true" : undefined}
               aria-label={`Run ${relativeTime(row.created, Date.now())}${current ? " (open)" : ""}`}
               onClick={() => onSelect(row)}
-              className={`relative w-16 shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary md:w-full ${
+              // `sm` on the cell and on each of its three fills, so the ring
+              // and the frame turn the same corner.
+              className={`relative w-16 shrink-0 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary md:w-full ${
                 current ? "ring-2 ring-primary" : "opacity-70 hover:opacity-100"
               }`}
             >
               {inFlight(row.status) ? (
-                <span className="studio-shimmer flex aspect-square items-center justify-center border border-line">
+                <span className="studio-shimmer flex aspect-square items-center justify-center rounded-sm border border-line">
                   <ApertureSpinner
                     size="sm"
                     label={`Run ${row.status}`}
@@ -1032,10 +1034,10 @@ function RunStrip({
                   // squares was a strip of torsos.
                   fit="contain"
                   drag={refOfOutput(row, thumb, 0)}
-                  className=""
+                  className="rounded-sm"
                 />
               ) : (
-                <span className="flex aspect-square items-center justify-center border border-line bg-card">
+                <span className="flex aspect-square items-center justify-center rounded-sm border border-line bg-card">
                   <Text variant="caption" family="mono" tone="muted">
                     {row.status}
                   </Text>

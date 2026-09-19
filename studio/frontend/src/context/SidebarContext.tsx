@@ -12,6 +12,15 @@
 // private-mode Safari throws on the accessor, and losing the preference is a
 // worse app rather than a broken one — the same bargain `LibraryContext`
 // makes.
+//
+// **Two states, because the viewer's collapse is not a preference.** The
+// viewer used to call `setCollapsed(true)` — the same call as the toggle —
+// and a reload or a closed tab inside it left the rail collapsed on every
+// page after, with nothing the person had chosen. So the preference and an
+// override are held apart: `force` sets the override and never touches
+// storage, and what is drawn is the override while there is one. The
+// person's own toggle still persists, and clears the override, so a rail
+// expanded by hand over an open viewer stays expanded.
 import {
   createContext,
   useCallback,
@@ -26,8 +35,14 @@ export const SIDEBAR_STORAGE_KEY = "studio.sidebar.collapsed";
 
 interface ShellSidebarValue {
   collapsed: boolean;
+  /** The person's choice: drawn, and remembered. */
   setCollapsed: (collapsed: boolean) => void;
   toggle: () => void;
+  /**
+   * A transient override: drawn, never remembered. `null` lifts it and the
+   * preference stands again. The viewer's, for as long as it is up.
+   */
+  force: (collapsed: boolean | null) => void;
 }
 
 const ShellSidebarContext = createContext<ShellSidebarValue | null>(null);
@@ -52,23 +67,25 @@ function write(collapsed: boolean): void {
 export function SidebarProvider({ children }: { children: ReactNode }) {
   // Lazily, so the first render is already the stored state and the rail does
   // not open and then snap shut a frame later.
-  const [collapsed, setState] = useState<boolean>(read);
+  const [preference, setPreference] = useState<boolean>(read);
+  const [forced, setForced] = useState<boolean | null>(null);
+  const collapsed = forced ?? preference;
 
   const setCollapsed = useCallback((next: boolean) => {
     write(next);
-    setState(next);
+    setPreference(next);
+    setForced(null);
   }, []);
 
-  const toggle = useCallback(() => {
-    setState((current) => {
-      write(!current);
-      return !current;
-    });
-  }, []);
+  // Against what is DRAWN, not the stored preference: an expand pressed on
+  // a forced rail must expand it.
+  const toggle = useCallback(() => setCollapsed(!collapsed), [collapsed, setCollapsed]);
+
+  const force = useCallback((next: boolean | null) => setForced(next), []);
 
   const value = useMemo<ShellSidebarValue>(
-    () => ({ collapsed, setCollapsed, toggle }),
-    [collapsed, setCollapsed, toggle],
+    () => ({ collapsed, setCollapsed, toggle, force }),
+    [collapsed, setCollapsed, toggle, force],
   );
 
   return <ShellSidebarContext.Provider value={value}>{children}</ShellSidebarContext.Provider>;

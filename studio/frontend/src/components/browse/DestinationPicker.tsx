@@ -192,7 +192,7 @@ export function DestinationPicker({
           <SortControl value={sort} onChange={setSort} />
         </div>
 
-        <div className="min-h-40 flex-1 overflow-auto border border-line">
+        <div className="min-h-40 flex-1 overflow-auto rounded-md border border-line">
           {loading && <SectionLoading label="Loading folders" />}
 
           {!loading && (

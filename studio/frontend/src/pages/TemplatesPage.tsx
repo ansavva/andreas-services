@@ -5,6 +5,7 @@ import {
   Alert,
   Button,
   Field,
+  IconButton,
   Input,
   Tabs,
   Text,
@@ -24,11 +25,7 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
 import { FormBar } from "../components/common/FormBar";
 import { EmptyState } from "../components/common/EmptyState";
 import { EntityRow } from "../components/entity/EntityRow";
-import {
-  ChevronLeftIcon,
-  PlusIcon,
-  TemplateIcon,
-} from "../components/common/icons";
+import { PlusIcon, TemplateIcon, TrashIcon } from "../components/common/icons";
 import { CITE_TEXT } from "../components/common/citeStyle";
 import { LoadError } from "../components/common/LoadError";
 import { PageLoading } from "../components/common/PageLoading";
@@ -41,6 +38,7 @@ import { useResource } from "../hooks/useResource";
 import { useSearchParamState } from "../hooks/useSearchParamState";
 import type { TemplateLibrary, PromptTemplate } from "../types";
 import { blockNamed, citationsIn } from "../utils/citations";
+import { TEMPLATES_PATH } from "../utils/location";
 
 /**
  * The template library: the prose every prompt is assembled from.
@@ -80,13 +78,6 @@ export function TemplatesPage() {
     load,
   );
 
-  // Which tab is active decides what "New" makes — lifted here, out of
-  // `LibraryTabs`, because the button that makes one now lives in the page's
-  // own header rather than as a tile inside the list it fills.
-  const [tab, setTab] = useSearchParamState("tab", "templates");
-  const [creatingTemplate, setCreatingTemplate] = useState(false);
-  const [creatingBlock, setCreatingBlock] = useState(false);
-
   if (loading) return <PageLoading label="Loading templates" />;
   if (error)
     return (
@@ -99,50 +90,7 @@ export function TemplatesPage() {
     );
   if (!data) return null;
 
-  // The count in the bar, not repeated as a section heading under it — see
-  // `CharactersPage` for the reasoning. Whichever tab is open, because that
-  // is the count the page is actually showing.
-  const blockCount = Object.keys(data.blocks).length;
-  const shownCount = tab === "blocks" ? blockCount : data.templates.length;
-  const shownNoun = tab === "blocks" ? "block" : "template";
-
-  return (
-    <>
-      {/* No crumb — this is a top-level screen. */}
-      <PageBar
-        title="Templates"
-        meta={
-          <Text variant="caption" family="mono" tone="muted">
-            {shownCount} {shownCount === 1 ? shownNoun : `${shownNoun}s`}
-          </Text>
-        }
-        primary={
-          <Button
-            size="sm"
-            onClick={() =>
-              tab === "blocks"
-                ? setCreatingBlock(true)
-                : setCreatingTemplate(true)
-            }
-          >
-            <PlusIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
-            {tab === "blocks" ? "New block" : "New template"}
-          </Button>
-        }
-      />
-
-      <LibraryTabs
-        library={data}
-        setData={setData}
-        tab={tab}
-        setTab={setTab}
-        creatingTemplate={creatingTemplate}
-        setCreatingTemplate={setCreatingTemplate}
-        creatingBlock={creatingBlock}
-        setCreatingBlock={setCreatingBlock}
-      />
-    </>
-  );
+  return <Library library={data} setData={setData} />;
 }
 
 type SetData = (
@@ -152,25 +100,29 @@ type SetData = (
     | ((current: TemplateLibrary | null) => TemplateLibrary | null),
 ) => void;
 
-function LibraryTabs({
-  library,
-  setData,
-  tab,
-  setTab,
-  creatingTemplate,
-  setCreatingTemplate,
-  creatingBlock,
-  setCreatingBlock,
-}: {
-  library: TemplateLibrary;
-  setData: SetData;
-  tab: string;
-  setTab: (next: string) => void;
-  creatingTemplate: boolean;
-  setCreatingTemplate: (next: boolean) => void;
-  creatingBlock: boolean;
-  setCreatingBlock: (next: boolean) => void;
-}) {
+/**
+ * The page bar and the two tabs, once the library has loaded.
+ *
+ * **The bar is in here, inside the `Tabs.Root`**, so the strip can be handed
+ * to `PageBar tabs` and its underline is the bar's own hairline — drawn
+ * outside the root it was a rule under the title, a gap, and a second rule
+ * under the tabs. That is also why the tab and the "creating" flags live
+ * here rather than in `TemplatesPage`: the button that makes one is in the
+ * bar, and the bar is here.
+ *
+ * **An open editor is a crumb away from the list, not a back button.** The
+ * list and the editor are one route — `?template=` or `?block=` says which
+ * is up — so the browser's Back is not reliably the list, and the page used
+ * to draw an "All templates" button above the editor to make up for it.
+ * That is what a crumb is for: with an editor open the bar reads
+ * `Templates / <name>`, and the crumb is the list on the same tab.
+ */
+function Library({ library, setData }: { library: TemplateLibrary; setData: SetData }) {
+  // Which tab is active decides what "New" makes.
+  const [tab, setTab] = useSearchParamState("tab", "templates");
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [creatingBlock, setCreatingBlock] = useState(false);
+
   const names = useMemo(
     () => Object.keys(library.blocks).sort(),
     [library.blocks],
@@ -190,12 +142,62 @@ function LibraryTabs({
     [library.templates],
   );
 
+  // The count in the bar, not repeated as a section heading under it — see
+  // `CharactersPage` for the reasoning. Whichever tab is open, because that
+  // is the count the page is actually showing.
+  const blockCount = Object.keys(library.blocks).length;
+  const shownCount = tab === "blocks" ? blockCount : library.templates.length;
+  const shownNoun = tab === "blocks" ? "block" : "template";
+
+  // What the bar names while an editor is up, on the tab that is showing.
+  // `?tab=` rides on the crumb so the list comes back on the same tab; the
+  // `template=`/`block=` param does not, which is what closes the editor.
+  const openedName =
+    tab === "blocks" ? (openedBlock !== null ? `@block.${openedBlock}` : null) : (opened?.name ?? null);
+  const editorOpen = openedName !== null && !(tab === "blocks" ? creatingBlock : creatingTemplate);
+  const listCrumb = { label: "Templates", to: `${TEMPLATES_PATH}?tab=${tab}` };
+
   return (
+    // `defaultValue` as well as `value`, which the package requires even
+    // when controlled — the same note `CharacterPage` carries.
     <Tabs.Root value={tab} defaultValue="templates" onValueChange={setTab}>
-      <Tabs.List className="overflow-x-auto border-b border-line">
-        <Tabs.Tab value="templates">Templates</Tabs.Tab>
-        <Tabs.Tab value="blocks">Blocks</Tabs.Tab>
-      </Tabs.List>
+      <PageBar
+        // No crumb on the list — this is a top-level screen. One crumb on an
+        // editor: the list it came from.
+        crumbs={editorOpen ? [listCrumb] : undefined}
+        title={editorOpen ? openedName : "Templates"}
+        meta={
+          editorOpen ? undefined : (
+            <Text variant="caption" family="mono" tone="muted">
+              {shownCount} {shownCount === 1 ? shownNoun : `${shownNoun}s`}
+            </Text>
+          )
+        }
+        // "New" is the list's control: with an editor up the crumb is the way
+        // to the list, and a form opened over an editor under the editor's
+        // own name in the bar would say one thing and show another.
+        primary={
+          editorOpen ? undefined : (
+            <Button
+              size="sm"
+              onClick={() =>
+                tab === "blocks"
+                  ? setCreatingBlock(true)
+                  : setCreatingTemplate(true)
+              }
+            >
+              <PlusIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+              {tab === "blocks" ? "New block" : "New template"}
+            </Button>
+          )
+        }
+        tabs={
+          <Tabs.List className="overflow-x-auto border-b border-line">
+            <Tabs.Tab value="templates">Templates</Tabs.Tab>
+            <Tabs.Tab value="blocks">Blocks</Tabs.Tab>
+          </Tabs.List>
+        }
+      />
 
       <Tabs.Panel value="templates" className="flex flex-col gap-3 pt-3">
         {creatingTemplate && (
@@ -274,24 +276,12 @@ function LibraryTabs({
           )}
 
         {!creatingTemplate && opened !== null && (
-          <>
-            <div>
-              <Button
-                size="sm"
-                intent="secondary"
-                onClick={() => setOpenId("")}
-              >
-                <ChevronLeftIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
-                All templates
-              </Button>
-            </div>
-            <TemplateEditor
-              key={opened.id}
-              template={opened}
-              library={library}
-              setData={setData}
-            />
-          </>
+          <TemplateEditor
+            key={opened.id}
+            template={opened}
+            library={library}
+            setData={setData}
+          />
         )}
       </Tabs.Panel>
 
@@ -362,26 +352,14 @@ function LibraryTabs({
         )}
 
         {!creatingBlock && openedBlock !== null && (
-          <>
-            <div>
-              <Button
-                size="sm"
-                intent="secondary"
-                onClick={() => setOpenBlock("")}
-              >
-                <ChevronLeftIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
-                All blocks
-              </Button>
-            </div>
-            <BlockEditor
-              key={openedBlock}
-              name={openedBlock}
-              text={library.blocks[openedBlock] ?? ""}
-              setData={setData}
-              usedBy={citedBy(openedBlock)}
-              onDeleted={() => setOpenBlock("")}
-            />
-          </>
+          <BlockEditor
+            key={openedBlock}
+            name={openedBlock}
+            text={library.blocks[openedBlock] ?? ""}
+            setData={setData}
+            usedBy={citedBy(openedBlock)}
+            onDeleted={() => setOpenBlock("")}
+          />
         )}
       </Tabs.Panel>
     </Tabs.Root>
@@ -497,7 +475,7 @@ function NewBlockForm({
   }, [name, onCreated, text]);
 
   return (
-    <div className="flex flex-col gap-2 border border-line p-3">
+    <div className="flex flex-col gap-2 rounded-md border border-line p-3">
       <Field.Root name="new-block-name" invalid={problem !== null}>
         <Field.Label>Name</Field.Label>
         <Field.Description>
@@ -524,14 +502,8 @@ function NewBlockForm({
           <Alert.Description>{failed}</Alert.Description>
         </Alert.Root>
       ) : null}
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          onClick={() => void create()}
-          disabled={saving || problem !== null || !name || !text.trim()}
-        >
-          {saving ? "Creating…" : "Create"}
-        </Button>
+      {/* Secondary first, primary last, at the right — a form's row. */}
+      <div className="flex justify-end gap-2">
         <Button
           intent="secondary"
           size="sm"
@@ -539,6 +511,13 @@ function NewBlockForm({
           disabled={saving}
         >
           Cancel
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => void create()}
+          disabled={saving || problem !== null || !name || !text.trim()}
+        >
+          {saving ? "Creating…" : "Create"}
         </Button>
       </div>
     </div>
@@ -564,6 +543,8 @@ function BlockEditor({
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const dirty = draft !== text;
+  /** The destroy dialog a cited block gets, opened from the header's trash. */
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const save = useCallback(async () => {
     setSaving(true);
@@ -611,7 +592,7 @@ function BlockEditor({
   return (
     // The same frame the template editor draws: the name and the delete in a
     // header row, the form under it, the save bar at the foot.
-    <div className="flex flex-col gap-3 border border-line p-4">
+    <div className="flex flex-col gap-3 rounded-md border border-line p-4">
       <div className="flex items-start justify-between gap-3">
         {/* In the citation tint: the name here is the thing a pill in a
             template points at, and the same tint says so. The count is
@@ -629,16 +610,23 @@ function BlockEditor({
           a block nothing cites is one thing and arms in place; a cited one
           takes templates down with it and types its name, like any other
           entity with children.
+
+          **One trigger either way: the trash the template editor's header
+          carries.** The count decides the weight behind it, not the glyph in
+          front — a cited block's used to open its dialog from a red "Delete"
+          word, so the two editors deleted from two different-looking
+          controls in the same corner.
         */}
         {usedBy > 0 ? (
-          <ConfirmDestroyDialog
-            label="Delete"
+          <IconButton
+            label={`Delete @block.${name}`}
+            size="sm"
             disabled={saving}
-            title={`Delete @block.${name}?`}
-            summary={`${usedBy === 1 ? "1 template cites it" : `${usedBy} templates cite it`} and will refuse to draft until edited. Nothing checks that for you.`}
-            confirmWord={name}
-            onConfirm={remove}
-          />
+            onClick={() => setDeleteOpen(true)}
+            className="shrink-0 text-muted hover:text-danger"
+          >
+            <TrashIcon />
+          </IconButton>
         ) : (
           <ConfirmDeleteButton
             noun={`@block.${name}`}
@@ -647,6 +635,18 @@ function BlockEditor({
           />
         )}
       </div>
+
+      {usedBy > 0 && (
+        <ConfirmDestroyDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          label="Delete"
+          title={`Delete @block.${name}?`}
+          summary={`${usedBy === 1 ? "1 template cites it" : `${usedBy} templates cite it`} and will refuse to draft until edited. Nothing checks that for you.`}
+          confirmWord={name}
+          onConfirm={remove}
+        />
+      )}
 
       {removeFailed ? (
         <Alert.Root intent="danger" onDismiss={() => setRemoveFailed(null)}>
@@ -736,7 +736,7 @@ function NewTemplateForm({
   }, [name, onCreated]);
 
   return (
-    <div className="flex flex-col gap-2 border border-line p-3">
+    <div className="flex flex-col gap-2 rounded-md border border-line p-3">
       <Field.Root name="new-template-name">
         <Field.Label>Name</Field.Label>
         <Field.Description>What you will pick it by.</Field.Description>
@@ -748,14 +748,8 @@ function NewTemplateForm({
           <Alert.Description>{failed}</Alert.Description>
         </Alert.Root>
       ) : null}
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          disabled={!name.trim() || saving}
-          onClick={() => void create()}
-        >
-          {saving ? "Creating…" : "Create"}
-        </Button>
+      {/* Secondary first, primary last, at the right — a form's row. */}
+      <div className="flex justify-end gap-2">
         <Button
           size="sm"
           intent="secondary"
@@ -763,6 +757,13 @@ function NewTemplateForm({
           onClick={onCancel}
         >
           Cancel
+        </Button>
+        <Button
+          size="sm"
+          disabled={!name.trim() || saving}
+          onClick={() => void create()}
+        >
+          {saving ? "Creating…" : "Create"}
         </Button>
       </div>
     </div>
@@ -878,15 +879,17 @@ function TemplateEditor({
   }, [template, description, name, prompt, tags, setData]);
 
   return (
-    <div className="flex flex-col gap-3 border border-line p-4">
+    <div className="flex flex-col gap-3 rounded-md border border-line p-4">
       {/* **No plate.** A template used to carry an `illustration` — a picture
           of the orientation it shot — because every template WAS an orientation
           of a standard set. A template is any prompt somebody wrote now, and
           most will never have such a picture; a field that only fourteen rows
           could fill is a field that reads as missing on everything else. */}
+      {/* No title of its own: the page bar names the open template, and a
+          heading here was the name a second time, over a Name field that
+          holds it a third. */}
       <div className="flex items-start gap-3">
         <div className="flex flex-1 flex-col gap-2">
-          <Text variant="title">{name || template.name}</Text>
           <div className="grid gap-2 sm:grid-cols-2">
             <Field.Root name={`template-name-${template.id}`}>
               <Field.Label>Name</Field.Label>

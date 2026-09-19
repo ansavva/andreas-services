@@ -141,7 +141,7 @@ export function TokenizedPromptEditor({
   tokens,
   ariaLabel,
   placeholder = "Write the prompt… type @ to cite a block or a character.",
-  className = "border border-line p-2",
+  className = "rounded-md border border-line p-2",
   contentClassName = "min-h-24",
   onSubmit,
   focusKey,

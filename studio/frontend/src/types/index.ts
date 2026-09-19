@@ -183,6 +183,12 @@ export interface Crumb {
   id: string;
   name: string;
   prefix: string;
+  /**
+   * The entity whose root folder this is, when it is one. A root is named by
+   * the entity's id, so the crumb is unreadable without this — `describeFolder`
+   * writes the owner's name in its place.
+   */
+  owner?: NodeOwner | null;
 }
 
 /**
