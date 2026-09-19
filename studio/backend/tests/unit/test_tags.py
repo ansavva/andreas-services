@@ -29,7 +29,7 @@ def _tagged(api, character, name, tags):
 
 def _template(api, template_id, tags):
     resp = api.patch(f"/api/templates/{template_id}", json={
-        "name": template_id, "prompt": "{block.x}",
+        "name": template_id, "prompt": "@block.x",
         "description": "what it makes", "tags": list(tags),
     })
     assert resp.status_code == 200, resp.get_data(as_text=True)

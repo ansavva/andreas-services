@@ -132,7 +132,7 @@ test("a template picked lands in the box FILLED, and there is no preview to open
   const box = page.getByRole("textbox", { name: "Prompt", exact: true });
   await box.click();
   await page.getByRole("button", { name: "Template", exact: true }).click();
-  await page.getByRole("button", { name: /Face, front/ }).first().click();
+  await page.getByRole("option", { name: /Face, front/ }).first().click();
 
   // The template travelled; the ANSWER is what the box holds.
   await expect.poll(() => spell(wrote(calls))).toEqual([
@@ -140,7 +140,7 @@ test("a template picked lands in the box FILLED, and there is no preview to open
   ]);
   await expect(box).toContainText(EXPANDED);
   // No citation is left to read behind an icon, which is why there is no icon.
-  await expect(box).not.toContainText("{block.");
+  await expect(box).not.toContainText("@block.");
   await expect(page.getByRole("button", { name: "Preview" })).toHaveCount(0);
 
   expect(escaped(calls, page)).toEqual([]);

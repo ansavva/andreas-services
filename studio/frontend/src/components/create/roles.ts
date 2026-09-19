@@ -102,9 +102,9 @@ export function anyPending(attachments: readonly Attachment[]): boolean {
  * Who the run is about, in the order a prompt counts them.
  *
  * The characters whose images are attached come first — those are the ones a
- * `{character.1.profile}` most plausibly means — and the project's own cast
+ * `@character.1.profile` most plausibly means — and the project's own cast
  * follows, so a run with no attachments still binds somebody a template can
- * cite. `{character.N.…}` is positional, which is why this is an ordered list
+ * cite. `@character.N.…` is positional, which is why this is an ordered list
  * with no duplicates rather than a set.
  */
 export function castOf(

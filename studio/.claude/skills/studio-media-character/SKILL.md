@@ -429,10 +429,10 @@ studio templates push --path t.yaml      # file  -> stack (refuses a conflict)
 - **The prompts are DATA, not part of this package.** They live in the library as
   rows, the app edits them, and `studio templates pull` / `push` move them
   between stacks — so a wording fix is not a release.
-- **A template names its cast by POSITION.** `{character.1.top}` is the first
+- **A template names its cast by POSITION.** `@character.1.top` is the first
   character the run binds — the same number `[Image1]` counts. A name would be
   wrong the moment somebody renamed the character.
-- **`build` and `must` name a variant**: `{character.1.build.face}`. The bible
+- **`build` and `must` name a variant**: `@character.1.build.face`. The bible
   answers both differently for a face than for a body, and citing the bare name
   is refused rather than defaulted, because a face template silently filled with
   body proportions is wrong in a way the finished prose does not show.
@@ -496,7 +496,7 @@ Two things that follow:
   is which by position.
 - **Drop the build prose once the images carry it.** A body description in the
   prompt argues with the photograph; when the reference set has real full-length
-  material, the body templates' `{character.1.build.body}` block is worth
+  material, the body templates' `@character.1.build.body` block is worth
   removing from the run rather than tuning.
 
 ### Making a matched pair without a second render

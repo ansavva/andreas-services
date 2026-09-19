@@ -980,7 +980,7 @@ export function createRun(body: CreateRunBody) {
  * **A run's cast could only be set at creation, and the app never set it.** The
  * characters are edges — `RUN#<id>` / `CHAR#<id>` — and `POST /api/runs` was
  * the only writer, so every run the app made bound nobody and could not cite
- * one: a prompt names its cast by position, and `{character.1.top}` had nothing
+ * one: a prompt names its cast by position, and `@character.1.top` had nothing
  * to fill from with no way to supply it.
  *
  * A replace, like every other edge set: a client that sent a difference and got

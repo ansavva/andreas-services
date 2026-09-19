@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import {
   Alert,
   Button,
-  Collapsible,
   Field,
   Input,
   Tabs,
@@ -26,10 +25,11 @@ import { FormBar } from "../components/common/FormBar";
 import { EmptyState } from "../components/common/EmptyState";
 import { EntityRow } from "../components/entity/EntityRow";
 import {
-  ChevronDownIcon,
   ChevronLeftIcon,
   PlusIcon,
+  TemplateIcon,
 } from "../components/common/icons";
+import { CITE_TEXT } from "../components/common/citeStyle";
 import { LoadError } from "../components/common/LoadError";
 import { PageLoading } from "../components/common/PageLoading";
 import { TagSelect } from "../components/common/TagSelect";
@@ -40,7 +40,7 @@ import { PageBar } from "../components/layout/PageBar";
 import { useResource } from "../hooks/useResource";
 import { useSearchParamState } from "../hooks/useSearchParamState";
 import type { TemplateLibrary, PromptTemplate } from "../types";
-import { ENTITY_GRID } from "../utils/grid";
+import { blockNamed, citationsIn } from "../utils/citations";
 
 /**
  * The template library: the prose every prompt is assembled from.
@@ -179,6 +179,16 @@ function LibraryTabs({
   // the app — so a reload and a shared link land on the same editor.
   const [openId, setOpenId] = useSearchParamState("template", "");
   const opened = library.templates.find((each) => each.id === openId) ?? null;
+  // The open block, the same way: its name is its identity.
+  const [openName, setOpenBlock] = useSearchParamState("block", "");
+  const openedBlock = openName in library.blocks ? openName : null;
+  const citedBy = useCallback(
+    (name: string) =>
+      library.templates.filter((a) =>
+        citations(a.prompt).some((c) => blockNamed(c) === name),
+      ).length,
+    [library.templates],
+  );
 
   return (
     <Tabs.Root value={tab} defaultValue="templates" onValueChange={setTab}>
@@ -223,21 +233,37 @@ function LibraryTabs({
 
         {/* A list first, like every other listing: one row per template by
             name, and the editor only for the one that is open. Fourteen open
-            editors stacked was fourteen screens to find one. */}
+            editors stacked was fourteen screens to find one.
+
+            The rows are `EntityRow`, drawn as every other list draws them —
+            flush, ruled, no gap, an icon where a scene has its thumbnail —
+            rather than the spaced mono rows they were, which looked like
+            nothing else in the app. The tags trail in mono, not as badges:
+            five badges on every row was a row of chrome with a name in it,
+            and a tag is a value here rather than a status. */}
         {!creatingTemplate &&
           opened === null &&
           library.templates.length > 0 && (
-            <div className="flex flex-col gap-2" aria-label="Templates">
+            <div className="flex flex-col" aria-label="Templates">
               {library.templates.map((template) => (
                 <EntityRow
                   key={template.id}
                   title={template.name}
-                  subtitle={template.prompt.trim().split("\n")[0] ?? ""}
-                  mono
+                  subtitle={firstLine(template.prompt)}
+                  thumb={{
+                    icon: (
+                      <TemplateIcon className="size-5 shrink-0 fill-none stroke-muted stroke-[1.5]" />
+                    ),
+                  }}
                   onOpen={() => setOpenId(template.id)}
                   trailing={
                     template.tags.length > 0 ? (
-                      <Text variant="caption" family="mono" tone="muted">
+                      <Text
+                        variant="caption"
+                        family="mono"
+                        tone="muted"
+                        className="max-md:hidden"
+                      >
                         {template.tags.join(" · ")}
                       </Text>
                     ) : undefined
@@ -270,7 +296,28 @@ function LibraryTabs({
       </Tabs.Panel>
 
       <Tabs.Panel value="blocks" className="flex flex-col gap-3 pt-3">
-        {!creatingBlock && names.length === 0 ? (
+        {creatingBlock && (
+          <NewBlockForm
+            taken={names}
+            onCreated={(saved) => {
+              setData((current) =>
+                current
+                  ? {
+                      ...current,
+                      blocks: {
+                        ...current.blocks,
+                        [saved.name]: saved.text,
+                      },
+                    }
+                  : current,
+              );
+              setCreatingBlock(false);
+            }}
+            onCancel={() => setCreatingBlock(false)}
+          />
+        )}
+
+        {!creatingBlock && names.length === 0 && (
           <EmptyState
             title="No blocks yet."
             hint="A block is shared prose a template cites by name — add one to give a template something to point at."
@@ -281,53 +328,60 @@ function LibraryTabs({
               </Button>
             }
           />
-        ) : (
-          /*
-            **A grid, and the prose is the content.** These were full-width rows
-            carrying one truncated line each, so eighteen blocks were eighteen
-            screens of chrome and almost none of the words — on a tab whose entire
-            job is showing the words. Narrower columns fit more lines of each and
-            more blocks at once; an opened one takes the full width, because
-            editing a paragraph in a third of a screen is the opposite problem.
+        )}
 
-            `ENTITY_GRID` — the same rhythm every card grid in the app now draws.
-          */
-          <div className={ENTITY_GRID}>
-            {creatingBlock && (
-              <NewBlockForm
-                taken={names}
-                className="sm:col-span-2 lg:col-span-3"
-                onCreated={(saved) => {
-                  setData((current) =>
-                    current
-                      ? {
-                          ...current,
-                          blocks: {
-                            ...current.blocks,
-                            [saved.name]: saved.text,
-                          },
-                        }
-                      : current,
-                  );
-                  setCreatingBlock(false);
-                }}
-                onCancel={() => setCreatingBlock(false)}
-              />
-            )}
+        {/* The same shape as the Templates tab, and as every list in the app:
+            one ruled row per block, the editor only for the one that is open.
+            It was a grid of collapsible cards showing six lines of each — a
+            third shape of list on a page that already had two, and the one
+            screen in the app where a name did not open a page. A row says
+            how many templates cite it, because that is what a person needs
+            to know before opening one to edit. */}
+        {!creatingBlock && openedBlock === null && names.length > 0 && (
+          <div className="flex flex-col" aria-label="Blocks">
             {names.map((name) => (
-              <BlockEditor
+              <EntityRow
                 key={name}
-                name={name}
-                text={library.blocks[name] ?? ""}
-                setData={setData}
-                usedBy={
-                  library.templates.filter((a) =>
-                    citations(a.prompt).some((c) => blockNamed(c) === name),
-                  ).length
+                title={`@block.${name}`}
+                mono
+                subtitle={firstLine(library.blocks[name] ?? "")}
+                thumb={{
+                  icon: (
+                    <TemplateIcon className="size-5 shrink-0 fill-none stroke-muted stroke-[1.5]" />
+                  ),
+                }}
+                onOpen={() => setOpenBlock(name)}
+                trailing={
+                  <Text variant="caption" family="mono" tone="muted">
+                    {citedBy(name) === 1 ? "1 template" : `${citedBy(name)} templates`}
+                  </Text>
                 }
               />
             ))}
           </div>
+        )}
+
+        {!creatingBlock && openedBlock !== null && (
+          <>
+            <div>
+              <Button
+                size="sm"
+                intent="secondary"
+                onClick={() => setOpenBlock("")}
+              >
+                <ChevronLeftIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+                All blocks
+              </Button>
+            </div>
+            <BlockEditor
+              key={openedBlock}
+              name={openedBlock}
+              text={library.blocks[openedBlock] ?? ""}
+              setData={setData}
+              usedBy={citedBy(openedBlock)}
+              onDeleted={() => setOpenBlock("")}
+            />
+          </>
         )}
       </Tabs.Panel>
     </Tabs.Root>
@@ -335,7 +389,7 @@ function LibraryTabs({
 }
 
 /**
- * Which `{placeholders}` a template cites, in the order it cites them.
+ * Which `@citations` a template makes, each once, in the order it makes them.
  *
  * Shown next to every template because one naming a block nobody wrote is
  * the failure this screen makes possible: deleting a block is one click, and the
@@ -343,9 +397,12 @@ function LibraryTabs({
  * that into something visible now rather than a refusal later.
  */
 function citations(prompt: string): string[] {
-  const found =
-    prompt.match(/\{[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*\}/g) ?? [];
-  return Array.from(new Set(found.map((token) => token.slice(1, -1))));
+  return Array.from(new Set(citationsIn(prompt).map((each) => each.name)));
+}
+
+/** The first line of a prompt — what a row shows of it. */
+function firstLine(prompt: string): string {
+  return prompt.trim().split("\n")[0] ?? "";
 }
 
 /**
@@ -358,7 +415,7 @@ function citations(prompt: string): string[] {
  * called `angle_slot` won or lost depending on whether the template bound a plate.
  */
 /**
- * What `{character.N.…}` may cite, positionally.
+ * What `@character.N.…` may cite, positionally.
  *
  * **`build` and `must` name a VARIANT.** The bible answers both differently for
  * a face than for a body — a face crops at mid-chest, so the proportions below
@@ -386,12 +443,6 @@ const POSITIONS = [1, 2, 3];
 //: thing they existed to record. `anchor` went with the chaining it described.
 const SLOT = ["identity"];
 
-/** The block a citation names, whichever way it is spelled. */
-function blockNamed(cited: string): string | null {
-  if (cited.startsWith("block.")) return cited.slice(6);
-  return cited.includes(".") ? null : cited;
-}
-
 /**
  * Write a block that does not exist yet.
  *
@@ -400,26 +451,24 @@ function blockNamed(cited: string): string | null {
  * whole point of it. So creating and editing are the same call, and this is a
  * form rather than a second route.
  *
- * **The name rule is the citation rule.** A block is cited as `{block.<name>}`
- * and a dot in a format field is attribute access, so a name that is not an
- * identifier is a block nothing can ever name. The API refuses one; saying so
- * here means finding out while typing rather than on save.
+ * **The name rule is the citation rule.** A block is cited as `@block.<name>`
+ * and a citation ends where a name does, so a name that is not an identifier
+ * is a block nothing can ever name. The API refuses one; saying so here means
+ * finding out while typing rather than on save.
  *
  * **Controlled by the caller now.** This used to open its own dashed tile and
  * hold its own `open` state; the tile is gone and "New block" lives in the
- * page's own header, above the grid it fills, so mounting this form at all
+ * page's own header, above the list it fills, so mounting this form at all
  * IS the open state.
  */
 function NewBlockForm({
   taken,
   onCreated,
   onCancel,
-  className = "",
 }: {
   taken: string[];
   onCreated: (saved: { name: string; text: string }) => void;
   onCancel: () => void;
-  className?: string;
 }) {
   const [name, setName] = useState("");
   const [text, setText] = useState("");
@@ -448,13 +497,15 @@ function NewBlockForm({
   }, [name, onCreated, text]);
 
   return (
-    <div
-      className={`flex h-full flex-col gap-2 border border-line p-2 ${className}`.trim()}
-    >
+    <div className="flex flex-col gap-2 border border-line p-3">
       <Field.Root name="new-block-name" invalid={problem !== null}>
         <Field.Label>Name</Field.Label>
         <Field.Description>
-          Cited as {`{block.${name || "name"}}`}.
+          Cited as{" "}
+          <span className={`font-mono ${CITE_TEXT.block}`}>
+            @block.{name || "name"}
+          </span>
+          .
         </Field.Description>
         <Input value={name} onValueChange={setName} className="font-mono" />
         {problem ? <Field.Error>{problem}</Field.Error> : null}
@@ -499,14 +550,16 @@ function BlockEditor({
   text,
   setData,
   usedBy,
+  onDeleted,
 }: {
   name: string;
   text: string;
   setData: SetData;
   /** How many templates cite this block. Shown BEFORE the box, not after a save. */
   usedBy: number;
+  /** The row is gone, so the editor has nothing to show — back to the list. */
+  onDeleted: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(text);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -546,150 +599,88 @@ function BlockEditor({
         delete blocks[name];
         return { ...current, blocks };
       });
+      onDeleted();
     } catch (problem) {
       setRemoveFailed(
         problem instanceof Error ? problem.message : String(problem),
       );
       setSaving(false);
     }
-  }, [name, setData]);
+  }, [name, onDeleted, setData]);
 
   return (
-    // `h-full`, and no `items-start` on the grid: the cells in a row are as tall
-    // as the tallest, so a one-line block beside a paragraph leaves a hole
-    // rather than a short box. Ragged bottoms read as a layout fault.
-    <div
-      className={`flex h-full flex-col border border-line ${open ? "md:col-span-full" : ""}`}
-    >
-      <Collapsible.Root
-        open={open}
-        onOpenChange={setOpen}
-        className="flex flex-1 flex-col"
-      >
+    // The same frame the template editor draws: the name and the delete in a
+    // header row, the form under it, the save bar at the foot.
+    <div className="flex flex-col gap-3 border border-line p-4">
+      <div className="flex items-start justify-between gap-3">
+        {/* In the block hue: the name here is the thing a violet pill in
+            a template points at, and the same colour says so. The count is
+            not repeated under it — the row said it, and the line under the
+            header says it again where it matters, before the box. */}
+        <Text variant="title" family="mono" className={CITE_TEXT.block}>
+          @block.{name}
+        </Text>
         {/*
-          The trigger carries the name and the count; delete sits beside it
-          rather than inside it — a delete control nested in the disclosure's
-          own `<button>` would be a button inside a button. It is reachable
-          collapsed or open now, where it used to live only inside the open
-          panel.
+          **Nothing checks whether a template still cites it, and that is the
+          route's deliberate position** — a template names its blocks in
+          prose, so the only honest check is to assemble every template and see
+          what fails, which the assembly does loudly. What this screen CAN do
+          is weigh the confirmation by the count, because it already knows it:
+          a block nothing cites is one thing and arms in place; a cited one
+          takes templates down with it and types its name, like any other
+          entity with children.
         */}
-        <div className="flex items-start justify-between gap-2 px-2 py-1.5">
-          <Collapsible.Trigger className="min-w-0 flex-1 items-start justify-between gap-2">
-            <span className="flex min-w-0 flex-col gap-0.5 text-left">
-              <Text variant="title" family="mono">{`{${name}}`}</Text>
-              <Text variant="caption" tone="muted" family="mono">
-                ({usedBy === 1 ? "1 template" : `${usedBy} templates`})
-              </Text>
-            </span>
-            <ChevronDownIcon
-              className={`size-4 shrink-0 fill-none stroke-current stroke-[1.5] transition-transform
-                          motion-reduce:transition-none ${open ? "rotate-180" : ""}`}
-            />
-          </Collapsible.Trigger>
-          {/*
-            **Nothing checks whether a template still cites it, and that is the
-            route's deliberate position** — a template names its blocks in
-            prose, so the only honest check is to assemble every template and see
-            what fails, which the assembly does loudly. What this screen CAN do
-            is weigh the confirmation by the count, because it already knows it:
-            a block nothing cites is one thing and arms in place; a cited one
-            takes templates down with it and types its name, like any other
-            entity with children.
-          */}
-          {usedBy > 0 ? (
-            <ConfirmDestroyDialog
-              label="Delete"
-              disabled={saving}
-              title={`Delete {${name}}?`}
-              summary={`${usedBy === 1 ? "1 template cites it" : `${usedBy} templates cite it`} and will refuse to draft until edited. Nothing checks that for you.`}
-              confirmWord={name}
-              onConfirm={remove}
-            />
-          ) : (
-            <ConfirmDeleteButton
-              tone="text"
-              noun={`{${name}}`}
-              onConfirm={remove}
-              disabled={saving}
-            />
-          )}
-        </div>
+        {usedBy > 0 ? (
+          <ConfirmDestroyDialog
+            label="Delete"
+            disabled={saving}
+            title={`Delete @block.${name}?`}
+            summary={`${usedBy === 1 ? "1 template cites it" : `${usedBy} templates cite it`} and will refuse to draft until edited. Nothing checks that for you.`}
+            confirmWord={name}
+            onConfirm={remove}
+          />
+        ) : (
+          <ConfirmDeleteButton
+            noun={`@block.${name}`}
+            onConfirm={remove}
+            disabled={saving}
+          />
+        )}
+      </div>
 
-        {removeFailed ? (
-          <div className="px-2 pb-2">
-            <Alert.Root intent="danger" onDismiss={() => setRemoveFailed(null)}>
-              <Alert.Title>Could not delete the block</Alert.Title>
-              <Alert.Description>{removeFailed}</Alert.Description>
-            </Alert.Root>
-          </div>
-        ) : null}
+      {removeFailed ? (
+        <Alert.Root intent="danger" onDismiss={() => setRemoveFailed(null)}>
+          <Alert.Title>Could not delete the block</Alert.Title>
+          <Alert.Description>{removeFailed}</Alert.Description>
+        </Alert.Root>
+      ) : null}
 
-        {/*
-          Collapsed by default, and collapsed still SHOWS the prose — six lines
-          of it rather than one truncated line. A block is a paragraph and the
-          question this tab answers is what it says; a name and an ellipsis
-          answered nothing and took a full row to do it.
-        */}
-        {!open ? (
-          <Text
-            variant="caption"
-            tone="muted"
-            className="line-clamp-6 whitespace-pre-wrap px-2 pb-2"
-          >
-            {text}
-          </Text>
-        ) : null}
-
-        <Collapsible.Panel>
-          <div
-            className="flex flex-col gap-2 px-2 pb-2 text-ink"
-            // Escape closes, which is what a person tries first in a box that
-            // opened over the thing they were reading. The header toggles too,
-            // and did before this — but a header that gives no sign it is a
-            // control is a way out only for whoever wrote it.
-            onKeyDown={(event) => {
-              if (event.key === "Escape") setOpen(false);
-            }}
-          >
-            {/* Said before the edit, not after it. A block reads as local until
-                you know it is not, and a shared edit noticed on save is noticed
-                too late. */}
-            {usedBy > 1 ? (
-              <Text tone="muted">
-                Shared — editing this changes {usedBy} templates.
-              </Text>
-            ) : null}
-            <Field.Root name={`block-${name}`}>
-              <AutoTextarea
-                value={draft}
-                onValueChange={setDraft}
-                className="font-mono"
-              />
-            </Field.Root>
-            {/* Close is kept off the save row: it shuts the expander, not the
-                form. Nothing is lost by closing — the draft lives on this
-                component, which stays mounted, until it is saved or reverted. */}
-            <div className="flex justify-end">
-              <Button
-                intent="secondary"
-                size="sm"
-                onClick={() => setOpen(false)}
-                disabled={saving}
-              >
-                Close
-              </Button>
-            </div>
-            <FormBar
-              dirty={dirty}
-              saving={saving}
-              onSave={() => void save()}
-              onRevert={() => setDraft(text)}
-              error={failed}
-              errorTitle="Could not save the block"
-            />
-          </div>
-        </Collapsible.Panel>
-      </Collapsible.Root>
+      {/* Said before the edit, not after it. A block reads as local until
+          you know it is not, and a shared edit noticed on save is noticed
+          too late. */}
+      <Text tone="muted">
+        {usedBy === 0
+          ? "Nothing cites this yet."
+          : usedBy === 1
+            ? "1 template cites this."
+            : `Shared — editing this changes ${usedBy} templates.`}
+      </Text>
+      <Field.Root name={`block-${name}`}>
+        <Field.Label>Text</Field.Label>
+        <AutoTextarea
+          value={draft}
+          onValueChange={setDraft}
+          className="font-mono"
+        />
+      </Field.Root>
+      <FormBar
+        dirty={dirty}
+        saving={saving}
+        onSave={() => void save()}
+        onRevert={() => setDraft(text)}
+        error={failed}
+        errorTitle="Could not save the block"
+      />
     </div>
   );
 }
@@ -730,7 +721,7 @@ function NewTemplateForm({
         // A prompt is required by the route, so a new one starts as the thing
         // every template here has in common rather than as an empty box the
         // save would refuse.
-        prompt: "{block.quality}",
+        prompt: "@block.quality",
         description: "What the image this makes shows.",
         tags: ["untagged"],
       });
@@ -835,13 +826,6 @@ function TemplateEditor({
         name: `slot.${name}`,
         kind: "computed" as const,
       })),
-      // Not offered, still drawn — every template written before the namespaces
-      // uses the bare spelling and has to keep looking like what it is.
-      ...blocks.map(([name]) => ({
-        name,
-        kind: "block" as const,
-        legacy: true,
-      })),
     ];
   }, [library.blocks]);
   const unknown = useMemo(
@@ -851,8 +835,8 @@ function TemplateEditor({
         if (block !== null) return !(block in library.blocks);
         const [space, ...rest] = name.split(".");
         if (space === "character") {
-          // `{character.N.…}` — the position first, then the field, which
-          // may itself name a variant (`build.face`). A bare `{character.top}`
+          // `@character.N.…` — the position first, then the field, which
+          // may itself name a variant (`build.face`). A bare `@character.top`
           // has no position and is exactly what the fill refuses, so it lands
           // here as unknown, which is the right answer.
           const [at, ...field] = rest;
@@ -961,21 +945,26 @@ function TemplateEditor({
             {/* A description here as well as on the preview, so both columns'
                 headers are the same height and the two boxes line up. */}
             <Field.Description>
-              Type {"{"} to insert a placeholder, or write one out in full.
+              Type @ to cite a block or a character, or write one out in full.
             </Field.Description>
             {/* Pills, not characters. A template is text with named holes, and
-                typed by hand a mistyped `{face_onl}` looked exactly like a
-                correct one and did not fail until the template was drafted and
-                refused. Typed or taken from the `{` menu, it becomes a pill
-                only if it names something.
+                typed by hand a mistyped `@block.face_onl` looked exactly like
+                a correct one and did not fail until the template was drafted
+                and refused. Typed or taken from the `@` menu, it becomes a
+                pill only if it names something.
 
                 The value is still the same plain string — see the editor's own
-                note on why the round trip has to be byte-exact. */}
+                note on why the round trip has to be byte-exact.
+
+                `cite-wash`: the blurred wash of the three citation hues, under
+                the prose. This box is the one place the chrome has a colour,
+                and `styles/app.css` says why it is this one. */}
             <TokenizedPromptEditor
               value={prompt}
               onValueChange={setPrompt}
               tokens={promptTokens}
               ariaLabel={`Prompt for ${template.name}`}
+              className="cite-wash rounded-md border border-line p-3"
             />
           </Field.Root>
           <PromptPreview prompt={prompt} blocks={library.blocks} />

@@ -1219,11 +1219,12 @@ export function TemplateChip({
         ),
       }}
       label="Templates"
-      className={`${MENU_DOWN} w-[min(28rem,calc(100vw-2rem))] max-w-none p-0`}
+      className={`${MENU_DOWN} ${MENU_MAX_H} w-[min(24rem,calc(100vw-2rem))] max-w-none overflow-y-auto p-2`}
     >
-      {() => (
+      {(focus) => (
         <TemplateList
           cast={cast}
+          autoFocus={focus}
           onPick={(prompt) => {
             onPick(prompt);
             setOpen(false);

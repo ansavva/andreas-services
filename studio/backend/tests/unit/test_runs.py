@@ -1238,7 +1238,7 @@ def test_a_plan_TEMPLATE_is_expanded_at_save_and_NOT_kept(api):
     run = _run_with_cast(api)
     got = api.patch(f"/api/runs/{run['id']}/plan", json={"plan": {
         "version": 1, "origin": "authored", "params": {},
-        "template": "He wears {character.1.top}.",
+        "template": "He wears @character.1.top.",
     }}).get_json()
 
     assert "template" not in got["plan"]
@@ -1258,7 +1258,7 @@ def test_a_prompt_hashes_the_same_however_it_was_WRITTEN(api):
     templated = _run_with_cast(api)
     filled = api.patch(f"/api/runs/{templated['id']}/plan", json={"plan": {
         "version": 1, "origin": "authored", "params": {},
-        "template": "He wears {character.1.top}.",
+        "template": "He wears @character.1.top.",
     }}).get_json()
 
     typed = _run_with_cast(api)
@@ -1284,7 +1284,7 @@ def test_a_plan_WITHOUT_a_template_is_written_exactly_as_it_arrives(api):
 
 
 def test_the_cast_is_numbered_by_the_runs_own_binding(api):
-    """`{character.1}` is the first character bound to THIS run.
+    """`@character.1` is the first character bound to THIS run.
 
     Numbered rather than named: a slug is an attribute a rename swaps, and every
     record here names entity ids for that reason. A prompt citing a name would
@@ -1293,7 +1293,7 @@ def test_the_cast_is_numbered_by_the_runs_own_binding(api):
     run = _run_with_cast(api, count=2)
     got = api.patch(f"/api/runs/{run['id']}/plan", json={"plan": {
         "version": 1, "origin": "authored", "params": {},
-        "template": "{character.1.top} :: {character.2.top}",
+        "template": "@character.1.top :: @character.2.top",
     }}).get_json()
     assert "crew-neck tee" in got["plan"]["prompt"].split("::")[0]
     assert "work jacket" in got["plan"]["prompt"].split("::")[1]
@@ -1303,7 +1303,7 @@ def test_citing_a_character_the_run_does_not_bind_is_a_400_naming_the_range(api)
     run = _run_with_cast(api)
     resp = api.patch(f"/api/runs/{run['id']}/plan", json={"plan": {
         "version": 1, "origin": "authored", "params": {},
-        "template": "{character.4.top}",
+        "template": "@character.4.top",
     }})
     assert resp.status_code == 400
     assert "1 character(s)" in resp.get_json()["error"]
@@ -1313,7 +1313,7 @@ def test_a_run_that_records_no_character_still_has_a_CAST(api):
     """**`characters` is written at creation and nowhere else.**
 
     A run built by adding a character's references in the editor binds six of
-    that character's photographs and records nobody — so `{character.1.top}`
+    that character's photographs and records nobody — so `@character.1.top`
     had nothing to fill from on exactly the runs most likely to want it. A
     reference image belongs to a character by its ancestry, which `owner_of`
     already resolves for every listing, so the answer is there to be read.
@@ -1341,7 +1341,7 @@ def test_a_run_that_records_no_character_still_has_a_CAST(api):
     # And the template can fill from it.
     filled = api.patch(f"/api/runs/{run['id']}/plan", json={"plan": {
         "version": 1, "origin": "authored", "params": {},
-        "template": "He wears {character.1.top}.",
+        "template": "He wears @character.1.top.",
     }}).get_json()
     assert "crew-neck tee" in filled["plan"]["prompt"]
 

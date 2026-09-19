@@ -44,14 +44,33 @@ bp = Blueprint("templates", __name__, url_prefix="/api")
 
 @bp.get("/templates")
 def read_templates():
-    """Every block and every template, by name."""
+    """Every block and every template, by name.
+
+    **Every prompt comes back in the `@` spelling**, whatever the row holds.
+    Rows written before 2026-09-18 cite `{block.x}`; the editor draws `@block.x`
+    and opens its menu on `@`, so a row handed over unconverted would show as
+    prose with braces in it and its citations would not be pills. Rewriting on
+    read means the app never sees the old spelling, and the first save of such
+    a row stores the new one — see `put_template`.
+    """
     held = support.memberships()
     support.member_of(g.library, held)
-    return jsonify(catalog.templates(g.library)), 200
+    return jsonify(_modernised(catalog.templates(g.library))), 200
+
+
+def _modernised(library: dict) -> dict:
+    """`library`, every template's prompt in the `@` spelling."""
+    return {
+        **library,
+        "templates": [
+            {**each, "prompt": templating.modernise(each.get("prompt") or "")}
+            for each in library["templates"]
+        ],
+    }
 
 
 #: What a block may be called. The same rule a Python identifier follows,
-#: because `{block.<name>}` resolves by attribute access.
+#: because `@block.<name>` is read one dotted member at a time.
 BLOCK_NAME = re.compile(r"[a-z_][a-z0-9_]*")
 
 
@@ -77,15 +96,15 @@ def put_block(name: str):
     if not isinstance(text, str) or not text.strip():
         raise ValidationError("text is required")
     if not BLOCK_NAME.fullmatch(name):
-        # **A block is cited as `{block.<name>}`, and a dot in a format field is
-        # attribute access** — so a name that is not a Python identifier is a
-        # block nothing can ever cite. `#` was the only thing refused here, and
-        # it let somebody create `2fast` or `a-b`: rows that exist, appear in the
+        # **A block is cited as `@block.<name>`, and a citation ends where a
+        # name does** — so a name that is not an identifier is a block nothing
+        # can ever cite. `#` was the only thing refused here, and it let
+        # somebody create `2fast` or `a-b`: rows that exist, appear in the
         # menu, and fail the moment a template names them.
         raise ValidationError(
             "a block name must be lowercase letters, digits and underscores, "
             "starting with a letter or underscore — it is cited as "
-            "{block.<name>}, and anything else cannot be")
+            "@block.<name>, and anything else cannot be")
     return jsonify(catalog.put_spec_block(g.library, name, text)), 200
 
 
@@ -106,8 +125,12 @@ def put_template(template_id: str):
     **`group` is not a field any more.** It had to be `face` or `body`, because
     it selected which angles a `--group` turnaround rendered and it chose the
     variant of `build` and `must` the fill used. Nothing shoots a set, and the
-    variant is named in the prompt — `{character.1.build.face}` — so the column
+    variant is named in the prompt — `@character.1.build.face` — so the column
     was a second place to say something the template already says.
+
+    **The prompt is stored in the `@` spelling**, whichever it arrived in. A
+    file pushed by `studio templates push` may still be written with braces;
+    rewriting here is what lets the library converge without a migration.
     """
     body = support.body()
     held = support.memberships()
@@ -133,6 +156,7 @@ def put_template(template_id: str):
     prompt = body.get("prompt")
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValidationError("prompt is required")
+    body["prompt"] = templating.modernise(prompt)
     # `description` and `tags` are not optional, and that is deliberate: they are
     # what a promotion starts from when the image this makes becomes identity, so
     # a template missing them promotes undescribed — and an undescribed image is

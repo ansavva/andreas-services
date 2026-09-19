@@ -310,7 +310,7 @@ it("sends a JSON prompt as words, and a cited one as a template", async () => {
    * a template and came back refused for citing `{ "subject"}`. There was no
    * way to send one from the app.
    *
-   * A brace is not a citation. `{block.…}`, `{character.N.…}` and `{slot.…}`
+   * A brace is not a citation. `@block.…`, `@character.N.…` and `@slot.…`
    * are; a JSON document is the words themselves.
    */
   vi.mocked(patchRunPlan).mockResolvedValue({ ...created(), fingerprint: "f2" } as never);
@@ -328,12 +328,12 @@ it("sends a JSON prompt as words, and a cited one as a template", async () => {
   });
 
   // The same bar, a prompt that really does cite something: the template goes.
-  fill("A portrait. {block.scale}");
-  await waitFor(() => expect(editor().textContent).toContain("{block.scale}"));
+  fill("A portrait. @block.scale");
+  await waitFor(() => expect(editor().textContent).toContain("@block.scale"));
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   await waitFor(() => expect(patchRunPlan).toHaveBeenCalled());
   expect(vi.mocked(patchRunPlan).mock.calls[0]![1]).toMatchObject({
-    template: "A portrait. {block.scale}",
+    template: "A portrait. @block.scale",
   });
 });
 
@@ -377,7 +377,7 @@ it("a template pick lands filled, not as the citations it was written with", asy
       {
         id: "tpl-1",
         name: "Face front",
-        prompt: "A face, front on. {block.scale} {character.1.top}",
+        prompt: "A face, front on. @block.scale @character.1.top",
         description: "",
         tags: [],
       },
@@ -390,15 +390,15 @@ it("a template pick lands filled, not as the citations it was written with", asy
   await open();
   fill("draft");
   fireEvent.click(await screen.findByRole("button", { name: "Template" }));
-  fireEvent.click(await screen.findByRole("button", { name: /Face front/ }));
+  fireEvent.click(await screen.findByRole("option", { name: /Face front/ }));
 
   await waitFor(() =>
     expect(editor().textContent).toContain("Wearing a plain grey T-shirt"),
   );
   // The citations are gone from the box: what is in it is what goes out.
-  expect(editor().textContent).not.toContain("{block.scale}");
+  expect(editor().textContent).not.toContain("@block.scale");
   expect(vi.mocked(expandTemplate).mock.calls[0]![0]).toBe(
-    "A face, front on. {block.scale} {character.1.top}",
+    "A face, front on. @block.scale @character.1.top",
   );
 });
 
@@ -418,7 +418,7 @@ it("a template with nothing to cite is not sent to the API to be filled", async 
   await open();
   fill("draft");
   fireEvent.click(await screen.findByRole("button", { name: "Template" }));
-  fireEvent.click(await screen.findByRole("button", { name: /Face front/ }));
+  fireEvent.click(await screen.findByRole("option", { name: /Face front/ }));
 
   await waitFor(() =>
     expect(editor().textContent).toContain("A face, front on."),
@@ -433,24 +433,24 @@ it("a fill the API refuses leaves the template in the box and says why", async (
       {
         id: "tpl-1",
         name: "Two up",
-        prompt: "{character.2.top}",
+        prompt: "@character.2.top",
         description: "",
         tags: [],
       },
     ],
   });
   vi.mocked(expandTemplate).mockRejectedValue(
-    new Error("this prompt cites {character.2.top}, and this run binds 0."),
+    new Error("this prompt cites @character.2.top, and this run binds 0."),
   );
   await open();
   fill("draft");
   fireEvent.click(await screen.findByRole("button", { name: "Template" }));
-  fireEvent.click(await screen.findByRole("button", { name: /Two up/ }));
+  fireEvent.click(await screen.findByRole("option", { name: /Two up/ }));
 
   expect(
     await screen.findByText(/this run binds 0/),
   ).toBeTruthy();
-  expect(editor().textContent).toContain("{character.2.top}");
+  expect(editor().textContent).toContain("@character.2.top");
 });
 
 it("attachments show as thumbs in their role cell with a way off; a frame switches to video", async () => {

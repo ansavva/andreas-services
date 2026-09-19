@@ -3163,7 +3163,7 @@ def clean_template_name(raw: str | None) -> str:
     start from" is an obvious one.
 
     A block is the one exception, and has the reason a template lacks: it
-    is cited by name IN PROSE, `{block.face_only}`, so a UUID there would name
+    is cited by name IN PROSE, `@block.face_only`, so a UUID there would name
     something no template could write.
 
     So this only folds whitespace. `#` is refused rather than escaped because it

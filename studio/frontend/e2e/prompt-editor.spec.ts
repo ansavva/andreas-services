@@ -66,19 +66,20 @@ test("undo takes back what was typed", async ({ page }) => {
   await expect(box).not.toContainText("DELETE ME");
 });
 
-test("`{` opens the menu and NARROWS it as the name is typed", async ({
+test("`@` opens the menu and NARROWS it as the name is typed", async ({
   page,
 }) => {
   /**
    * Two bugs. The trigger was `+`, a key nobody can guess with nothing on the
-   * page to name it. And a second copy of the trigger parse read the wrong
-   * capture group once the regex grew a guard for `{{`, so the query was the
-   * character before the brace: empty at the start of a line, which left the
-   * list unfiltered, and a SPACE mid-paragraph, which matches no placeholder at
-   * all and so opened nothing.
+   * page to name it (then `{`, which nobody guesses either). And a second copy
+   * of the trigger parse read the wrong capture group once the regex grew a
+   * leading boundary group, so the query was the character before the
+   * trigger: empty at the start of a line, which left the list unfiltered,
+   * and a SPACE mid-paragraph, which matches no placeholder at all and so
+   * opened nothing.
    */
   await prompt(page);
-  await page.keyboard.type(" {");
+  await page.keyboard.type(" @");
   const menu = page.getByRole("listbox", { name: /placeholder/i });
   await expect(menu).toBeVisible();
   const all = await menu.getByRole("option").count();
@@ -97,42 +98,46 @@ test("`{` opens the menu and NARROWS it as the name is typed", async ({
 
 /**
  * A block `face_front` does NOT already cite, so a count of one means the pill
- * that was just inserted. `{face_only}` and `{quality}` are in that template
+ * that was just inserted. `face_only` and `quality` are in that template
  * already, and asserting one of those counts the template's own pill.
  */
 const UNCITED = "minimal";
 
-test("choosing from the menu inserts a NAMESPACED pill and no stray brace", async ({
+test("choosing from the menu inserts a pill and no stray @", async ({
   page,
 }) => {
-  /**
-   * The menu offers `{block.x}` rather than the bare `{x}`: a bare name is one
-   * flat namespace shared with the character's bible, where a block called
-   * `top` silently lost. Nothing new should be written in that spelling.
-   */
   const box = await prompt(page);
-  await page.keyboard.type(` {block.${UNCITED.slice(0, 4)}`);
+  await page.keyboard.type(` @block.${UNCITED.slice(0, 4)}`);
   await page
     .getByRole("option", { name: new RegExp(UNCITED) })
     .first()
     .click();
 
   await expect(box.locator(`[data-token="block.${UNCITED}"]`)).toHaveCount(1);
-  // The brace and the half-typed name are consumed by the insertion, not left
-  // sitting in front of the pill.
-  await expect(box).not.toContainText(`{block.${UNCITED.slice(0, 4)}{`);
+  // The trigger and the half-typed name are consumed by the insertion, not
+  // left sitting in front of the pill.
+  await expect(box).not.toContainText(`@block.${UNCITED.slice(0, 4)}@`);
 });
 
-test("a placeholder typed out in full becomes a pill by itself", async ({
+test("a citation typed out in full becomes a pill once the caret moves on", async ({
   page,
 }) => {
   /**
    * The menu is the shortcut, not the entrance. When it was the only way in,
    * anyone who did not know the trigger could not insert one at all.
+   *
+   * **Not until the caret has moved on.** An `@` has no closing brace to say
+   * the name is finished, so while the caret sits at its end the citation is
+   * still text — a pill there would swallow the caret mid-word. The space
+   * after it is what makes it a pill; Escape first, because the menu is open
+   * over the typed name and would take the Enter otherwise.
    */
   const box = await prompt(page);
-  await page.keyboard.type(` {${UNCITED}}`);
-  await expect(box.locator(`[data-token="${UNCITED}"]`)).toHaveCount(1);
+  await page.keyboard.type(` @block.${UNCITED}`);
+  await page.keyboard.press("Escape");
+  await expect(box.locator(`[data-token="block.${UNCITED}"]`)).toHaveCount(0);
+  await page.keyboard.type(" ");
+  await expect(box.locator(`[data-token="block.${UNCITED}"]`)).toHaveCount(1);
 });
 
 test("dismissing the menu leaves what was typed, rather than eating it", async ({
@@ -144,9 +149,9 @@ test("dismissing the menu leaves what was typed, rather than eating it", async (
    * invisible. Here the text is real text throughout.
    */
   const box = await prompt(page);
-  await page.keyboard.type(" {zzz");
+  await page.keyboard.type(" @zzz");
   await page.keyboard.press("Escape");
-  await expect(box).toContainText("{zzz");
+  await expect(box).toContainText("@zzz");
 });
 
 test("the preview writes each block out and says which block it was", async ({
@@ -167,70 +172,34 @@ test("the preview writes each block out and says which block it was", async ({
 test("the blocks live on their own tab", async ({ page }) => {
   await page.goto("/templates");
   await expect(
-    page.getByRole("button", { name: /\{scale_face\}/ }),
+    page.getByRole("button", { name: /@block\.scale_face/ }),
   ).toHaveCount(0);
   await page.getByRole("tab", { name: /Blocks/ }).click();
   await expect(
-    page.getByRole("button", { name: /\{scale_face\}/ }),
+    page.getByRole("button", { name: /@block\.scale_face/ }),
   ).toHaveCount(1);
 });
 
-/** Resolves once every animation running under `el` has finished. */
-async function settled(el: import("@playwright/test").Locator) {
-  await el.evaluate((node) =>
-    Promise.all(node.getAnimations({ subtree: true }).map((a) => a.finished)),
-  );
-}
-
-test("a block can be closed again after it is opened", async ({ page }) => {
+test("a block opens from its row and the list comes back", async ({ page }) => {
+  /**
+   * The Blocks tab is a list first, like the Templates tab and every other
+   * list in the app — one ruled row per block, the editor only for the one
+   * that is open. It was a grid of collapsible cards, the one screen where a
+   * name did not open a page; the `Close`, `Escape` and `aria-expanded`
+   * specs that drove those cards went with them.
+   */
   await page.goto("/templates");
   await page.getByRole("tab", { name: /Blocks/ }).click();
-  // By `aria-expanded`, not by name: the delete control beside it names the
-  // block too, so a name match is ambiguous whether the block is open or not.
-  const header = page
-    .locator("button[aria-expanded]")
-    .filter({ hasText: "{build_intro}" });
-  // `Collapsible.Panel` hides its content with `inert` rather than unmounting
-  // it, so the box stays in the DOM collapsed and a visibility check on it is
-  // not trustworthy — `inert` on the panel it controls is the real signal.
-  const panelId = await header.getAttribute("aria-controls");
-  const panel = page.locator(`#${panelId}`);
+  const row = page.getByRole("button", { name: /@block\.build_intro/ });
+  await expect(row).toBeVisible();
+  await row.click();
 
-  await header.click();
-  await expect(header).toHaveAttribute("aria-expanded", "true");
-  await expect(panel).not.toHaveAttribute("inert");
+  const box = page.getByRole("textbox").filter({ hasText: /THE BUILD IS/ });
+  await expect(box).toBeVisible();
+  // The address carries which block is open, like `?template=` does.
+  await expect(page).toHaveURL(/block=build_intro/);
 
-  await header.click();
-  await expect(header).toHaveAttribute("aria-expanded", "false");
-  await expect(panel).toHaveAttribute("inert");
-});
-
-test("Close and Escape both get you out of an opened block", async ({
-  page,
-}) => {
-  await page.goto("/templates");
-  await page.getByRole("tab", { name: /Blocks/ }).click();
-  // By `aria-expanded`, not by name: the delete control beside it names the
-  // block too, so a name match is ambiguous whether the block is open or not.
-  const header = page
-    .locator("button[aria-expanded]")
-    .filter({ hasText: "{build_intro}" });
-  // Scoped to this block's own panel — every block's Close button shares the
-  // same name, and every panel is mounted whether open or collapsed.
-  const panelId = await header.getAttribute("aria-controls");
-  const panel = page.locator(`#${panelId}`);
-  const box = panel.getByRole("textbox").filter({ hasText: /THE BUILD IS/ });
-
-  await header.click();
-  // `Collapsible.Panel` opens over a 200ms grid-rows transition. The button
-  // is inside it, so it is moving until that ends, and a click aimed during
-  // the slide lands where the button WAS — seen in CI (#720's PR run, twice
-  // on one commit), never locally. Wait for the animations, not a duration.
-  await settled(panel);
-  await panel.getByRole("button", { name: "Close", exact: true }).click();
-  await expect(header).toHaveAttribute("aria-expanded", "false");
-
-  await header.click();
-  await box.press("Escape");
-  await expect(header).toHaveAttribute("aria-expanded", "false");
+  await page.getByRole("button", { name: "All blocks" }).click();
+  await expect(box).toHaveCount(0);
+  await expect(row).toBeVisible();
 });
