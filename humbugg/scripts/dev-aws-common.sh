@@ -133,6 +133,34 @@ set_terraform_vars() {
     "-var=machine_short_id=$MACHINE_SHORT_ID"
     "-var=machine_name=$MACHINE_NAME"
   )
+  add_social_login_vars
+}
+
+# Social sign-in on a dev stack is opt-in per provider: a key set in dev.env
+# becomes a -var, an unset one leaves the provider off. Read from dev.env
+# rather than the environment so a stray shell export from another checkout
+# cannot enable a provider this machine never registered. The Apple key is a
+# multi-line PEM, which an env file cannot hold, so it travels base64.
+add_social_login_vars() {
+  local pair key var value
+  for pair in \
+    HUMBUGG_GOOGLE_CLIENT_ID:google_client_id \
+    HUMBUGG_GOOGLE_CLIENT_SECRET:google_client_secret \
+    HUMBUGG_FACEBOOK_APP_ID:facebook_app_id \
+    HUMBUGG_FACEBOOK_APP_SECRET:facebook_app_secret \
+    HUMBUGG_APPLE_SERVICES_ID:apple_services_id \
+    HUMBUGG_APPLE_TEAM_ID:apple_team_id \
+    HUMBUGG_APPLE_KEY_ID:apple_key_id \
+    HUMBUGG_LINKEDIN_CLIENT_ID:linkedin_client_id \
+    HUMBUGG_LINKEDIN_CLIENT_SECRET:linkedin_client_secret; do
+    key="${pair%%:*}"; var="${pair##*:}"
+    value="$(read_env "$DEV_ENV_FILE" "$key")"
+    [[ -n "$value" ]] && TF_VARS+=("-var=$var=$value")
+  done
+  value="$(read_env "$DEV_ENV_FILE" HUMBUGG_APPLE_PRIVATE_KEY_BASE64)"
+  if [[ -n "$value" ]]; then
+    TF_VARS+=("-var=apple_private_key=$(printf '%s' "$value" | base64 --decode)")
+  fi
 }
 
 export_temporary_aws_credentials() {

@@ -29,7 +29,7 @@ What it does:
 | Backend | ASP.NET Core 10 (C# 14) packaged as a Docker container Lambda behind API Gateway HTTP API, on its own domain |
 | Marketing (`marketing/`) | React Router v7 SSR on a Docker Lambda + CloudFront; hashed assets on S3. Vite, Tailwind v4, the design system's **web** leaves |
 | Product app (`app/`) | Expo + Expo Router; `expo export -p web` → S3 + CloudFront. Metro, **no Tailwind**, the design system's **native** leaves rendered through react-native-web |
-| Auth | AWS Cognito (User Pool + secretless App Client). Sign-in **and sign-up** are hosted **Managed Login** pages at `auth.humbugg.com`; the app runs authorization code + PKCE through `expo-auth-session` and holds one screen, a button. Refresh-token rotation is on, which is why `ALLOW_REFRESH_TOKEN_AUTH` must never return to the client. The API still validates **access** tokens, unchanged. See [`docs/auth-managed-login.md`](docs/auth-managed-login.md) |
+| Auth | AWS Cognito (User Pool + secretless App Client). Sign-in **and sign-up** are hosted **Managed Login** pages at `auth.humbugg.com`; the app runs authorization code + PKCE through `expo-auth-session` and holds one screen, a button. Refresh-token rotation is on, which is why `ALLOW_REFRESH_TOKEN_AUTH` must never return to the client. The API still validates **access** tokens, unchanged. See [`docs/auth-managed-login.md`](docs/auth-managed-login.md). **Social sign-in** (Google, Apple, Facebook, LinkedIn) is buttons on that same page — Cognito identity providers, each optional on its credentials, plus a pre-sign-up trigger (`scripts/auth-trigger/`) that links a social identity onto the password account with the same email so the `sub` every row keys on stays one per person. [`docs/auth-social-login.md`](docs/auth-social-login.md) |
 | Data | DynamoDB — profiles, groups, groupmembers, private draws, reveal audit events, and email delivery IDs. **No email address**: Humbugg stores none, and reads a verified one back from Cognito at send time (`IAccountDirectory`, #137) |
 | Infra | Terraform in `humbugg/infra/` (`modules/` + `envs/prod` + per-machine `envs/dev`) |
 
@@ -55,7 +55,7 @@ humbugg/
 │   ├── envs/prod/              # Lambda + API Gateway + Cognito, S3 + CloudFront + Route53 alias
 │   └── envs/dev/               # per-machine: Cognito pool, tables, bucket, Stripe webhook relay
 ├── seeds/                      # dev.json — who exists on a dev stack and what they are in
-├── scripts/                    # dev-*.sh, dev-seed.mjs, webhook-relay/receiver.mjs (the zip)
+├── scripts/                    # dev-*.sh, dev-seed.mjs, webhook-relay/receiver.mjs and auth-trigger/pre-sign-up.mjs (the zips)
 └── CLAUDE.md                   # ← this file
 ```
 

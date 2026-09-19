@@ -51,3 +51,73 @@ variable "api_throttling_burst_limit" {
   type        = number
   default     = 1000
 }
+
+# Social sign-in credentials, injected via TF_VAR_* in CI from the
+# humbugg-production environment — never committed. An empty id leaves that
+# provider uncreated and its button off the hosted page, so the stack applies
+# before any console work is done and each provider lands as its secret does.
+# `docs/auth-social-login.md` is the console-by-console walk.
+
+variable "google_client_id" {
+  description = "Google OAuth client id"
+  type        = string
+  default     = ""
+}
+
+variable "google_client_secret" {
+  description = "Google OAuth client secret"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "facebook_app_id" {
+  description = "Meta app id"
+  type        = string
+  default     = ""
+}
+
+variable "facebook_app_secret" {
+  description = "Meta app secret"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "apple_services_id" {
+  description = "Sign in with Apple Services ID"
+  type        = string
+  default     = ""
+}
+
+variable "apple_team_id" {
+  description = "Apple Developer Team ID"
+  type        = string
+  default     = ""
+}
+
+variable "apple_key_id" {
+  description = "Sign in with Apple key id"
+  type        = string
+  default     = ""
+}
+
+variable "apple_private_key" {
+  description = "Sign in with Apple private key (.p8 contents)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "linkedin_client_id" {
+  description = "LinkedIn client id"
+  type        = string
+  default     = ""
+}
+
+variable "linkedin_client_secret" {
+  description = "LinkedIn client secret"
+  type        = string
+  default     = ""
+  sensitive   = true
+}

@@ -41,6 +41,11 @@ jobs:
       - name: Test canonical redirect
         run: node --test humbugg/infra/modules/hosting_marketing/canonical_redirect.test.mjs
 
+      # The pre-sign-up trigger, same shape: a zip from one file, tested with
+      # nothing installed. scripts/auth-trigger/pre-sign-up.mjs.
+      - name: Pre-sign-up trigger unit tests
+        run: node --test humbugg/scripts/auth-trigger/pre-sign-up.test.mjs
+
       - name: Install tflint AWS plugin
         run: bash .github/scripts/install-tflint-aws-plugin.sh
 
