@@ -170,6 +170,23 @@ it("draws the lightbox over the feed when the address names a run", async () => 
 });
 
 /**
+ * The page's link is the address bar — tab included — with the origin in
+ * front. A project on its Scenes tab is a place, and the link says so.
+ */
+it("copies the page's address, tab included, from the page bar's menu", async () => {
+  const writeText = vi.fn(() => Promise.resolve());
+  Object.assign(navigator, { clipboard: { writeText } });
+  await open(`/p/${ID}?tab=scenes`);
+
+  fireEvent.click(screen.getAllByRole("button", { name: "More actions" })[0]!);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Copy link" }));
+
+  await waitFor(() =>
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/p/${ID}?tab=scenes`),
+  );
+});
+
+/**
  * The delete gate.
  *
  * A project takes its runs, scenes and movies with it, and the armed-button

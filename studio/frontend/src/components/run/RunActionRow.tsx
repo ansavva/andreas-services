@@ -5,7 +5,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button, useToast } from "@ansavva/design-system";
 
 import { submitRun } from "../../apis/studio";
+import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import type { RunFeedRow } from "../../types";
+import { absoluteUrl, runPath } from "../../utils/location";
 import { ActionMenu, type MenuAction } from "../common/ActionMenu";
 import { ApertureSpinner } from "../common/Aperture";
 import {
@@ -13,6 +15,7 @@ import {
   FileIcon,
   FolderIcon,
   FolderPlusIcon,
+  LinkIcon,
   OpenIcon,
   PencilIcon,
   RefreshIcon,
@@ -88,6 +91,7 @@ export function RunActionRow({
   const navigate = useNavigate();
   const flying = inFlight(row.status);
   const draft = row.status === "draft";
+  const link = useCopyToClipboard();
 
   const run = useCallback(async () => {
     try {
@@ -157,6 +161,17 @@ export function RunActionRow({
       disabled: !row.plan,
       reason: row.plan ? undefined : "This run predates the plan.",
       onSelect: actions.copyPrompt,
+    },
+    // The run's own address, `/p/<project>/r/<run>` — the lightbox over the
+    // feed, which is where a pasted link should land whether it was copied
+    // from the feed row or from the opened run's rail. The bare address, not
+    // the address bar: the feed's filters are the copier's, not the run's.
+    {
+      key: "copy-link",
+      label: copyLabel(link.status, "Copy link"),
+      icon: <LinkIcon className={GLYPH} />,
+      keepOpen: true,
+      onSelect: () => void link.copy(absoluteUrl(runPath(row.project, row.id))),
     },
     {
       key: "request",

@@ -14,7 +14,7 @@ import {
   setCharacterProfile,
 } from "../apis/studio";
 import { FolderTab } from "../components/browse/FolderTab";
-import { PageBar } from "../components/layout/PageBar";
+import { PageBar, useCopyLinkItem } from "../components/layout/PageBar";
 import { ProfileForm } from "../components/character/ProfileForm";
 import { useResource } from "../hooks/useResource";
 import { CHARACTERS_PATH } from "../utils/location";
@@ -76,6 +76,7 @@ import { TrashIcon } from "../components/common/icons";
  */
 export function CharacterPage() {
   const { characterId = "" } = useParams();
+  const copyLink = useCopyLinkItem();
   const navigate = useNavigate();
 
   const [tab, setTab] = useSearchParamState("tab", "profile");
@@ -163,7 +164,7 @@ export function CharacterPage() {
       <PageBar
         crumbs={[{ label: "Characters", to: CHARACTERS_PATH }]}
         title={record.name}
-        menu={[{
+        menu={[copyLink, {
               label: "Delete",
               icon: <TrashIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />,
               danger: true,

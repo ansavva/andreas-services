@@ -18,7 +18,7 @@ import { SectionLoading } from "../components/common/SectionLoading";
 import { SettingsIcon, TrashIcon } from "../components/common/icons";
 import { FolderTab } from "../components/browse/FolderTab";
 import { CharacterChipLink } from "../components/character/CharacterChip";
-import { PageBar } from "../components/layout/PageBar";
+import { PageBar, useCopyLinkItem } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
 import { ProjectDetails } from "../components/project/ProjectDetails";
 import { RunFeed } from "../components/project/RunFeed";
@@ -71,6 +71,7 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
  */
 export function ProjectPage() {
   const { projectId = "", runId } = useParams();
+  const copyLink = useCopyLinkItem();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -161,7 +162,7 @@ export function ProjectPage() {
               </div>
             ) : undefined
           }
-          menu={[{
+          menu={[copyLink, {
               label: "Delete",
               icon: <TrashIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />,
               danger: true,

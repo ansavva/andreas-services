@@ -12,7 +12,7 @@ import { ArrowDownIcon, ArrowUpIcon, CloseIcon, TrashIcon } from "../components/
 import { LoadError } from "../components/common/LoadError";
 import { PageLoading } from "../components/common/PageLoading";
 import { EntityRow } from "../components/entity/EntityRow";
-import { PageBar } from "../components/layout/PageBar";
+import { PageBar, useCopyLinkItem } from "../components/layout/PageBar";
 import { OutputPanel } from "../components/media/OutputPanel";
 import { RunFeed } from "../components/project/RunFeed";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
@@ -39,6 +39,7 @@ import { moviePath, objectPath, projectPath, runPath } from "../utils/location";
  */
 export function ScenePage() {
   const { sceneId = "" } = useParams();
+  const copyLink = useCopyLinkItem();
   const navigate = useNavigate();
   const client = useQueryClient();
   const toast = useToast();
@@ -124,7 +125,7 @@ export function ScenePage() {
             </Text>
           </>
         }
-        menu={[{
+        menu={[copyLink, {
               label: "Delete",
               icon: <TrashIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />,
               danger: true,

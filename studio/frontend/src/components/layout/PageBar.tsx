@@ -1,9 +1,12 @@
 import type { ReactElement, ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { Breadcrumbs, Text } from "@ansavva/design-system";
 
+import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { absoluteUrl } from "../../utils/location";
 import { ActionMenu } from "../common/ActionMenu";
+import { LinkIcon } from "../common/icons";
 
 /** One step above the current page. The current page itself is never a crumb. */
 export interface Crumb {
@@ -20,7 +23,7 @@ export interface Crumb {
  * used them; every one of the four passes a Delete that opens its own
  * `ConfirmDestroyDialog`.
  */
-interface PageBarMenuItem {
+export interface PageBarMenuItem {
   label: string;
   /** A glyph beside the word, as every menu line in the app now carries. */
   icon: ReactElement;
@@ -28,6 +31,29 @@ interface PageBarMenuItem {
   /** Red label — for an item that destroys something. */
   danger?: boolean;
   disabled?: boolean;
+}
+
+/**
+ * The page's own address, as a menu line — "Copy link", for the `menu` above.
+ *
+ * **The address bar as-is**, tab and filters included: a character on its
+ * Files tab three folders down, a project's Runs tab narrowed to one model,
+ * a scene, a movie — every one of these is already a place with an address
+ * (`useSearchParamState` is what made the tab one), and what a person means
+ * by "send me this" is what they are looking at. The origin goes in front so
+ * the pasted text is a URL and not a path.
+ *
+ * A hook rather than a prop on `PageBar`, so each page decides where in its
+ * menu the line sits — first, before Delete, on every page that has one.
+ */
+export function useCopyLinkItem(): PageBarMenuItem {
+  const { pathname, search } = useLocation();
+  const { status, copy } = useCopyToClipboard();
+  return {
+    label: copyLabel(status, "Copy link"),
+    icon: <LinkIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />,
+    onSelect: () => void copy(absoluteUrl(`${pathname}${search}`)),
+  };
 }
 
 interface Props {

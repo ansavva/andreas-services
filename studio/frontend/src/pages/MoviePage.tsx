@@ -8,7 +8,7 @@ import { LoadError } from "../components/common/LoadError";
 import { PageLoading } from "../components/common/PageLoading";
 import { deleteMovie, getMovie } from "../apis/studio";
 import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
-import { PageBar } from "../components/layout/PageBar";
+import { PageBar, useCopyLinkItem } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
 import { MediaThumb } from "../components/media/MediaThumb";
 import { useResource } from "../hooks/useResource";
@@ -27,6 +27,7 @@ import { TrashIcon } from "../components/common/icons";
  */
 export function MoviePage() {
   const { movieId = "" } = useParams();
+  const copyLink = useCopyLinkItem();
   const navigate = useNavigate();
 
   const load = useCallback(() => getMovie(movieId), [movieId]);
@@ -63,7 +64,7 @@ export function MoviePage() {
             </Text>
           </>
         }
-        menu={[{
+        menu={[copyLink, {
               label: "Delete",
               icon: <TrashIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />,
               danger: true,
