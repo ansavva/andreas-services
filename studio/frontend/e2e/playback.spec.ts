@@ -549,7 +549,7 @@ for (const [label, width] of [
         cutAboveRuns: c.bottom <= r.top + 1,
         takeIsFullWidth: t.width >= c.width - 2,
         rows: cut.querySelectorAll("a[href]").length,
-        planned: (cut.textContent ?? "").includes("not rendered"),
+        planned: (cut.textContent ?? "").includes("no clip"),
       };
     });
 

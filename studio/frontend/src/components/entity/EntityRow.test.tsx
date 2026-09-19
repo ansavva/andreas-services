@@ -67,9 +67,12 @@ it("falls back to onOpen when there is no address", () => {
   expect(onOpen).toHaveBeenCalled();
 });
 
-it("draws a placeholder thumb carrying the kind, when there is no picture", () => {
-  draw(<EntityRow title="A run" thumb={{ placeholder: "video" }} onOpen={vi.fn()} />);
-  expect(screen.getByText("video")).toBeTruthy();
+it("draws a placeholder word for a run with no clip, and an initial for an entity with no picture", () => {
+  draw(<EntityRow title="A run" thumb={{ placeholder: "no clip" }} onOpen={vi.fn()} />);
+  expect(screen.getByText("no clip")).toBeTruthy();
+  draw(<EntityRow title="A character" thumb={{ initial: "A" }} onOpen={vi.fn()} />);
+  const row = screen.getByRole("button", { name: "A character" });
+  expect(row.querySelector("span.font-heading")?.textContent).toBe("A");
 });
 
 it("reserves the thumb slot for null, and draws none for undefined", () => {

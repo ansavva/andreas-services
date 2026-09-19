@@ -113,7 +113,7 @@ it("draws the cut in order, with a row for a run that has not rendered", async (
 
   const rows = await screen.findAllByRole("link", { name: /kwaivgi\/kling/ });
   expect(rows).toHaveLength(2);
-  expect(screen.getByText("not rendered")).toBeTruthy();
+  expect(screen.getByText("no clip")).toBeTruthy();
   expect(screen.getByText(/1 not rendered yet/)).toBeTruthy();
 });
 

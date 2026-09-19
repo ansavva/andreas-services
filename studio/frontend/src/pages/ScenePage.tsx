@@ -302,7 +302,7 @@ function CutRow({
       subtitle={row.created ? formatDate(row.created) : row.id}
       mono
       status={row.status ?? "missing"}
-      thumb={clip?.url ? { node: clip.node, url: clip.url, isVideo: true, poster: clip.poster } : { placeholder: "not rendered" }}
+      thumb={clip?.url ? { node: clip.node, url: clip.url, isVideo: true, poster: clip.poster } : { placeholder: "no clip" }}
       to={to}
       trailing={
         // `IconButton`, as every icon-only control in the app: these were

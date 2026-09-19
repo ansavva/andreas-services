@@ -582,7 +582,11 @@ function EntityList({
         <EntityRow
           key={row.id}
           title={row.name}
-          thumb={row.hero ? { node: row.hero.node, url: row.hero.url, poster: row.hero.poster } : { placeholder: kind }}
+          thumb={
+            row.hero
+              ? { node: row.hero.node, url: row.hero.url, poster: row.hero.poster }
+              : { initial: row.name.slice(0, 1).toUpperCase() }
+          }
           onOpen={() => onOpen(row)}
         />
       ))}
