@@ -13,6 +13,7 @@ import {
   type FileEntry,
   type SortOrder,
 } from "../types";
+import { describeFolder } from "../utils/format";
 import {
   folderPath,
   objectPath,
@@ -123,11 +124,17 @@ export function BrowsePage() {
   // spells that the same way for the standalone browser. Every level after it
   // reads its stored name; the last one is the title rather than a crumb, so
   // the current folder is never listed as a step to itself.
+  //
+  // Each level goes through `describeFolder`, as the rows do: an entity's
+  // root is named by its id, and `services/browse._breadcrumbs` puts the
+  // owner on that crumb so the trail reads `Files / <character> / reference`
+  // rather than `Files / char-5739… / reference`.
   const crumbs: Crumb[] = trail.slice(0, -1).map((crumb, index) => ({
-    label: index === 0 ? "Files" : crumb.name,
+    label: index === 0 ? "Files" : describeFolder(crumb.name, crumb.owner).title,
     to: index === 0 ? folderPath(null) : folderPath(crumb.id),
   }));
-  const title = trail.length <= 1 ? "Files" : (trail.at(-1)?.name ?? "Files");
+  const last = trail.at(-1);
+  const title = trail.length <= 1 || !last ? "Files" : describeFolder(last.name, last.owner).title;
 
   return (
     <>

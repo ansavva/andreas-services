@@ -126,6 +126,11 @@ interface Props {
  * and an `h3`, not one nav with the page as its last crumb. A page with no
  * crumbs (Home, a cold Object link) reads the same line with nothing before
  * the title, so nothing hops when a crumb loads a beat late.
+ *
+ * **Given nothing, it draws nothing.** Object hands this its crumbs and
+ * nothing else, and a cold `/o/<id>` link has none — which used to leave a
+ * lone hairline ruled over an empty line at the top of the rail. Every slot
+ * empty is `null`, not a frame around nothing.
  */
 export function PageBar({
   crumbs,
@@ -139,6 +144,9 @@ export function PageBar({
 }: Props) {
   const navigate = useNavigate();
   const hasCrumbs = Boolean(crumbs && crumbs.length > 0);
+  const hasMenu = Boolean(menu && menu.length > 0);
+
+  if (!hasCrumbs && !title && !meta && !primary && !hasMenu && !actions && !tabs) return null;
 
   return (
     <div className={`flex flex-col gap-3 ${tabs ? "" : "border-b border-line pb-3"}`}>
@@ -221,12 +229,12 @@ export function PageBar({
           <div className="flex shrink-0 items-center gap-2">
             {actions}
             {primary}
-            {menu && menu.length > 0 && (
+            {hasMenu && (
               <ActionMenu
                 label={typeof title === "string" ? title : "this page"}
                 triggerLabel="More actions"
                 onOpenChange={onMenuOpenChange}
-                actions={menu.map((item) => ({
+                actions={menu!.map((item) => ({
                   key: item.label,
                   label: item.label,
                   icon: item.icon,

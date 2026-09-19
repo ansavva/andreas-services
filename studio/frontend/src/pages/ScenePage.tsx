@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Badge, Button, Tabs, Text, useToast } from "@ansavva/design-system";
+import { Badge, IconButton, Tabs, Text, useToast } from "@ansavva/design-system";
 
 import { deleteScene, getScene, setSceneRuns } from "../apis/studio";
 import { Backlinks } from "../components/common/Backlinks";
@@ -11,6 +11,7 @@ import { EmptyState } from "../components/common/EmptyState";
 import { ArrowDownIcon, ArrowUpIcon, CloseIcon, TrashIcon } from "../components/common/icons";
 import { LoadError } from "../components/common/LoadError";
 import { PageLoading } from "../components/common/PageLoading";
+import { SectionHeading } from "../components/common/SectionHeading";
 import { EntityRow } from "../components/entity/EntityRow";
 import { PageBar, useCopyLinkItem } from "../components/layout/PageBar";
 import { OutputPanel } from "../components/media/OutputPanel";
@@ -114,14 +115,16 @@ export function ScenePage() {
             <Badge intent="neutral" className="font-mono">
               {data.status}
             </Badge>
-            <Text variant="caption" tone="muted" className="font-mono">
-              {formatDate(data.created)}
-            </Text>
+            {/* One caption, the facts joined by ` · ` — three captions in a
+                row ran together as one sentence with no punctuation. */}
             <Text variant="caption" tone="muted" family="mono">
-              {data.runs.length} in the cut
-              {data.runs.length > 0 && rendered < data.runs.length
-                ? ` · ${data.runs.length - rendered} not rendered yet`
-                : ""}
+              {[
+                formatDate(data.created),
+                `${data.runs.length} in the cut`,
+                ...(data.runs.length > 0 && rendered < data.runs.length
+                  ? [`${data.runs.length - rendered} not rendered yet`]
+                  : []),
+              ].join(" · ")}
             </Text>
           </>
         }
@@ -160,9 +163,7 @@ export function ScenePage() {
       )}
 
       <section className="flex flex-col gap-3">
-        <Text variant="title" className="border-b border-line pb-2">
-          The cut
-        </Text>
+        <SectionHeading title="The cut" />
         {data.runs.length === 0 ? (
           <EmptyState
             title="Nothing in the cut yet."
@@ -191,9 +192,7 @@ export function ScenePage() {
       </section>
 
       <section className="flex flex-col gap-3">
-        <Text variant="title" className="border-b border-line pb-2">
-          Runs
-        </Text>
+        <SectionHeading title="Runs" />
         {/* The same feed the project draws, narrowed by the URL's `?scene=`
             — which `useFeedFilters` reads, and which the lightbox opened from
             here keeps, so Left/Right step through this scene's rows. */}
@@ -232,9 +231,7 @@ function Takes({ takes, sceneId }: { takes: RunAsset[]; sceneId: string }) {
   const current = shown.node === takes[0]?.node;
   return (
     <section className="flex flex-col gap-3">
-      <Text variant="title" className="border-b border-line pb-2">
-        {takes.length > 1 ? "Takes" : "The take"}
-      </Text>
+      <SectionHeading title={takes.length > 1 ? "Takes" : "The take"} />
       {/* `defaultValue` as well as `value`, which the package requires even
           when controlled — the same note `CharacterPage` carries. Scrolls
           rather than wraps: a strip that grows a second row draws a second
@@ -300,34 +297,29 @@ function CutRow({
       thumb={clip?.url ? { node: clip.node, url: clip.url, isVideo: true, poster: clip.poster } : { placeholder: "not rendered" }}
       to={to}
       trailing={
+        // `IconButton`, as every icon-only control in the app: these were
+        // `Button intent="secondary"` with an `aria-label`, three bordered
+        // boxes on a row whose other controls are bare glyphs.
         <div className="flex items-center gap-1">
-          <Button
-            intent="secondary"
+          <IconButton
+            label="Move up"
             size="sm"
-            aria-label="Move up"
             disabled={disabled || index === 0}
             onClick={() => onMove(-1)}
           >
             <ArrowUpIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
-          </Button>
-          <Button
-            intent="secondary"
+          </IconButton>
+          <IconButton
+            label="Move down"
             size="sm"
-            aria-label="Move down"
             disabled={disabled || index === count - 1}
             onClick={() => onMove(1)}
           >
             <ArrowDownIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
-          </Button>
-          <Button
-            intent="secondary"
-            size="sm"
-            aria-label="Remove from the cut"
-            disabled={disabled}
-            onClick={onRemove}
-          >
+          </IconButton>
+          <IconButton label="Remove from the cut" size="sm" disabled={disabled} onClick={onRemove}>
             <CloseIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
-          </Button>
+          </IconButton>
         </div>
       }
     />

@@ -72,6 +72,19 @@ it("draws a placeholder thumb carrying the kind, when there is no picture", () =
   expect(screen.getByText("video")).toBeTruthy();
 });
 
+it("reserves the thumb slot for null, and draws none for undefined", () => {
+  // A thumbed list with one row missing its picture: the slot stays so the
+  // titles line up. A list with no thumbs at all draws nothing before the title.
+  draw(<EntityRow title="Not rendered" thumb={null} onOpen={vi.fn()} />);
+  const button = screen.getByRole("button", { name: "Not rendered" });
+  expect(button.querySelector("span.size-14")).toBeTruthy();
+
+  cleanup();
+  draw(<EntityRow title="A template" onOpen={vi.fn()} />);
+  const plain = screen.getByRole("button", { name: "A template" });
+  expect(plain.querySelector("span.size-14")).toBeNull();
+});
+
 it("draws a supplied icon in place of a thumb, for a file or a folder", () => {
   draw(<EntityRow title="clip.mp4" thumb={{ icon: <svg data-testid="file-icon" /> }} onOpen={vi.fn()} />);
   expect(screen.getByTestId("file-icon")).toBeTruthy();

@@ -114,10 +114,11 @@ function groupEdges(actions: readonly MenuAction[], at: number) {
  * **The placement is measured when the menu opens**, against the surfaces that
  * actually clip it rather than against the window: `<main>` on the horizontal
  * axis, because the sidebar is inside the window and paints over anything under
- * it, and the create sheet's top edge on the vertical, because it floats over
- * the foot of the column. Measured on the press rather than tracked — a trigger
- * does not move while its own menu is open, and a listener per menu is sixty of
- * them on a grid of sixty tiles.
+ * it, and the viewport's bottom on the vertical — or the create sheet's top
+ * edge, on the one screen where the sheet still sits BELOW the trigger.
+ * Measured on the press rather than tracked — a trigger does not move while
+ * its own menu is open, and a listener per menu is sixty of them on a grid of
+ * sixty tiles.
  */
 export function ActionMenu({
   label,
@@ -211,10 +212,20 @@ export function ActionMenu({
     const fitsRight = box.left + PANEL_W <= bounds.right;
     setLeftward(align === "end" ? fitsLeft : !fitsRight);
 
-    const floating = document
+    // The floor is the viewport's bottom. The create sheet's top edge was
+    // the floor from when the sheet was docked at the foot of the column;
+    // it is a card at the head of the page now, so its top is ABOVE every
+    // trigger and that rule sent every menu upward, over the tab strip, with
+    // the whole page free below. The sheet still counts on the one screen
+    // where it is under the trigger — a menu in the header, over the
+    // opened run's summoned sheet — which is when its top is past the box.
+    const sheet = document
       .querySelector("[data-create-bar]")
       ?.getBoundingClientRect();
-    const floor = Math.min(window.innerHeight, floating?.top ?? Infinity);
+    const floor = Math.min(
+      window.innerHeight,
+      sheet !== undefined && sheet.top > box.bottom ? sheet.top : Infinity,
+    );
     const below = floor - box.bottom;
     // A group adds a heading and up to two hairlines — about one line.
     const groups = actions.filter((_, at) => groupEdges(actions, at).opens).length;

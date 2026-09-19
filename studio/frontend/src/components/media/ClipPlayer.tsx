@@ -70,15 +70,24 @@ export function ClipPlayer({
   const near = useNearViewport(boxRef, true);
 
   /**
-   * The two public seams the skin exposes for a brand, and no more: the face
-   * (the app's body font, where the skin would reach for Inter) and how the
-   * picture fills the box (`fit`). Colours stay the skin's — its controls are
-   * dark in both schemes, and the app's primary role is the *ink* of the
-   * scheme, which would be black on them in light mode.
+   * The three public seams the skin exposes for a brand, and no more: the
+   * face (the app's body font, where the skin would reach for Inter), how the
+   * picture fills the box (`fit`), and the frame's corner. Colours stay the
+   * skin's — its controls are dark in both schemes, and the app's primary
+   * role is the *ink* of the scheme, which would be black on them in light
+   * mode.
+   *
+   * The corner is `--media-border-radius`, the value the skin's own
+   * `--media-video-border-radius` falls back on (28px otherwise) — set here
+   * and not on the derived variable, because the skin zeroes the derived one
+   * under `:fullscreen` and an inline value on the same element would win
+   * over that. `lg` is the app's largest step, and what the still stage
+   * beside this wears; the controls are untouched.
    */
   const skin = {
     "--media-font-family": "var(--font-body)",
     "--media-object-fit": fit,
+    "--media-border-radius": "var(--radius-lg)",
   } as CSSProperties;
 
   return (

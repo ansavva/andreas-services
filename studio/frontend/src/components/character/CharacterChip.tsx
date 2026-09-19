@@ -9,14 +9,14 @@ import { AccountIcon } from "../common/icons";
 import { MediaThumb } from "../media/MediaThumb";
 
 /**
- * A character, as a chip: a small square avatar and the name.
+ * A character, as a chip: a small round avatar and the name.
  *
  * **The avatar is the character's `hero`**, the card image the listing already
  * signs for every character, read off `getCharacters()` when the caller has
  * it. That is the image on hand; nothing here asks for one per chip. It is
  * not necessarily the first `default`-tagged identity image — `hero` is the
  * picture a person chose for the card, which is usually one of those and is
- * not required to be. A character with no hero yet draws a dashed square
+ * not required to be. A character with no hero yet draws a dashed ring
  * carrying the account glyph, which is what the mockup shows for one whose
  * identity is not settled.
  */
@@ -30,14 +30,16 @@ export function CharacterAvatar({ hero, name }: { hero: HeroImage | null; name: 
         name={name}
         isVideo={false}
         aspect="square"
-        className="size-[22px] shrink-0 border border-line"
+        // A pill, as the tag's 14px avatar is: every avatar in the app is
+        // round, whatever the chip around it is.
+        className="size-[22px] shrink-0 rounded-pill border border-line"
       />
     );
   }
   return (
     <span
       aria-hidden="true"
-      className="flex size-[22px] shrink-0 items-center justify-center border border-dashed border-line text-muted"
+      className="flex size-[22px] shrink-0 items-center justify-center rounded-pill border border-dashed border-line text-muted"
     >
       <AccountIcon className="size-3 fill-none stroke-current stroke-[1.5]" />
     </span>
@@ -148,7 +150,8 @@ export function CharacterTag({
     <a
       href={to}
       onClick={onClick}
-      className="inline-flex max-w-full items-center gap-1.5 border border-line bg-card px-2 py-0.5 hover:bg-fill"
+      // `sm`, `ParamChips`' corner, because this sits in that row.
+      className="inline-flex max-w-full items-center gap-1.5 rounded-sm border border-line bg-card px-2 py-0.5 hover:bg-fill"
     >
       {hero ? (
         <MediaThumb

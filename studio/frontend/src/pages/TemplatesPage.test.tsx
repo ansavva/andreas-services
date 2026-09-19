@@ -284,7 +284,8 @@ it("deletes a block, and says how many templates it will break first", async () 
   fireEvent.click(screen.getByRole("button", { name: /@block\.face_only/ }));
   // A cited block takes templates down with it, so it types its name rather
   // than arming in place — the gate a project or a character gets, not a file's.
-  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+  // The trigger is the same trash the template editor's header carries.
+  fireEvent.click(screen.getByRole("button", { name: "Delete @block.face_only" }));
   const dialog = await screen.findByRole("alertdialog");
   expect(dialog.textContent).toContain("1 template cites it");
   fireEvent.change(within(dialog).getByLabelText("Confirm"), {
@@ -326,18 +327,26 @@ it("renames a template by its ID, not by the name it had", async () => {
   );
 });
 
-it("templates are a list first; a row opens its editor, and All templates closes it", async () => {
+it("templates are a list first; a row opens its editor, and the Templates crumb closes it", async () => {
   read.mockResolvedValue(SPEC);
   show();
 
-  // Rows by name, no editor open.
+  // Rows by name, no editor open, and no crumb: this is a top-level screen.
   expect(await screen.findByText(/Face, front/)).toBeTruthy();
   expect(screen.queryByLabelText("Assembled preview")).toBeNull();
+  expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).toBeNull();
 
   fireEvent.click(screen.getByText(/Face, front/));
   expect(await screen.findByLabelText("Assembled preview")).toBeTruthy();
+  // The bar names the open template, with the list one crumb up — on the
+  // same tab, so `?tab=` rides along and `?template=` does not.
+  expect(screen.getByRole("heading", { name: "Face, front" })).toBeTruthy();
+  const crumb = within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("link", {
+    name: "Templates",
+  });
+  expect(crumb.getAttribute("href")).toBe("/templates?tab=templates");
 
-  fireEvent.click(screen.getByRole("button", { name: "All templates" }));
+  fireEvent.click(crumb);
   await waitFor(() =>
     expect(screen.queryByLabelText("Assembled preview")).toBeNull(),
   );

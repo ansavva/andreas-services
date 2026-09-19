@@ -130,7 +130,7 @@ export function FilterBar({ activeCount, onClear, children, label = "Filter" }: 
         }`}
       >
         <Collapsible.Panel>
-          <div className="flex flex-wrap items-end gap-2 border border-line bg-card p-3">
+          <div className="flex flex-wrap items-end gap-2 rounded-md border border-line bg-card p-3">
             {children}
             {activeCount > 0 && (
               <Button intent="secondary" size="sm" onClick={onClear}>

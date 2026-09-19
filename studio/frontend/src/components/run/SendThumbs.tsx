@@ -117,7 +117,7 @@ export function SendThumbs({ sends }: { sends: readonly RunSend[] }) {
                 <Text variant="caption" weight="medium">
                   LoRA
                 </Text>
-                <Text variant="caption" tone="muted" className="w-full truncate font-mono text-[10px]">
+                <Text variant="caption" family="mono" tone="muted" className="w-full truncate text-[11px]">
                   {assetLabel(send.name)}
                 </Text>
               </span>

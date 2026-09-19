@@ -1,8 +1,13 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import { TestProviders } from "../test-providers";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
+vi.mock("../apis/studio", () => ({
+  getScene: vi.fn().mockResolvedValue({ id: "scene-1", project: "proj-s" }),
+  getMovie: vi.fn().mockResolvedValue({ id: "movie-1", project: "proj-m" }),
+}));
 
 import {
   CREATE_PROJECT_STORAGE_KEY,
@@ -177,6 +182,25 @@ it("the route's project is the target and is remembered; off a project the last 
   mount("/");
   expect(state().target).toBe("proj-9");
   expect(state().onProject).toBe(false);
+});
+
+/**
+ * A scene and a movie name no project in their URLs; the record does. Both
+ * are "on a project" once it is read — the picker stays away — and the
+ * movie was the one left out, so its page drew the picker its scenes hid.
+ */
+it("a scene page and a movie page are on the record's project", async () => {
+  mount("/s/scene-1");
+  expect(state().onProject).toBe(false);
+  await waitFor(() => expect(state().onProject).toBe(true));
+  expect(state().target).toBe("proj-s");
+  expect(window.localStorage.getItem(CREATE_PROJECT_STORAGE_KEY)).toBe("proj-s");
+  cleanup();
+
+  mount("/m/movie-1");
+  await waitFor(() => expect(state().onProject).toBe(true));
+  expect(state().target).toBe("proj-m");
+  expect(window.localStorage.getItem(CREATE_PROJECT_STORAGE_KEY)).toBe("proj-m");
 });
 
 /**

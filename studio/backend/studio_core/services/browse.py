@@ -150,6 +150,12 @@ def _breadcrumbs(record: dict) -> list[dict]:
     Each crumb carries the `id` of the node it names, for the same reason every
     row below does: a crumb is a navigation target, and one that could only be
     followed by re-resolving its path would send the SPA back to `/api/resolve`.
+
+    **An entity's root folder is named by its id, so its crumb also carries the
+    `owner`** — the same `{kind, id, name}` a depth-one row reports — and the
+    SPA writes the character's or project's name where the trail would
+    otherwise read `char-5739…`. One more `GetItem` per entity root on the
+    trail, of which there is at most one or two.
     """
     walked = record
     ancestors = [record]
@@ -166,7 +172,10 @@ def _breadcrumbs(record: dict) -> list[dict]:
     prefix = ""
     for ancestor in ancestors[1:]:
         prefix = f"{prefix}{ancestor['name']}/"
-        trail.append({"id": ancestor["node_id"], "name": ancestor["name"], "prefix": prefix})
+        crumb = {"id": ancestor["node_id"], "name": ancestor["name"], "prefix": prefix}
+        if ancestor.get("entity"):
+            crumb["owner"] = catalog.entity_summary(ancestor["entity"])
+        trail.append(crumb)
     return trail
 
 

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { Badge, Button, Input, Tabs, Text } from "@ansavva/design-system";
+import { Alert, Badge, Button, Input, Tabs, Text } from "@ansavva/design-system";
 
 import {
   createScene,
@@ -137,9 +137,11 @@ export function ProjectPage() {
           title={record.name}
           meta={
             <>
-              <Badge intent="neutral" className="font-mono tabular-nums">
+              {/* A mono caption, as every listing page counts — a Badge is
+                  for a status, and the spinner beside it is one. */}
+              <Text variant="caption" family="mono" tone="muted" className="tabular-nums">
                 {counts.runs} {counts.runs === 1 ? "run" : "runs"}
-              </Badge>
+              </Text>
               {running > 0 && (
                 <Badge intent="neutral" className="gap-1.5 font-mono tabular-nums">
                   <ApertureSpinner size="sm" label={`${running} running`} className="size-3.5" />
@@ -246,7 +248,7 @@ export function ProjectPage() {
             }
           />
 
-          <Text variant="caption" tone="muted" className="border-t border-line pt-2 font-mono">
+          <Text variant="caption" family="mono" tone="muted" className="border-t border-line pt-2">
             Created {formatDate(record.created)} · updated {formatDate(record.updated)}
           </Text>
         </Tabs.Panel>
@@ -324,26 +326,31 @@ function NewScene({ projectId }: { projectId: string }) {
 
   return (
     <form
-      className="flex flex-wrap items-center gap-2"
+      className="flex flex-col gap-2"
       onSubmit={(event) => {
         event.preventDefault();
         void create();
       }}
     >
-      <Input
-        value={name}
-        onValueChange={setName}
-        placeholder="A new scene's name…"
-        aria-label="Scene name"
-        className="min-w-48 flex-1"
-      />
-      <Button type="submit" size="sm" disabled={!name.trim() || busy}>
-        {busy ? "Creating…" : "New scene"}
-      </Button>
+      {/* `field-row`: the button stands at the input's 44, not a `sm` 32
+          beside it — see `styles/app.css`. */}
+      <div className="field-row flex flex-wrap items-center gap-2">
+        <Input
+          value={name}
+          onValueChange={setName}
+          placeholder="A new scene's name…"
+          aria-label="Scene name"
+          className="min-w-48 flex-1"
+        />
+        <Button type="submit" disabled={!name.trim() || busy}>
+          {busy ? "Creating…" : "New scene"}
+        </Button>
+      </div>
       {failure && (
-        <Text variant="caption" tone="muted">
-          {failure}
-        </Text>
+        <Alert.Root intent="danger">
+          <Alert.Title>Could not create the scene</Alert.Title>
+          <Alert.Description>{failure}</Alert.Description>
+        </Alert.Root>
       )}
     </form>
   );

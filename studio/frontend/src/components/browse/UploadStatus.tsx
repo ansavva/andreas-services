@@ -33,16 +33,16 @@ export function UploadStatus({ items, onClearFinished }: Props) {
   return (
     <section
       aria-label="Uploads"
-      className="flex flex-col gap-2 border border-line bg-card p-3"
+      className="flex flex-col gap-2 rounded-md border border-line bg-card p-3"
     >
       {items.map((item) => (
         <div key={item.key} className="flex flex-col gap-1">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-            <Text variant="caption" className="min-w-0 truncate font-mono">
+            <Text variant="caption" family="mono" className="min-w-0 truncate">
               {item.name}
             </Text>
             {/* Byte counts and a landed-as name: metadata either way. */}
-            <Text variant="caption" tone="muted" className="font-mono tabular-nums">
+            <Text variant="caption" family="mono" tone="muted" className="tabular-nums">
               {describe(item)}
             </Text>
           </div>

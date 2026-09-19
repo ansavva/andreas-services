@@ -14,6 +14,7 @@ import { MEDIA_GRID } from "../../utils/grid";
 import { FAVORITES_PATH, objectPath } from "../../utils/location";
 import { EmptyState } from "../common/EmptyState";
 import { LoadError } from "../common/LoadError";
+import { SectionHeading } from "../common/SectionHeading";
 import { SectionLoading } from "../common/SectionLoading";
 import { linkButtonClass } from "../common/linkButtonClass";
 import { DownloadIcon, HeartFilledIcon } from "../common/icons";
@@ -107,19 +108,19 @@ export function FavoritesSection({
   return (
     <section className="flex flex-col gap-3" aria-label="Favorites">
       {variant === "preview" && (
-        <div className="flex items-baseline justify-between gap-3 border-b border-line pb-2">
-          <Text variant="title">
-            Favorites{" "}
-            <span className="font-mono text-sm text-muted tabular-nums">({total})</span>
-          </Text>
-          {/* Only once there is more than home is showing. A "See all" beside a
-              complete list is a link to the page you are already reading. */}
-          {total > items.length && (
-            <Link to={FAVORITES_PATH} className={linkButtonClass()}>
-              See all
-            </Link>
-          )}
-        </div>
+        <SectionHeading
+          title="Favorites"
+          count={total}
+          // Only once there is more than home is showing. A "See all" beside a
+          // complete list is a link to the page you are already reading.
+          trailing={
+            total > items.length ? (
+              <Link to={FAVORITES_PATH} className={linkButtonClass()}>
+                See all
+              </Link>
+            ) : undefined
+          }
+        />
       )}
 
       {loading && <SectionLoading label="Loading favorites" />}

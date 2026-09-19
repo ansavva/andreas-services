@@ -199,7 +199,11 @@ test("a block opens from its row and the list comes back", async ({ page }) => {
   // The address carries which block is open, like `?template=` does.
   await expect(page).toHaveURL(/block=build_intro/);
 
-  await page.getByRole("button", { name: "All blocks" }).click();
+  // The list is one crumb up, on the same tab — there is no back button.
+  await page
+    .getByRole("navigation", { name: "Breadcrumb" })
+    .getByRole("link", { name: "Templates" })
+    .click();
   await expect(box).toHaveCount(0);
   await expect(row).toBeVisible();
 });

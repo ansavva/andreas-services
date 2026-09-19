@@ -39,7 +39,10 @@ export function ParamChips({
       {entries.map(([key, value]) => (
         <span
           key={key}
-          className="inline-flex max-w-full items-baseline gap-1.5 border border-line bg-card px-2 py-0.5"
+          // `sm`, the create bar's chip corner (`CreateChips`): a fact on a
+          // run and a choice on the bar are the same small thing. A status
+          // `Badge` stays a pill; a shape, not a corner.
+          className="inline-flex max-w-full items-baseline gap-1.5 rounded-sm border border-line bg-card px-2 py-0.5"
         >
           {/* `inline` on BOTH: this pair is a `key value` pill sharing one
               line — the minority case `Text`'s `inline` prop exists for. */}
@@ -52,7 +55,7 @@ export function ParamChips({
         </span>
       ))}
       {model && (
-        <span className="inline-flex items-baseline whitespace-nowrap border border-line bg-card px-2 py-0.5">
+        <span className="inline-flex items-baseline whitespace-nowrap rounded-sm border border-line bg-card px-2 py-0.5">
           <Text variant="caption" family="mono" inline>
             {model}
           </Text>

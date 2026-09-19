@@ -589,7 +589,7 @@ function FolderRow({
 
 /** One half of the Folders / Media switch — the create sheet's pills. */
 function pillClass(on: boolean): string {
-  return `h-7 rounded-xs px-2.5 text-sm ${
+  return `h-7 rounded-md px-2.5 text-sm ${
     on
       ? "bg-fill-active text-ink hover:bg-fill-active active:bg-fill-active"
       : "text-muted hover:bg-fill hover:text-ink"

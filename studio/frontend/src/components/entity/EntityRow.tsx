@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Badge, Text, type BadgeIntent } from "@ansavva/design-system";
 
 import type { Poster } from "../../types";
+import { ImageIcon } from "../common/icons";
 import { MediaThumb } from "../media/MediaThumb";
 
 /** A status word, with the colour it carries when the caller knows one. */
@@ -15,8 +16,9 @@ export type RowBadge = string | { label: string; intent?: BadgeIntent };
  * A picture is the pointer, not a bare URL: a presigned URL expires and
  * re-signing addresses a **node**, so a row handed only a `url` could never
  * repair itself. A row with nothing to show draws the one placeholder the app
- * has — a blank square carrying the kind in mono, or nothing at all. Files and
- * folders have no picture and are not missing one, so they bring an icon.
+ * has — a blank box carrying the kind in mono — or, handed `null`, an empty
+ * box that only holds the slot (see `thumb` on Props). Files and folders have
+ * no picture and are not missing one, so they bring an icon.
  */
 type RowThumb =
   | { node: string; url: string; isVideo?: boolean; poster?: Poster | null }
@@ -30,6 +32,18 @@ interface Props {
   /** A date standing in for a name is a value, so it may be set in mono too. */
   mono?: boolean;
   status?: RowBadge | RowBadge[];
+  /**
+   * `undefined` and `null` mean two different things here, and the difference
+   * is what keeps a list's titles in a column.
+   *
+   * `undefined` — this list has no thumbs: a template, a block. No slot is
+   * drawn and the title starts at the row's edge. `null` — this list HAS
+   * thumbs and this row's is missing: a scene not yet rendered beside one
+   * that is, a movie with no cut yet. The slot is reserved with an empty box
+   * the size of a thumb, so the titles of the two rows line up. Callers in a
+   * thumbed list write `thumb={x.thumb ?? null}` for exactly that reason;
+   * `?? undefined` would collapse the slot and stagger the column.
+   */
   thumb?: RowThumb | null;
   /** A position in a cut. Movies number their scenes; a project's listings do not. */
   index?: number;
@@ -126,6 +140,8 @@ export function EntityRow({
       )}
 
       {thumb && "icon" in thumb && thumb.icon}
+      {/* A `sm` corner on every thumb shape, and a hairline on the two that
+          are boxes: a dark frame on a dark row has no other edge. */}
       {thumb && "node" in thumb && (
         <MediaThumb
           nodeId={thumb.node}
@@ -134,15 +150,25 @@ export function EntityRow({
           isVideo={thumb.isVideo}
           poster={thumb.poster}
           aspect="auto"
-          className="size-14 shrink-0 border border-line"
+          className="size-14 shrink-0 rounded-sm border border-line"
         />
       )}
       {thumb && "placeholder" in thumb && (
         <span
-          className="flex size-14 shrink-0 items-center justify-center border border-line
+          className="flex size-14 shrink-0 items-center justify-center rounded-sm border border-line
                      bg-surface-alt font-mono text-xs text-muted"
         >
           {thumb.placeholder}
+        </span>
+      )}
+      {/* The reserved slot — see `thumb` on Props. An icon rather than a word
+          because the row does not know what kind of picture is missing. */}
+      {thumb === null && (
+        <span
+          aria-hidden
+          className="flex size-14 shrink-0 items-center justify-center rounded-sm bg-surface-alt"
+        >
+          <ImageIcon className="size-5 fill-none stroke-muted stroke-[1.5]" />
         </span>
       )}
 
@@ -155,7 +181,7 @@ export function EntityRow({
             an inline caption ran onto the title's line and had no width to
             truncate against. */}
         {subtitle && (
-          <Text variant="caption" tone="muted" className="truncate font-mono tabular-nums">
+          <Text variant="caption" family="mono" tone="muted" className="truncate tabular-nums">
             {subtitle}
           </Text>
         )}

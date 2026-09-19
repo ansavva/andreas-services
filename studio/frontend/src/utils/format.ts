@@ -1,3 +1,5 @@
+import type { NodeOwner } from "../types";
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KB", "MB", "GB"];
@@ -77,12 +79,33 @@ export function humaniseKey(key: string): string {
 }
 
 /**
- * The pipeline names run folders `<timestamp>_<slug>`, e.g.
+ * What a folder row is titled, and the line under it.
+ *
+ * **An entity's root folder is stored under the entity's id, and the id is not
+ * a name.** `/f` is a listing of `char-5739…`, `proj-2ec0…`, `run-7ddc…` while
+ * every other screen in the app shows the character's or project's name. The
+ * row carries `owner` — the deepest entity it sits in, resolved on every read
+ * (see `NodeRecord.owner`) — and a folder whose name IS its owner's id is that
+ * entity's root, so it reads as the entity does: the name for the title, the
+ * kind as the caption, the id nowhere. A run has no name, so its root keeps
+ * the id and gains only the caption.
+ *
+ * Display only: renaming edits the stored name, which is why `FolderCard`
+ * hands `RenameForm` the raw `name` and not this title.
+ *
+ * Failing that, the pipeline names run folders `<timestamp>_<slug>`, e.g.
  * `2026-08-15_01-00-30_pullup-originals`. Splitting that back apart lets a run
- * read as a date and a name instead of one long token — and anything that does
- * not match the shape is left exactly as it is.
+ * read as a date and a name instead of one long token — and anything that
+ * matches neither shape is left exactly as it is.
  */
-export function describeFolder(name: string): { title: string; subtitle?: string } {
+export function describeFolder(
+  name: string,
+  owner?: NodeOwner | null,
+): { title: string; subtitle?: string } {
+  if (owner && owner.id === name) {
+    return { title: owner.name ?? name, subtitle: owner.kind };
+  }
+
   const match = /^(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})_(.+)$/.exec(name);
   if (!match) return { title: name };
 

@@ -49,16 +49,20 @@ export function EntityCard({ name, hero, counts, to }: Props) {
         navigate(to);
       }}
       title={name}
-      // Square, and a hairline rather than a filled card. These sit in a grid
-      // where a rule alone would not close the shape, so the border stays —
-      // what goes is the rounding and the fill that made each one an object
-      // floating on the page instead of a cell in a grid. Hover and focus are
-      // the row's, so the two shapes answer a pointer the same way.
-      className="flex w-full items-center gap-3 border border-line p-2 text-left
+      // A `md` corner and a hairline. These sit in a grid where a rule alone
+      // would not close the shape, so the border stays; the corner is the
+      // scale's card size, the same one a `MediaTile` and the feed's tiles
+      // wear, so a grid of cards and a wall of tiles read as one family.
+      // Hover and focus are the row's, so the two shapes answer a pointer the
+      // same way.
+      className="flex w-full items-center gap-3 rounded-md border border-line p-2 text-left
                  transition-colors hover:bg-surface-alt
                  focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
     >
-      <span className="size-16 shrink-0 overflow-hidden border border-line bg-surface-alt">
+      {/* `sm`, a step under the card it sits in — the row's thumb has the same
+          corner, and a thumb keeps its hairline because a dark frame on a
+          dark card has no other edge. */}
+      <span className="size-16 shrink-0 overflow-hidden rounded-sm border border-line bg-surface-alt">
         {hero ? (
           <MediaThumb nodeId={hero.node} url={hero.url} poster={hero.poster} name="" aspect="auto" />
         ) : (
@@ -78,7 +82,7 @@ export function EntityCard({ name, hero, counts, to }: Props) {
         <Text variant="body" weight="medium" className="truncate">
           {name}
         </Text>
-        <Text variant="caption" tone="muted" className="truncate font-mono tabular-nums">
+        <Text variant="caption" family="mono" tone="muted" className="truncate tabular-nums">
           {counts}
         </Text>
       </span>

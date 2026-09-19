@@ -1169,12 +1169,14 @@ function AddField({
           />
         </Field.Root>
       </div>
-      <div className="flex gap-2">
-        <Button size="sm" onClick={add} disabled={key === "" || problem !== null}>
-          Add
-        </Button>
+      {/* Cancel first, the primary last and right-aligned — the order every
+          save/cancel row in the app (`FormBar`) reads in. */}
+      <div className="flex justify-end gap-2">
         <Button intent="secondary" size="sm" onClick={() => setOpen(false)}>
           Cancel
+        </Button>
+        <Button size="sm" onClick={add} disabled={key === "" || problem !== null}>
+          Add
         </Button>
       </div>
     </div>

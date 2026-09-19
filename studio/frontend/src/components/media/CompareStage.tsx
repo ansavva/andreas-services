@@ -125,7 +125,7 @@ function Pane({
             onZoomChange={onZoomChange}
             onControlsChange={onControlsChange}
             drag={picture.drag ?? true}
-            className="h-full w-full border border-line"
+            className="h-full w-full rounded-md border border-line"
             actions={
               <Text
                 variant="caption"

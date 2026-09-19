@@ -21,7 +21,7 @@ import {
 import { useMatch } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
-import { getScene } from "../apis/studio";
+import { getMovie, getScene } from "../apis/studio";
 
 import type { RunKind } from "../types";
 
@@ -246,6 +246,16 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
     enabled: routeScene !== null,
   });
   const sceneProject = scene.data?.project ?? null;
+  // A movie page is the same shape: no project in its URL, the movie's
+  // record says which. Without this the bar drew the picker on a movie and
+  // hid it on the movie's own scenes.
+  const routeMovie = useMatch("/m/:movieId")?.params.movieId ?? null;
+  const movie = useQuery({
+    queryKey: ["movie", routeMovie],
+    queryFn: () => getMovie(routeMovie ?? ""),
+    enabled: routeMovie !== null,
+  });
+  const movieProject = movie.data?.project ?? null;
   // The opened run and the open file — the two screens the sheet stays out
   // of until it is called up: both are `ViewerFrame`, sized to the window, and
   // a sheet drawn over either covers the strip and the transport with nothing
@@ -261,13 +271,13 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
   // The last project used is whichever one the person was last IN, so leaving
   // it for Home keeps the bar pointed where they were working.
   useEffect(() => {
-    const here = routeProject ?? sceneProject;
+    const here = routeProject ?? sceneProject ?? movieProject;
     if (!here) return;
     writeProject(here);
     setState((current) =>
       current.project === here ? current : { ...current, project: here },
     );
-  }, [routeProject, sceneProject]);
+  }, [routeProject, sceneProject, movieProject]);
 
   const loadRun = useCallback((seed: CreateSeed) => {
     setState((current) => {
@@ -453,8 +463,8 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
   const value = useMemo<CreateBarStateValue>(
     () => ({
       ...state,
-      target: routeProject ?? sceneProject ?? state.project,
-      onProject: routeProject !== null || sceneProject !== null,
+      target: routeProject ?? sceneProject ?? movieProject ?? state.project,
+      onProject: routeProject !== null || sceneProject !== null || movieProject !== null,
       scene: routeScene,
       shown: opened === null || state.summoned,
       overViewer: opened !== null,
@@ -475,6 +485,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       routeProject,
       routeScene,
       sceneProject,
+      movieProject,
       opened,
       summon,
       dismiss,

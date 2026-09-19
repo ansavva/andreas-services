@@ -58,7 +58,7 @@ export function PayloadDocument({
   if (node === null) {
     return (
       <div className="border-t border-line py-2">
-        <Text variant="caption" tone="muted" className="font-mono">
+        <Text variant="caption" family="mono" tone="muted">
           {label} —{" "}
           {sent
             ? "not written for this run"
@@ -138,10 +138,10 @@ export function PayloadPreview({ runId }: { runId: string }) {
 
   return (
     <div className="flex flex-col gap-1">
-      <Text variant="caption" tone="muted" className="font-mono">
+      <Text variant="caption" family="mono" tone="muted">
         request.json — what this run would send
       </Text>
-      <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap break-words border border-line bg-card p-3 font-mono text-xs leading-relaxed text-ink">
+      <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-line bg-card p-3 font-mono text-xs leading-relaxed text-ink">
         <code>{JSON.stringify(data.request, null, 2)}</code>
       </pre>
     </div>
