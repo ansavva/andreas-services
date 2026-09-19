@@ -30,7 +30,18 @@ const ASPECTS = {
   auto: "",
 } as const;
 
-const FITS = { cover: "object-cover", contain: "object-contain" } as const;
+/**
+ * `cover` and `contain` fill the box the caller sized. `natural` is the
+ * create sheet's tile: the box's full height, the picture's own width, whole
+ * — so a portrait is narrow and a panorama is wide (capped), and the row
+ * says which take was sent rather than a square of each. The box has no
+ * width of its own under it; the picture gives it one.
+ */
+const FITS = {
+  cover: "h-full w-full object-cover",
+  contain: "h-full w-full object-contain",
+  natural: "h-full w-auto max-w-[16rem] object-contain",
+} as const;
 
 interface Props {
   /**
@@ -86,8 +97,12 @@ interface Props {
    * is not cropped into a landscape box.
    */
   ratio?: string;
-  /** `cover` fills the box and crops; `contain` shows the whole frame. */
-  fit?: "cover" | "contain";
+  /**
+   * `cover` fills the box and crops; `contain` shows the whole frame;
+   * `natural` gives the box the picture's own width at the box's height —
+   * pair it with `aspect="auto"` and a height on `className`.
+   */
+  fit?: keyof typeof FITS;
   /** Bottom-right overlay. A video's duration fills this when nothing else does. */
   badge?: ReactNode;
   /** The name, revealed on hover and focus. Off where a caption sits below the tile. */
@@ -421,7 +436,14 @@ export function MediaThumb({
     };
   }, [autoplay, failed, isVideo, near, src]);
 
-  const media = `h-full w-full ${FITS[fit]} ${dimmed ? "opacity-75" : ""} ${mediaClassName}`;
+  const media = `${FITS[fit]} ${dimmed ? "opacity-75" : ""} ${mediaClassName}`;
+  /**
+   * Under `natural` the poster is what gives the box its width, so it sits
+   * in the flow and the clip is laid over it — the reverse of the other
+   * fits, where the box is sized and the poster is pinned under the clip.
+   * Either way the clip draws over the still once it plays.
+   */
+  const posterInFlow = fit === "natural";
   // Over the shimmer once it has arrived. `opacity-75` for a dimmed tile is
   // on `media`; this one only hides a picture that is not there yet.
   const fade = `transition-opacity duration-300 ${loaded ? "" : "opacity-0"}`;
@@ -461,7 +483,7 @@ export function MediaThumb({
               decoding="async"
               draggable={false}
               data-testid="poster"
-              className={`absolute inset-0 ${media} ${fade}`}
+              className={`${posterInFlow ? "" : "absolute inset-0"} ${media} ${fade}`}
             />
           )}
           <video
@@ -483,7 +505,11 @@ export function MediaThumb({
             muted
             loop
             playsInline
-            className={`relative ${media}`}
+            className={
+              posterInFlow && hasPoster
+                ? `absolute inset-0 h-full w-full object-contain ${dimmed ? "opacity-75" : ""} ${mediaClassName}`
+                : `relative ${media}`
+            }
           />
         </>
       ) : (

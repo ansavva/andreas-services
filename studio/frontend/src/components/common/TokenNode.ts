@@ -27,6 +27,16 @@ import type { EditorConfig, NodeKey, SerializedTextNode } from "lexical";
  * is a placeholder nothing provides, and nothing would say so until the angle
  * was drafted and refused.
  */
+/**
+ * What a pill looks like, by kind — one place, because the opened run and
+ * the feed draw the same prompt back read-only (`PromptText`) and a pill
+ * that looked different there would read as a different citation.
+ */
+export const TOKEN_CLASS = {
+  block: "rounded border border-primary bg-surface-alt px-1 font-mono text-primary",
+  computed: "rounded border border-dashed border-line bg-surface-alt px-1 font-mono text-muted",
+} as const;
+
 export class TokenNode extends TextNode {
   /** `block` is editable and shared; `computed` is filled per character. */
   __kind: "block" | "computed";
@@ -50,10 +60,7 @@ export class TokenNode extends TextNode {
     // opens for editing; a computed value is filled from the character's bible
     // and has nothing behind it to open. Identical pills would send somebody
     // clicking `{top}` looking for a text box that cannot exist.
-    dom.className =
-      this.__kind === "block"
-        ? "rounded border border-primary bg-surface-alt px-1 font-mono text-primary"
-        : "rounded border border-dashed border-line bg-surface-alt px-1 font-mono text-muted";
+    dom.className = TOKEN_CLASS[this.__kind];
     dom.dataset.token = this.__text.slice(1, -1);
     dom.dataset.kind = this.__kind;
     return dom;

@@ -1,51 +1,41 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { useInfiniteQuery } from "@tanstack/react-query";
 
 import {
   Alert,
   Badge,
   Button,
   DateInput,
-  Dropdown,
   Field,
   Input,
   Select,
   Text,
   Toggle,
   ToggleGroup,
-  buttonClass,
-  useToast,
   type DateStatus,
 } from "@ansavva/design-system";
 
-import { getRuns, submitRun } from "../../apis/studio";
+import { getRuns } from "../../apis/studio";
 import { useNow } from "../../hooks/useNow";
 import { useRunWatch } from "../../hooks/useRunWatch";
 import { useSearchParamState } from "../../hooks/useSearchParamState";
 import type { HeroImage, RunAsset, RunFeedRow, RunStatus } from "../../types";
-import { formatCost } from "../../utils/cost";
+import { costParts } from "../../utils/cost";
 import { ApertureSpinner } from "../common/Aperture";
-import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { EmptyState } from "../common/EmptyState";
 import { FilterBar } from "../common/FilterBar";
 import {
-  DotsIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   FeedIcon,
-  FolderIcon,
-  OpenIcon,
-  PencilIcon,
-  RefreshIcon,
-  RerunIcon,
   SearchIcon,
   TilesIcon,
 } from "../common/icons";
-import { linkButtonClass } from "../common/linkButtonClass";
 import { LoadError } from "../common/LoadError";
-import { pressInApp } from "../common/pressInApp";
+import { PromptText } from "../common/PromptText";
 import { SectionLoading } from "../common/SectionLoading";
-import { CharacterChipLink } from "../character/CharacterChip";
-import { ArmedButton } from "../run/ArmedButton";
+import { CharacterTag } from "../character/CharacterChip";
 import {
   elapsedSince,
   groupByDay,
@@ -59,6 +49,7 @@ import { ParamChips } from "../run/ParamChips";
 import { PromoteDrawer } from "../run/PromoteDrawer";
 import { promptText } from "../run/seed";
 import { useRunActions } from "../run/useRunActions";
+import { RunActionRow } from "../run/RunActionRow";
 import { RunTiles } from "./RunTiles";
 
 /**
@@ -568,9 +559,17 @@ function FeedRow({
         )}
       </div>
 
-      {/* The plan. */}
+      {/* The plan. **Every row has one job**: the header says what state the
+          run is in and what it can do; the tiles say what it was handed; the
+          box says what it was told; the tags say the rest. The sheet's
+          order, read back — a run is what the sheet sent. */}
       <div className="flex min-w-0 flex-col gap-2.5">
-        <div className="flex flex-wrap items-center gap-1.5">
+        {/* **The controls never leave the badges' line.** The header is a
+            container; when it is narrower than 30rem the meta is sent to
+            the end of the flex order on a full-width basis — its own line
+            under the badges — and `RunActionRow` drops Edit's word. What
+            wraps is the time, never the buttons. */}
+        <div className="@container flex flex-wrap items-center gap-1.5">
           <StatusBadge status={row.status} />
           <Badge intent="neutral" className="font-mono">
             {row.kind}
@@ -579,41 +578,28 @@ function FeedRow({
             variant="caption"
             family="mono"
             tone="muted"
-            className="ml-auto tabular-nums"
+            className="tabular-nums @max-[30rem]:order-last @max-[30rem]:basis-full"
           >
-            {flying ? (
-              <span className="text-muted">
-                sent {relativeTime(row.submitted, now)}
-              </span>
-            ) : (
-              <>
-                {relativeTime(row.created, now)}
-                {row.cost && formatCost(row.cost, "")
-                  ? ` · ${formatCost(row.cost)}`
-                  : ""}
-              </>
-            )}
+            {flying ? `sent ${relativeTime(row.submitted, now)}` : runMeta(row, now)}
           </Text>
+          <RunActionRow
+            row={row}
+            actions={actions}
+            onOpen={() => onOpen(row)}
+            folderHref={actions.folderHref}
+            className="ml-auto"
+          />
         </div>
+
+        <SendThumbs sends={row.sends} />
 
         <RunPrompt row={row} />
 
-        <SendThumbs sends={row.sends} size="size-20" />
-
-        {row.cast.length > 0 && (
-          <div className="flex flex-wrap gap-1.5" aria-label="Cast">
-            {row.cast.map((member) => (
-              <CharacterChipLink
-                key={member.id}
-                id={member.id}
-                name={member.name ?? "deleted character"}
-                hero={heroes[member.id] ?? null}
-              />
-            ))}
-          </div>
-        )}
-
-        <ParamChips params={row.plan?.params} model={row.model} />
+        <ParamChips
+          params={row.plan?.params}
+          model={row.model}
+          leading={<CastTags cast={row.cast} heroes={heroes} />}
+        />
 
         {actions.rerunFailure && (
           <Alert.Root intent="danger">
@@ -621,8 +607,6 @@ function FeedRow({
             <Alert.Description>{actions.rerunFailure}</Alert.Description>
           </Alert.Root>
         )}
-
-        <RowActions row={row} actions={actions} onOpen={() => onOpen(row)} />
       </div>
 
       {promoting && (
@@ -633,6 +617,41 @@ function FeedRow({
         />
       )}
     </article>
+  );
+}
+
+/**
+ * `2h ago · USD 0.088 · 199s` — when, what it cost, how long the model took.
+ * Each part only when it is known; a draft is just its age.
+ */
+export function runMeta(row: RunFeedRow, now: number): string {
+  const { price, seconds } = costParts(row.cost);
+  return [relativeTime(row.created, now), price, seconds].filter(Boolean).join(" · ");
+}
+
+/**
+ * The run's cast as tags, first on the line of facts. Nothing when there is
+ * none — a `ParamChips` with no leading tags draws the parameters alone.
+ */
+export function CastTags({
+  cast,
+  heroes,
+}: {
+  cast: RunFeedRow["cast"];
+  heroes: Record<string, HeroImage | null>;
+}) {
+  if (cast.length === 0) return null;
+  return (
+    <>
+      {cast.map((member) => (
+        <CharacterTag
+          key={member.id}
+          id={member.id}
+          name={member.name ?? "deleted character"}
+          hero={heroes[member.id] ?? null}
+        />
+      ))}
+    </>
   );
 }
 
@@ -745,20 +764,34 @@ function DraftTiles({ row }: { row: RunFeedRow }) {
  * nothing saying there was more, and the feed's More a screen back. One
  * clamp, one word, both places.
  */
+/**
+ * The box the prompt sits in — the sheet's fill under the sheet's text.
+ *
+ * On the sheet the prompt reads as a thing because the frosted card is
+ * around it; drawn bare in a feed row it was lines of body type between a
+ * row of tiles and a row of chips, and the More and the Negative under it
+ * read as three more loose lines. The fill gives it an edge: the prompt,
+ * the way to read the rest, and the negative prompt under a hairline are
+ * one block, and the chips are what comes after it.
+ */
+const PROMPT_BOX = "flex w-full flex-col gap-2 rounded-md bg-fill-faint px-3 py-2";
+
 export function RunPrompt({ row, className = "" }: { row: RunFeedRow; className?: string }) {
   const text = promptText(row.plan?.prompt);
   const negative = negativePromptOf(row.plan?.params);
 
   if (!text) {
     return (
-      <Text variant="body" tone="muted" className={className}>
-        {row.plan ? "No prompt." : "This run predates the plan."}
-      </Text>
+      <div className={`${PROMPT_BOX} ${className}`}>
+        <Text variant="body" tone="muted">
+          {row.plan ? "No prompt." : "This run predates the plan."}
+        </Text>
+      </div>
     );
   }
 
   return (
-    <div className={`flex flex-col items-start gap-2 ${className}`}>
+    <div className={`${PROMPT_BOX} ${className}`}>
       <Clamped text={text} />
       {/* **The negative prompt is prose, and reads as prose.** It is a
           parameter to the provider and was drawn as one — a `key value` pill
@@ -767,11 +800,11 @@ export function RunPrompt({ row, className = "" }: { row: RunFeedRow; className?
           second prompt, so it gets the prompt's treatment under a word saying
           which one it is, and `ParamChips` leaves it out. */}
       {negative && (
-        <div className="flex flex-col items-start gap-1">
-          <Text variant="caption" tone="muted">
+        <div className="flex items-baseline gap-2 border-t border-line pt-2">
+          <Text variant="caption" tone="muted" className="shrink-0">
             Negative
           </Text>
-          <Clamped text={negative} tone="muted" />
+          <PromptText text={negative} tone="muted" className="min-w-0" />
         </div>
       )}
     </div>
@@ -784,204 +817,94 @@ export function negativePromptOf(params: Record<string, unknown> | undefined): s
   return typeof raw === "string" && raw.trim() !== "" ? raw : null;
 }
 
-/** Three lines and a way to read the rest — the prompt's clamp, reused. */
+/**
+ * Three lines and a way to read the rest — the prompt's clamp.
+ *
+ * **Drawn as the create sheet draws it** — `PromptText`: the sheet's face,
+ * its line height, its pills for a citation — and clamped, which the sheet
+ * is not. The sheet holds one prompt; a feed holds twenty, and a list whose
+ * rows are as tall as their prompts is a list nobody scrolls.
+ *
+ * **Clamped by height and faded, not `line-clamp`.** The prompt is
+ * pre-wrapped, so a paragraph break is a line, and `line-clamp-3` on two
+ * short paragraphs put its `…` alone on the blank third line — an ellipsis
+ * with nothing before it, which read as a rendering fault. A box three lines
+ * tall that fades out at its foot says "there is more" wherever the cut
+ * falls, and More under it says where to press.
+ */
 function Clamped({ text, tone }: { text: string; tone?: "muted" }) {
   const [expanded, setExpanded] = useState(false);
-  // Long enough that three lines will not hold it — a rough line is ~90
-  // characters at this column's width.
-  const long = text.length > 220;
+  /**
+   * Whether the clamp is hiding anything — measured, not guessed. It was
+   * `text.length > 220`, a rough three lines of prose, and a prompt is not
+   * only prose: two short paragraphs are three lines with the blank one
+   * between, and a pill is wider than the characters it holds. Either
+   * clamped the text and drew no More, which is text cut off with nothing
+   * saying so. The box says whether it overflowed; asked again when the
+   * text changes and when the column is resized.
+   */
+  const box = useRef<HTMLDivElement>(null);
+  const [long, setLong] = useState(false);
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    const measure = () => {
+      // Only the clamped box can overflow; an expanded one is as tall as
+      // its text, and would read as "nothing hidden" and drop the Less.
+      if (element.dataset.clamped !== undefined)
+        setLong(element.scrollHeight > element.clientHeight + 1);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [text, expanded]);
 
   return (
-    <div className="flex flex-col items-start gap-1">
-      <Text
-        variant="body"
+    <div className="flex flex-col gap-1">
+      {/* `max-h-18`: three lines at `leading-6`. The mask only once there is
+          something under it — a short prompt must not fade.
+
+          **Paragraph gaps are collapsed while clamped.** Three lines is the
+          budget, and a blank line spent one of them on nothing: two short
+          paragraphs showed two lines of text and a fade over an empty third.
+          The gaps come back on More — the string itself is never touched. */}
+      <PromptText
+        ref={box}
+        text={expanded ? text : text.replace(/\n{2,}/g, "\n")}
         tone={tone}
+        data-clamped={expanded ? undefined : ""}
         className={
           expanded
-            ? "whitespace-pre-wrap break-words"
-            : "line-clamp-3 break-words"
+            ? ""
+            : `max-h-18 overflow-hidden ${
+                long ? "[mask-image:linear-gradient(to_bottom,black_55%,transparent)]" : ""
+              }`
         }
-      >
-        {text}
-      </Text>
+      />
+      {/* A small pill at the box's right edge, where the fade points, rather
+          than a bare word at the left where it read as one more line. */}
       {long && (
-        <button
-          type="button"
-          onClick={() => setExpanded((current) => !current)}
-          aria-expanded={expanded}
-          className={linkButtonClass("muted")}
-        >
-          {expanded ? "Less" : "More"}
-        </button>
+        <div className="-mt-1 flex justify-end">
+          <Button
+            intent="secondary"
+            size="sm"
+            onClick={() => setExpanded((current) => !current)}
+            aria-expanded={expanded}
+            className="h-6 gap-1 rounded-pill bg-fill pl-2.5 pr-2 text-xs text-muted hover:text-ink"
+          >
+            {expanded ? "Less" : "More"}
+            {expanded ? (
+              <ChevronUpIcon className="size-3 fill-none stroke-current stroke-2" />
+            ) : (
+              <ChevronDownIcon className="size-3 fill-none stroke-current stroke-2" />
+            )}
+          </Button>
+        </div>
       )}
     </div>
   );
 }
 
-/**
- * The run's own actions: icon+word, in a row, per the mockup.
- *
- * Which ones depends on where the run is. A draft can be Run (the armed
- * two-press gesture, and the press is the act — no approve step anywhere) or
- * edited; a run in flight can only be edited (nothing cancels a prediction
- * here); a finished run can be run again, edited, opened in Files, deleted,
- * or read.
- *
- * **Open and Refresh are on every row, whatever its state.** Open, because
- * the pictures on the left used to be the only way into the run — and a
- * draft, a failed run and a run still out have no picture to press. Refresh,
- * because a run that is out is exactly the one whose row can be wrong.
- */
-function RowActions({
-  row,
-  actions,
-  onOpen,
-}: {
-  row: RunFeedRow;
-  actions: ReturnType<typeof useRunActions>;
-  onOpen: () => void;
-}) {
-  const client = useQueryClient();
-  const toast = useToast();
-  const navigate = useNavigate();
-  const flying = inFlight(row.status);
-  const draft = row.status === "draft";
 
-  const run = useCallback(async () => {
-    try {
-      await submitRun(row.id);
-    } catch (err) {
-      toast.add({
-        intent: "danger",
-        title: "Could not submit the run",
-        description: (err as Error).message,
-      });
-    }
-    await client.invalidateQueries({ queryKey: ["runs"] });
-  }, [client, row.id, toast]);
-
-  return (
-    <div className="mt-auto flex flex-wrap items-center gap-1 pt-1">
-      <Action
-        icon={<OpenIcon className={GLYPH} />}
-        label="Open"
-        onClick={onOpen}
-      />
-      {draft && (
-        <ArmedButton
-          idle="Run"
-          armed="Press again — this spends"
-          busy="Running…"
-          tooltip={`Sends the prompt, the parameters and the ${row.sends.length} image${
-            row.sends.length === 1 ? "" : "s"
-          } above, in that order. Sends it and starts billing.`}
-          onFire={run}
-          icon={<RerunIcon className={GLYPH} />}
-        />
-      )}
-      {!draft && !flying && (
-        <ArmedButton
-          idle="Rerun"
-          armed="Press again — this spends"
-          busy="Running…"
-          tooltip="Runs the same prompt, parameters and images as a new attempt. This one keeps its outputs."
-          onFire={actions.rerun}
-          intent="secondary"
-          icon={<RerunIcon className={GLYPH} />}
-          className=""
-        />
-      )}
-      <Action
-        icon={<PencilIcon className={GLYPH} />}
-        label="Edit"
-        onClick={actions.edit}
-      />
-      <Action
-        icon={
-          actions.refreshing ? (
-            <ApertureSpinner size="sm" label="Refreshing" className="size-4" />
-          ) : (
-            <RefreshIcon className={GLYPH} />
-          )
-        }
-        label="Refresh"
-        onClick={() => void actions.refresh()}
-        disabled={actions.refreshing}
-      />
-      {actions.folderHref && !flying && (
-        <a
-          href={actions.folderHref}
-          onClick={pressInApp(navigate, actions.folderHref)}
-          className={buttonClass({
-            intent: "secondary",
-            size: "sm",
-            className: "",
-          })}
-        >
-          <FolderIcon className={GLYPH} />
-          Folder
-        </a>
-      )}
-      {!flying && (
-        <ConfirmDeleteButton
-          noun="this run"
-          tone="text"
-          onConfirm={actions.remove}
-          className=""
-        />
-      )}
-      <Dropdown.Root>
-        <Dropdown.Trigger
-          className={buttonClass({
-            intent: "secondary",
-            size: "sm",
-            className: "",
-          })}
-        >
-          <DotsIcon className="size-4 fill-current stroke-none" />
-          More
-        </Dropdown.Trigger>
-        <Dropdown.Content className="left-auto right-0">
-          <Dropdown.Item onSelect={actions.copyPrompt} disabled={!row.plan}>
-            Copy prompt
-          </Dropdown.Item>
-          <Dropdown.Item onSelect={actions.openRequest}>
-            Open request documents
-          </Dropdown.Item>
-          {actions.canAddToCut && (
-            <Dropdown.Item onSelect={() => void actions.addToCut()}>
-              Add to the cut
-            </Dropdown.Item>
-          )}
-        </Dropdown.Content>
-      </Dropdown.Root>
-    </div>
-  );
-}
-
-const GLYPH = "size-4 fill-none stroke-current stroke-[1.5]";
-
-function Action({
-  icon,
-  label,
-  onClick,
-  disabled = false,
-}: {
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <Button
-      intent="secondary"
-      size="sm"
-      onClick={onClick}
-      disabled={disabled}
-      className=""
-    >
-      {icon}
-      {label}
-    </Button>
-  );
-}

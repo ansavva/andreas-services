@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { Text } from "@ansavva/design-system";
 
 /**
@@ -18,17 +20,22 @@ import { Text } from "@ansavva/design-system";
 export function ParamChips({
   params,
   model,
+  leading,
+  trailing,
 }: {
   params: Record<string, unknown> | undefined;
   model?: string;
+  /** Tags drawn before the parameters — the run's cast, as `CharacterTag`s. */
+  leading?: ReactNode;
+  /** Tags drawn after the model — the cost and the seconds, on the rail. */
+  trailing?: ReactNode;
 }) {
-  const entries = Object.entries(params ?? {}).filter(
-    ([key, value]) => isScalar(value) && !PROSE.has(key),
-  );
-  if (entries.length === 0 && !model) return null;
+  const entries = scalarParams(params);
+  if (entries.length === 0 && !model && !leading && !trailing) return null;
 
   return (
     <div className="flex flex-wrap gap-1.5">
+      {leading}
       {entries.map(([key, value]) => (
         <span
           key={key}
@@ -40,7 +47,7 @@ export function ParamChips({
             {key}
           </Text>
           <Text variant="caption" inline className="min-w-0 break-words">
-            {String(value)}
+            {value}
           </Text>
         </span>
       ))}
@@ -51,8 +58,16 @@ export function ParamChips({
           </Text>
         </span>
       )}
+      {trailing}
     </div>
   );
+}
+
+/** The parameters a chip or a grid row draws: scalars, and not the prose ones. */
+export function scalarParams(params: Record<string, unknown> | undefined): Array<[string, string]> {
+  return Object.entries(params ?? {})
+    .filter(([key, value]) => isScalar(value) && !PROSE.has(key))
+    .map(([key, value]) => [key, String(value)]);
 }
 
 /**

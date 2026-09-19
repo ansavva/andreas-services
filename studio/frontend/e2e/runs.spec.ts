@@ -388,16 +388,13 @@ test("copying an output puts the COPY in the chosen folder, and tags that", asyn
   await page.goto(`/p/${PROJECT}/r/${IMAGE_RUN}`);
   await expect(lightbox(page)).toBeVisible();
 
-  // Scoped to the lightbox: the feed's tiles under it carry the same action in
-  // their own menus.
-  const trigger = lightbox(page).getByRole("button", {
-    name: "Copy into a character",
-    exact: true,
-  });
+  // On the rail's `⋯`, scoped to the lightbox: the feed's tiles under it
+  // carry the same line in their own menus.
   const submit = page.getByRole("button", { name: "Copy", exact: true });
 
   await expect(submit).toHaveCount(0);
-  await trigger.click();
+  await lightbox(page).getByRole("button", { name: "More actions for this run" }).first().click();
+  await page.getByRole("menuitem", { name: "Copy into a character…" }).click();
   await expect(page.getByRole("heading", { name: /^Copy into / })).toBeVisible();
 
   // The run names one character, so it is preselected — two would be a choice
@@ -460,12 +457,17 @@ test("copying an output puts the COPY in the chosen folder, and tags that", asyn
 
 test("only an image output offers to be copied into a character", async ({ page }) => {
   stubOnly("the run fixtures are what put an image and a clip side by side");
-  const promote = () =>
-    lightbox(page).getByRole("button", { name: "Copy into a character", exact: true });
+  // The line is on the rail's `⋯`, so the menu is opened to look, and closed
+  // again with Escape.
+  const promote = () => page.getByRole("menuitem", { name: "Copy into a character…" });
+  const open = () =>
+    lightbox(page).getByRole("button", { name: "More actions for this run" }).first().click();
 
   await page.goto(`/p/${PROJECT}/r/${IMAGE_RUN}`);
   await expect(lightbox(page)).toBeVisible();
+  await open();
   await expect(promote()).toHaveCount(1);
+  await page.keyboard.press("Escape");
 
   // The synthesised run in `support/api.ts` outputs the MP4. What a character
   // is kept and matched against is pictures, so a clip is not offered —
@@ -475,6 +477,8 @@ test("only an image output offers to be copied into a character", async ({ page 
   await page.goto(`/p/${RUN_PROJECT}/r/${RUN_ID}`);
   await expect(lightbox(page)).toBeVisible();
   await expect(lightbox(page).locator("video")).toHaveCount(1);
+  await open();
+  await expect(page.getByRole("menuitem", { name: "Download" })).toBeVisible();
   await expect(promote()).toHaveCount(0);
 });
 
@@ -522,13 +526,15 @@ test("a press at the foot of an output opens the run rather than a control hidde
 });
 
 /**
- * **Folder is a link, and a link inside the app is the router's.**
+ * **Folder navigates in the app, and a navigation inside the app is the
+ * router's.**
  *
  * It was a bare `<a href="/o/…">`, so the one control that says "show me where
  * this lives" also threw the session away: the bundle re-ran, every query
- * started empty and every picture on the screen was fetched again. The probe
- * is a value on `window` — a full document load is the only thing that can
- * take it away.
+ * started empty and every picture on the screen was fetched again. It is a
+ * line on the run's `⋯` now, and the line calls the router. The probe is a
+ * value on `window` — a full document load is the only thing that can take
+ * it away.
  */
 test("Folder navigates in the app rather than reloading it", async ({ page }) => {
   stubOnly("the folder link is built from the captured run's outputs");
@@ -538,7 +544,8 @@ test("Folder navigates in the app rather than reloading it", async ({ page }) =>
   await page.evaluate(() => {
     (window as unknown as { probe?: string }).probe = "kept";
   });
-  await lightbox(page).getByRole("link", { name: "Folder" }).click();
+  await lightbox(page).getByRole("button", { name: "More actions for this run" }).first().click();
+  await page.getByRole("menuitem", { name: "Folder" }).click();
 
   await expect(page).toHaveURL(/\/f\//);
   expect(

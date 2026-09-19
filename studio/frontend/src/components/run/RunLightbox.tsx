@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -15,11 +16,9 @@ import {
   Collapsible,
   IconButton,
   Text,
-  buttonClass,
 } from "@ansavva/design-system";
 
-import { getRun, submitRun } from "../../apis/studio";
-import { useArmed } from "../../hooks/useArmed";
+import { getRun } from "../../apis/studio";
 import { useKeyboardNav } from "../../hooks/useKeyboardNav";
 import { useNow } from "../../hooks/useNow";
 import { useResource } from "../../hooks/useResource";
@@ -30,7 +29,7 @@ import {
   type RunFeedRow,
   type RunRecord,
 } from "../../types";
-import { formatCost } from "../../utils/cost";
+import { costParts } from "../../utils/cost";
 import { assetLabel, formatBytes } from "../../utils/format";
 import { folderPath, projectPath, runPath, scenePath } from "../../utils/location";
 import { ApertureSpinner } from "../common/Aperture";
@@ -42,18 +41,12 @@ import {
   CloseIcon,
   CompareIcon,
   DownloadIcon,
-  FolderIcon,
-  PencilIcon,
   PromoteIcon,
-  RefreshIcon,
-  RerunIcon,
-  TrashIcon,
   UpscaleIcon,
 } from "../common/icons";
+import { type MenuAction } from "../common/ActionMenu";
 import { LoadError } from "../common/LoadError";
-import { pressInApp } from "../common/pressInApp";
 import { SectionLoading } from "../common/SectionLoading";
-import { CharacterChipLink } from "../character/CharacterChip";
 import {
   THIS_FRAME_GROUP,
   USE_AS_GROUP,
@@ -65,10 +58,11 @@ import { CompareStage, type ComparePicture } from "../media/CompareStage";
 import { MediaPlayer, type MediaPlayerControls } from "../media/MediaPlayer";
 import { MediaThumb } from "../media/MediaThumb";
 import { ViewerFrame } from "../viewer/ViewerFrame";
+import { RunActionRow } from "./RunActionRow";
 import { SendThumbs } from "./SendThumbs";
-import { RunPrompt, StatusBadge, useFeedFilters, useRunFeed } from "../project/RunFeed";
+import { CastTags, RunPrompt, StatusBadge, useFeedFilters, useRunFeed } from "../project/RunFeed";
 import { elapsedSince, inFlight, relativeTime } from "./feedTime";
-import { ParamChips } from "./ParamChips";
+import { scalarParams } from "./ParamChips";
 import { PayloadDocument, PayloadPreview } from "./PayloadDocument";
 import { FrameMenu } from "../viewer/FrameMenu";
 import { PromoteDrawer, isPromotable, isVideoAsset } from "./PromoteDrawer";
@@ -601,26 +595,41 @@ function Opened({
         aria-label="Run details"
         className="flex w-full shrink-0 flex-col gap-3 border-t border-line bg-bg p-5 md:w-[360px] md:overflow-y-auto md:border-l md:border-t-0"
       >
-        <div className="flex flex-wrap items-center gap-1.5">
+        {/* The feed row's header: state on the left, the two buttons and
+            the menu on the right, on one line. The rail is 360px, under
+            30rem, so the time takes its own line below and Edit is its
+            pencil — the controls never wrap. */}
+        <div className="@container flex flex-wrap items-center gap-1.5">
           <StatusBadge status={row.status} />
-          <Badge intent="neutral" className="font-mono">
+          {/* The kind, only where there is room: `succeeded · training` and
+              the three controls do not share 320px, and the stage beside
+              this rail already shows whether the run made a still or a
+              clip. */}
+          <Badge intent="neutral" className="font-mono @max-[30rem]:hidden">
             {row.kind}
           </Badge>
           <Text
             variant="caption"
             family="mono"
             tone="muted"
-            className="ml-auto tabular-nums"
+            className="tabular-nums @max-[30rem]:order-last @max-[30rem]:basis-full"
           >
-            {flying ? (
-              <span className="text-muted">
-                sent {relativeTime(row.submitted, now)}
-              </span>
-            ) : (
-              relativeTime(row.created, now)
-            )}
+            {flying ? `sent ${relativeTime(row.submitted, now)}` : relativeTime(row.created, now)}
           </Text>
+          <RailActions
+            row={row}
+            record={record}
+            asset={asset}
+            output={output}
+            actions={actions}
+            controls={controls}
+            onPromote={() => asset && onPromote(asset)}
+          />
         </div>
+
+        {/* The sheet's order — pictures, prompt, tags — the same as the
+            feed row's. */}
+        <SendThumbs sends={row.sends} />
 
         {/* The feed's clamp and its More, not a scroll box of its own — a
             scroll inside the scroll the frame is on a phone cut the prompt
@@ -628,41 +637,7 @@ function Opened({
             is a flex column taller than the frame on desktop. */}
         <RunPrompt row={row} className="shrink-0" />
 
-        <SendThumbs sends={row.sends} size="size-28" />
-
-        <ParamChips params={row.plan?.params} model={row.model} />
-
-        {row.cast.length > 0 && (
-          <div className="flex flex-wrap gap-1.5" aria-label="Cast">
-            {row.cast.map((member) => (
-              <CharacterChipLink
-                key={member.id}
-                id={member.id}
-                name={member.name ?? "deleted character"}
-                hero={heroes[member.id] ?? null}
-              />
-            ))}
-          </div>
-        )}
-
-        <Text
-          variant="caption"
-          family="mono"
-          tone="muted"
-          className="tabular-nums"
-        >
-          {[
-            formatCost(row.cost, ""),
-            row.cost?.predict_time
-              ? `${Math.round(row.cost.predict_time)}s`
-              : "",
-            record?.prediction_id
-              ? `prediction ${record.prediction_id.slice(0, 8)}…`
-              : "",
-          ]
-            .filter(Boolean)
-            .join(" · ") || "—"}
-        </Text>
+        <RunProperties row={row} record={record} heroes={heroes} />
 
         {actions.rerunFailure && (
           <Alert.Root intent="danger">
@@ -670,16 +645,6 @@ function Opened({
             <Alert.Description>{actions.rerunFailure}</Alert.Description>
           </Alert.Root>
         )}
-
-        <ActionGrid
-          row={row}
-          record={record}
-          asset={asset}
-          output={output}
-          actions={actions}
-          controls={controls}
-          onPromote={() => asset && onPromote(asset)}
-        />
 
         {/* The Request row, collapsed: the three documents the provider owns,
             as text and never decoded. Sits last, because it is what you go
@@ -768,14 +733,21 @@ function Opened({
 const GLYPH = "size-4 fill-none stroke-current stroke-[1.5]";
 
 /**
- * Everything a run can do, in one grid of equal cells — the icon over the word.
+ * The rail's action row — `RunActionRow`, with the lines about the output on
+ * the stage in front of the run's own.
  *
- * Which cells depends on where the run is, the same way the feed row decides:
- * a draft offers Run; a run in flight offers Edit and nothing that spends or
- * destroys; a finished run offers the lot. Image-only cells (Upscale, Animate,
- * Promote) go with the output on the stage.
+ * It was a list of twelve cells under an ACTIONS heading, one per line: the
+ * rail read as a settings page, and the three that matter — Rerun, Edit, and
+ * what to do with the picture — sat among Refresh, Folder and Trash at the
+ * same weight. Now it is the feed row's two buttons and its `⋯`, and the
+ * output's lines open the menu: Use as (a still's three roles, a clip's
+ * one), This frame as (the frame the clip is stopped on — `useFrameGrab`
+ * says why the time is read off the player when the line is pressed, and
+ * the player paused so the frame on screen is the frame taken), Upscale,
+ * Copy into a character, Download. The same lines every tile's `⋮` offers
+ * (`outputMenu`), decided by the kind.
  */
-function ActionGrid({
+function RailActions({
   row,
   record,
   asset,
@@ -793,259 +765,142 @@ function ActionGrid({
   controls: MediaPlayerControls | null;
   onPromote: () => void;
 }) {
-  const navigate = useNavigate();
-  const flying = inFlight(row.status);
-  const draft = row.status === "draft";
   const still = asset !== null && !isVideoAsset(asset) && row.kind !== "video";
   const folder = record ? folderPath(record.folder) : actions.folderHref;
 
-  const run = useCallback(async () => {
-    await submitRun(row.id);
-  }, [row.id]);
-
-  return (
-    <section className="flex flex-col gap-2">
-      <Text
-        variant="caption"
-        tone="muted"
-        className="font-semibold uppercase tracking-wide"
-      >
-        Actions
-      </Text>
-      {/* A list, not a grid: one row per action, the word beside its glyph,
-          hairlines between. A grid of boxes gave every word its own frame
-          and the rail read as a keypad. */}
-      <div className="flex flex-col border-t border-line" aria-label="Actions">
-        {draft && (
-          <ArmedCell
-            idle="Run"
-            armed="Spends"
-            busy="Running…"
-            icon={<RerunIcon className={GLYPH} />}
-            onFire={run}
-          />
-        )}
-        {!draft && !flying && (
-          <ArmedCell
-            idle="Rerun"
-            armed="Spends"
-            busy="Running…"
-            icon={<RerunIcon className={GLYPH} />}
-            onFire={actions.rerun}
-          />
-        )}
-        <Cell
-          icon={<PencilIcon className={GLYPH} />}
-          label="Edit"
-          onClick={actions.edit}
-        />
-        {/* Re-reads the record and the feed's row for it — see
-            `useRunActions.refresh`. On every run: the poll stops at a
-            terminal status, and the one wedged short of it is the one this
-            is for. */}
-        <Cell
-          icon={
-            actions.refreshing ? (
-              <ApertureSpinner size="sm" label="Refreshing" className="size-4" />
-            ) : (
-              <RefreshIcon className={GLYPH} />
-            )
-          }
-          label="Refresh"
-          onClick={() => void actions.refresh()}
-          disabled={actions.refreshing}
-        />
-        {/* Three cells for a still, one for a clip: the same lines every
-            tile's menu offers (`attachActions`), decided by the kind. */}
-        {asset &&
-          rolesOfKind(still ? "image" : "video").map((role) => {
-            const { label, icon: Icon } = USE_AS_WORDS[role];
-            return (
-              <Cell
-                key={role}
-                icon={<Icon className={GLYPH} />}
-                label={`${USE_AS_GROUP} ${label.toLowerCase()}`}
-                onClick={() => actions.useAs(asset, output, role)}
-              />
-            );
-          })}
-        {/* The frame the clip is ON — paused there, or passing — as the three
-            things a picture can be: the still a motion-transfer run is drawn
-            to match (`useFrameGrab`). The time is read off the stage's player
-            when the cell is pressed, and the player is paused so the frame on
-            screen is the frame taken. A clip that never played is at 0, the
-            first frame. */}
-        {asset &&
-          !still &&
-          USE_AS_ROLES.map((role) => {
-            const { label, icon: Icon } = USE_AS_WORDS[role];
-            return (
-              <Cell
-                key={`frame-${role}`}
-                icon={<Icon className={GLYPH} />}
-                label={`${THIS_FRAME_GROUP} ${label.toLowerCase()}`}
-                onClick={() => {
+  const leading: MenuAction[] = asset
+    ? [
+        ...rolesOfKind(still ? "image" : "video").map((role) => {
+          const { label, icon: Icon } = USE_AS_WORDS[role];
+          return {
+            key: `use-as-${role}`,
+            group: USE_AS_GROUP,
+            label,
+            icon: <Icon className={GLYPH} />,
+            onSelect: () => actions.useAs(asset, output, role),
+          };
+        }),
+        ...(still
+          ? []
+          : USE_AS_ROLES.map((role) => {
+              const { label, icon: Icon } = USE_AS_WORDS[role];
+              return {
+                key: `frame-as-${role}`,
+                group: THIS_FRAME_GROUP,
+                label,
+                icon: <Icon className={GLYPH} />,
+                onSelect: () => {
                   controls?.pause();
                   void actions.frameAs(asset, output, role, controls?.currentTime() ?? 0);
-                }}
-              />
-            );
-          })}
-        {asset && still && (
-          <Cell
-            icon={<UpscaleIcon className={GLYPH} />}
-            label="Upscale"
-            onClick={() => actions.upscale(asset, output)}
-          />
-        )}
-        {asset && isPromotable(asset) && (
-          <Cell
-            icon={<PromoteIcon className={GLYPH} />}
-            label="Copy into a character"
-            onClick={onPromote}
-          />
-        )}
-        {asset && (
-          <Cell
-            icon={<DownloadIcon className={GLYPH} />}
-            label="Download"
-            onClick={() => void actions.download(asset)}
-          />
-        )}
-        {folder && !flying && (
-          <a
-            href={folder}
-            onClick={pressInApp(navigate, folder)}
-            className={buttonClass({
-              intent: "secondary",
-              size: "sm",
-              className: CELL,
-            })}
-          >
-            <FolderIcon className={GLYPH} />
-            Folder
-          </a>
-        )}
-        {/* The scene this run belongs to, when it does. One link, not a list:
-            a run is made for at most one scene. */}
-        {row.scene && (
-          <a
-            href={scenePath(row.scene)}
-            onClick={pressInApp(navigate, scenePath(row.scene))}
-            className={buttonClass({
-              intent: "secondary",
-              size: "sm",
-              className: CELL,
-            })}
-          >
-            <FolderIcon className={GLYPH} />
-            Scene
-          </a>
-        )}
-        {actions.canAddToCut && (
-          <Cell
-            icon={<FolderIcon className={GLYPH} />}
-            label="Add to the cut"
-            onClick={() => void actions.addToCut()}
-          />
-        )}
-        {!flying && (
-          <ArmedCell
-            idle="Trash"
-            armed="Confirm"
-            busy="Deleting…"
-            danger
-            icon={<TrashIcon className={GLYPH} />}
-            onFire={actions.remove}
-          />
-        )}
-      </div>
-    </section>
-  );
-}
+                },
+              };
+            })),
+        ...(still
+          ? [
+              {
+                key: "upscale",
+                label: "Upscale",
+                icon: <UpscaleIcon className={GLYPH} />,
+                onSelect: () => actions.upscale(asset, output),
+              },
+            ]
+          : []),
+        ...(isPromotable(asset)
+          ? [
+              {
+                key: "promote",
+                label: "Copy into a character…",
+                icon: <PromoteIcon className={GLYPH} />,
+                onSelect: onPromote,
+              },
+            ]
+          : []),
+        {
+          key: "download",
+          label: "Download",
+          icon: <DownloadIcon className={GLYPH} />,
+          onSelect: () => void actions.download(asset),
+        },
+      ]
+    : [];
 
-const CELL =
-  "flex h-10 w-full items-center justify-start gap-3 border-0 border-b border-line px-2 text-sm font-medium";
-
-function Cell({
-  icon,
-  label,
-  onClick,
-  disabled = false,
-}: {
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
   return (
-    <Button
-      intent="secondary"
-      size="sm"
-      onClick={onClick}
-      disabled={disabled}
-      className={CELL}
-    >
-      {icon}
-      <span className="leading-tight">{label}</span>
-    </Button>
+    <RunActionRow
+      row={row}
+      actions={actions}
+      leading={leading}
+      folderHref={folder}
+      sceneHref={row.scene ? scenePath(row.scene) : null}
+      className="ml-auto"
+    />
   );
 }
 
 /**
- * A cell that arms on the first press and acts on the second — `useArmed`,
- * the one machine every spending and destroying control in the app runs on.
- * The accessible name is the full sentence, so a screen reader hears what the
- * second press does; the cell shows the short form to stay the size of its
- * neighbours.
+ * The run's facts, labelled, one line each — the object page's
+ * `FileProperties`, for a run.
+ *
+ * **A `<dl>`, not tags.** The rail drew the cast, the parameters, the model,
+ * the cost and the prediction id as one wrapped line of `key value` pills —
+ * eleven of them on a flux run, three deep in a 320px column, with the key
+ * and the value the same size and a cost pill beside a parameter pill as if
+ * they were the same kind of fact. The feed row keeps the tags because a
+ * row is a summary; the rail is where the run is read, and a list of
+ * labelled pairs is what a person reads. Same rule as the object page: a
+ * quiet label, the value beside it, whitespace doing the aligning.
  */
-function ArmedCell({
-  idle,
-  armed,
-  busy,
-  icon,
-  onFire,
-  danger = false,
+function RunProperties({
+  row,
+  record,
+  heroes,
 }: {
-  idle: string;
-  armed: string;
-  busy: string;
-  icon: ReactNode;
-  onFire: () => Promise<unknown>;
-  danger?: boolean;
+  row: RunFeedRow;
+  record: RunRecord | null;
+  heroes: Record<string, HeroImage | null>;
 }) {
-  const state = useArmed({ onFire });
-  const label = state.busy ? busy : state.armed ? armed : idle;
-  const name = state.busy
-    ? busy
-    : state.armed
-      ? danger
-        ? "Confirm — delete this run"
-        : "Press again — this spends"
-      : idle;
+  const { price, seconds } = costParts(row.cost);
+  const rows: Array<[string, ReactNode]> = [
+    ...(row.cast.length > 0
+      ? [
+          [
+            row.cast.length === 1 ? "Character" : "Characters",
+            <span key="cast" className="flex flex-wrap gap-1.5">
+              <CastTags cast={row.cast} heroes={heroes} />
+            </span>,
+          ] as [string, ReactNode],
+        ]
+      : []),
+    ["Model", mono(row.model)],
+    ...scalarParams(row.plan?.params).map(([key, value]) => [key, mono(value)] as [string, ReactNode]),
+    ...(price ? [["Cost", mono(price)] as [string, ReactNode]] : []),
+    ...(seconds ? [["Model time", mono(seconds)] as [string, ReactNode]] : []),
+    ...(record?.prediction_id
+      ? [["Prediction", mono(record.prediction_id)] as [string, ReactNode]]
+      : []),
+  ];
 
   return (
-    <Button
-      intent={
-        state.armed || state.busy
-          ? danger
-            ? "danger"
-            : "primary"
-          : "secondary"
-      }
-      size="sm"
-      aria-label={name}
-      onClick={state.press}
-      {...state.handlers}
-      disabled={state.busy}
-      className={CELL}
-    >
-      {icon}
-      <span className="leading-tight">{label}</span>
-      <span className="sr-only" aria-live="assertive">
-        {state.armed ? name : ""}
-      </span>
-    </Button>
+    <dl aria-label="Run details" className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
+      {rows.map(([label, value]) => (
+        <Fragment key={label}>
+          <dt>
+            <Text as="span" variant="caption" tone="muted">
+              {label}
+            </Text>
+          </dt>
+          <dd className="min-w-0">{value}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
+}
+
+/** A value in the grid: mono, breaking anywhere — a prediction id is longer than the column. */
+function mono(value: string) {
+  return (
+    <Text as="span" variant="caption" family="mono" className="break-all">
+      {value}
+    </Text>
   );
 }
 
