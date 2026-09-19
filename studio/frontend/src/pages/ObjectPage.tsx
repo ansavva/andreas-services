@@ -587,15 +587,13 @@ export function ObjectPage() {
                   isVideo={isVideo}
                   aspect="auto"
                   zoomable
-                  // The clip's corners are the Video.js skin's own —
-                  // `--media-video-border-radius`, 28px on the default theme,
-                  // measured in `@videojs/react/video/skin.css` — with a 1px
-                  // inset frame the skin draws itself. A still has no skin,
-                  // so it drew as a square box beside a rounded one. `lg` is
-                  // the largest step on the app's scale (16px; lint rule 1
-                  // refuses an arbitrary value), applied to the still only:
-                  // the same class on the clip would override the skin's
-                  // radius, and the skin is not restyled. The hairline stays
+                  // The clip's corners are the Video.js skin's, set to the
+                  // app's `lg` through the skin's `--media-border-radius`
+                  // seam in `ClipPlayer`. A still has no skin, so it drew
+                  // as a square box beside a rounded one; it wears the same
+                  // `lg` here, on the still only — the class on the clip
+                  // would override the skin's radius, which is the skin's
+                  // to draw (it zeroes it in fullscreen). The hairline stays
                   // on both, since the clip carries one too.
                   className={`h-full w-full border border-line ${isVideo ? "" : "rounded-lg"}`}
                   onContainerChange={setStage}
