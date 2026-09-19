@@ -301,6 +301,50 @@ describe("a run in flight", () => {
     expect(screen.queryByRole("menuitem", { name: /Delete/ })).toBeNull();
   });
 
+  it("draws a training run's landed checkpoints beside one in-flight tile", async () => {
+    // The API confirms each pair as the pod uploads it, so a running
+    // training row already has outputs; they are files, not pictures.
+    await draw([
+      row({
+        id: "run-training",
+        kind: "training",
+        status: "running",
+        submitted: ago(600),
+        completed: null,
+        cost: null,
+        thumb: null,
+        plan: {
+          version: 1,
+          origin: "authored",
+          prompt: null,
+          params: { trigger: "ohwx", steps: 2000, save_every: 250 },
+        },
+        outputs: [
+          {
+            node: "node-w1",
+            name: "ohwx-1234_000000250_high_noise.safetensors",
+            url: "/w1",
+            content_type: "application/octet-stream",
+            size: 300,
+          },
+          {
+            node: "node-w2",
+            name: "ohwx-1234_000000250_low_noise.safetensors",
+            url: "/w2",
+            content_type: "application/octet-stream",
+            size: 300,
+          },
+        ],
+      }),
+    ]);
+
+    const article = await screen.findByRole("article");
+    expect(within(article).getByText("LoRA · high noise")).toBeTruthy();
+    expect(within(article).getByText("LoRA · low noise")).toBeTruthy();
+    expect(within(article).getAllByTestId("in-flight-tile")).toHaveLength(1);
+    expect(within(article).getByText("Running…")).toBeTruthy();
+  });
+
   it("counts the tiles off the plan, one when it says nothing", () => {
     expect(expectedOutputs(row({ plan: null }))).toBe(1);
     expect(

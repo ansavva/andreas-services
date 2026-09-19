@@ -85,6 +85,14 @@ Outputs land under **`<character>/models/`** as
 save point, and the same without a step number for the final pair. The run
 page lists them as file tiles; each opens a page with size, type and Download.
 
+**They appear as they land, not at the end.** The pod tells studio after each
+checkpoint it uploads, so a pair shows up in `<character>/models/` and on the
+still-`running` run within a minute of the trainer saving it — every ~8
+minutes on an A100 at 250-step intervals. Evaluate the early pairs while the
+later ones train. If a run is `running` and shows nothing where you expected
+a pair, `studio runs reconcile <run>` files whatever has reached the bucket
+without closing the run.
+
 ## After it succeeds — the evaluation
 
 The same still, prompt and seed through `wan-2.2-i2v-lora` with each
