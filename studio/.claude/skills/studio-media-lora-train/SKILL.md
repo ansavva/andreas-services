@@ -109,10 +109,24 @@ as `<trigger>-<run>_<step>_sample_<i>.jpg` (the final step's unnumbered,
 like the final pair) and the run page shows each row's strip under its pair,
 as the samples arrive.
 
+**What a sample is depends on `base`.** The `i2v` base — the default, the
+one `wan-2.2-i2v-lora` runs — conditions every frame on a first image, at
+training and at sampling alike: asked for a still from text alone it crashes
+(`The size of tensor a (36) must match the size of tensor b (16)`, the
+first run that tried, $0.66 lost). So on `i2v` **each prompt re-renders one
+dataset photo**: the photos are dealt round-robin over the dataset in
+manifest order — prompt 0 gets the first photo, prompt 1 the second, and so
+on, wrapping — and the run records which (`training.samples`, one
+`{index, prompt, ctrl_img}` per prompt). The still keeps the photo's
+aspect. The prompt steers little; what you get is **this photo, through
+this pair**. On `t2v` a prompt is text-only and draws the scene it names.
+
 The defaults put the subject where a dataset usually does not — a kitchen, a
-night street, a formal suit, a beach — because a sample of the training
-scene only shows what was memorised. Write your own with `{trigger}` where
-the token goes:
+night street, a formal suit, a beach. On `t2v` that is the point: a sample
+of the training scene only shows what was memorised. On `i2v` the words
+matter less than the photo behind them, and there is no harm in leaving
+them. Write your own with `{trigger}` where the token goes, and no `--` in
+them — the trainer reads `--x` as a flag, and the job appends its own:
 
 ```bash
 studio run --model wan-2.2-lora-train --project <project> \
@@ -125,7 +139,18 @@ studio run --model wan-2.2-lora-train --project <project> \
 steps of a 14B model per save point — about a minute on an A100 for the
 four defaults, so ~8 minutes over a 2000-step run.
 
-**What to look for, down the column:**
+**What to look for, down the column — on `i2v`, a photo re-rendered:**
+
+| Reading | It says |
+|---|---|
+| the photo, clean, the same person | **intact** — the pair still renders its subject; take it to the evaluation |
+| the same photo, a face drifting from it, colour shifted, smeared | **damage** — the pair has hurt the model; the row before this one, or a lower `lr` / fewer steps next time |
+| a photo, a stranger in it | the token has not bound, or the low-noise expert has lost the face — read on, and evaluate on video |
+
+Whether the face **travels** — into a scene the dataset never showed — an
+I2V still cannot say; that is the evaluation's question, on video, below.
+
+**On `t2v`, a scene imagined:**
 
 | Reading | It says |
 |---|---|
@@ -151,6 +176,13 @@ or better captions.
 
 - **`failed` — "trainer exited N"**: the log tail is in the run's response
   document. Most often a dataset image the trainer could not read.
+- **`failed` at the first save point, log tail
+  `The size of tensor a (36) must match the size of tensor b (16)`**: an
+  `i2v` sample drawn from text alone. The job now hands every `i2v` sample a
+  dataset photo (a prompt with a `--` of its own is refused at submit, since
+  the trainer would read it as a flag); if it recurs, the trainer's image
+  has changed how a sample takes its image — the pod log's `sample N
+  re-renders <photo>` lines say what the job handed it.
 - **`failed` — "the training pod is gone and reported no result"**: the
   machine died (a reclaimed host, an out-of-stock restart). Rerun.
 - **A run stuck `running` past `max_hours`**: `studio runs reconcile <run>`

@@ -426,6 +426,12 @@ def prepare(record: dict, send_entries: list[dict]) -> tuple[dict, dict, dict]:
     payload = payload_of(record)
     bindings = bindings_of(send_entries, entry)
     preflight(entry, payload, bindings, send_entries)
+    if registry.provider_of(entry) == registry.RUNPOD_POD:
+        # A trainer's own rules — the knobs, the dataset size, one character
+        # — checked here so a refusal leaves a draft, not a `pending` run
+        # with no pod behind it.
+        from studio_core.services import training
+        training.preflight(record, entry, payload, bindings)
     return entry, payload, bindings
 
 

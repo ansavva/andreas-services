@@ -1428,10 +1428,17 @@ def test_a_training_run_rents_a_pod_writes_a_manifest_and_pre_makes_its_outputs(
     assert manifest["sample_prompts"][0] == "ohwx_sa, cooking in a bright kitchen, medium shot"
     assert len(manifest["sample_prompts"]) == 4
     assert manifest["sample_seed"] == 42 and manifest["sample_steps"] == 20
+    # The default base is i2v, so each sample re-renders a dataset photo,
+    # dealt round-robin — four prompts over five photos: the first four.
+    assert manifest["samples"] == [
+        {"index": i, "prompt": p, "ctrl_img": f"photo-{i}.png"}
+        for i, p in enumerate(manifest["sample_prompts"])]
 
     # The output nodes exist under the character's models/ folder, empty —
     # the weights in models/ itself, the samples in models/samples/.
     record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    # The manifest dies at close; the run keeps which photo each sample is of.
+    assert record["payload"]["training"]["samples"] == manifest["samples"]
     made = record["payload"]["training"]["outputs"]
     assert set(made) == set(manifest["outputs"])
     models = catalog.node(catalog.node(made[weights[0]])["parent_id"])
@@ -1812,7 +1819,7 @@ def _written_config(tmp_path, manifest):
                   .replace("/workspace/dataset", str(dataset))
                   .replace("/tmp/train.yaml", str(written))
                   .replace("/tmp/uploader.py", str(tmp_path / "uploader.py")))
-        dataset.mkdir()
+        dataset.mkdir(exist_ok=True)  # a test may have put real photos there
         exec(compile(source, "job-config.py", "exec"), {"__name__": "__main__"})
     finally:
         urllib.request.urlretrieve = real
@@ -1821,7 +1828,10 @@ def _written_config(tmp_path, manifest):
         else:
             sys.modules["yaml"] = saved
     assert [url for url, _ in fetched] == [d["url"] for d in manifest["dataset"]]
-    return json.loads(written.read_text())["config"]["process"][0]
+    # The pod's dataset path, as the pod would write it — the substitution
+    # above undone, so a `--ctrl_img` in a prompt reads as it does on the pod.
+    text = written.read_text().replace(str(dataset), "/workspace/dataset")
+    return json.loads(text)["config"]["process"][0]
 
 
 def test_the_job_writes_a_config_that_samples_at_every_save_point(tmp_path):
@@ -1843,7 +1853,10 @@ def test_the_job_writes_a_config_that_samples_at_every_save_point(tmp_path):
     assert cfg["train"]["skip_first_sample"] is True
     sample = cfg["sample"]
     assert sample["sample_every"] == 250
-    assert sample["prompts"] == manifest["sample_prompts"]
+    # The i2v base: each prompt as written, then the photo it re-renders.
+    # No photo reached the stubbed dataset folder, so no size flags.
+    assert sample["prompts"] == [f"{p} --ctrl_img /workspace/dataset/a.png"
+                                 for p in manifest["sample_prompts"]]
     assert sample["seed"] == 7 and sample["walk_seed"] is False
     assert sample["sample_steps"] == 12
     assert sample["width"] == 512 and sample["height"] == 512
@@ -1851,6 +1864,76 @@ def test_the_job_writes_a_config_that_samples_at_every_save_point(tmp_path):
     assert "guidance_scale" not in sample
     assert (tmp_path / "dataset" / "a.txt").read_text() == "ohwx_sa, grey t-shirt"
     assert cfg["save"]["save_every"] == 250 and cfg["network"]["linear"] == 16
+
+
+def _sample_manifest(base, prompts, dataset):
+    return {
+        "stem": "ohwx-sa-1234", "trigger": "ohwx_sa", "steps": 500, "save_every": 250,
+        "rank": 16, "lr": 1e-4, "resolution": 512, "base": base,
+        "sample_prompts": prompts, "sample_seed": 7, "sample_steps": 12,
+        "dataset": [{"name": n, "url": f"https://bucket.test/{n}?x", "caption": "ohwx_sa"} for n in dataset],
+    }
+
+
+def test_i2v_sample_prompts_re_render_the_dataset_photos_round_robin_at_their_own_aspect(tmp_path):
+    """The I2V base samples from an image or crashes (ai-toolkit's
+    wan22_pipeline: 36-channel latents against a 16-channel prediction), so
+    on `i2v` every prompt carries `--ctrl_img` naming a dataset photo — dealt
+    round-robin over the manifest's dataset, the third prompt wrapping to
+    the first photo — and `--w`/`--h` fitting that photo's aspect inside
+    `resolution` at multiples of 16. The manifest's `samples` say the same."""
+    from PIL import Image
+    from studio_core.services import training
+    dataset = tmp_path / "dataset"
+    dataset.mkdir()
+    Image.new("RGB", (640, 480)).save(dataset / "wide.png")
+    Image.new("RGB", (300, 600)).save(dataset / "tall.png")
+    prompts = ["ohwx_sa, in a kitchen", "ohwx_sa, on a beach", "ohwx_sa, at night"]
+    manifest = _sample_manifest("i2v", prompts, ["wide.png", "tall.png"])
+
+    cfg = _written_config(tmp_path, manifest)
+
+    assert cfg["sample"]["prompts"] == [
+        "ohwx_sa, in a kitchen --w 512 --h 384 --ctrl_img /workspace/dataset/wide.png",
+        "ohwx_sa, on a beach --w 256 --h 512 --ctrl_img /workspace/dataset/tall.png",
+        "ohwx_sa, at night --w 512 --h 384 --ctrl_img /workspace/dataset/wide.png",
+    ]
+    assert cfg["train"]["disable_sampling"] is False
+    assert cfg["sample"]["num_frames"] == 1
+    assert training.sample_records(prompts, ["wide.png", "tall.png"], "i2v") == [
+        {"index": 0, "prompt": prompts[0], "ctrl_img": "wide.png"},
+        {"index": 1, "prompt": prompts[1], "ctrl_img": "tall.png"},
+        {"index": 2, "prompt": prompts[2], "ctrl_img": "wide.png"},
+    ]
+
+
+def test_t2v_sample_prompts_are_text_only(tmp_path):
+    from studio_core.services import training
+    prompts = ["ohwx_sa, in a kitchen", "ohwx_sa, on a beach"]
+    manifest = _sample_manifest("t2v", prompts, ["a.png", "b.png"])
+
+    cfg = _written_config(tmp_path, manifest)
+
+    assert cfg["sample"]["prompts"] == prompts
+    assert not any("--" in p for p in cfg["sample"]["prompts"])
+    assert cfg["model"]["arch"] == "wan22_14b"
+    assert training.sample_records(prompts, ["a.png", "b.png"], "t2v") == [
+        {"index": 0, "prompt": prompts[0], "ctrl_img": None},
+        {"index": 1, "prompt": prompts[1], "ctrl_img": None},
+    ]
+
+
+def test_a_sample_prompt_carrying_a_flag_is_refused_as_a_draft(empty_api):
+    """ai-toolkit reads `--x` off a prompt as a flag and the job appends its
+    own, so a prompt with `--` in it would be cut there."""
+    project = _project(empty_api)
+    character = _character(empty_api)
+    run = _training_draft(empty_api, project, character, _dataset(empty_api, character),
+                          sample_prompts=["{trigger} on a beach --w 1024"])
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+    assert resp.status_code == 400, resp.get_data(as_text=True)
+    assert "--" in resp.get_data(as_text=True)
+    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["status"] == "draft"
 
 
 def test_sample_names_are_one_per_prompt_per_save_point_and_the_final_set_is_unnumbered():
