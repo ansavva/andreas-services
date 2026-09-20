@@ -31,7 +31,7 @@ deprecated on fal since 2026-08-15, and this is the 2.3 endpoint on purpose.
 | Prompt expansion | `enable_prompt_expansion` — studio's default turns it **off**, so the trigger word reaches the model as written |
 | Negative prompt | `negative_prompt`, with a long default of fal's own (`news broadcast, 3d animation, … slowmo, static`) |
 | Seed | `seed` — repeats a draw |
-| Price | **per megapixel of output** — width × height × frames — at **$0.001805/MP** (fal, September 2026): a 5 s 720p clip is ~$0.20, 8 s ~$0.32. fal's body carries no price, so `cost.amount` stays null; fal's dashboard is the bill |
+| Price | **per megapixel of output** — width × height × frames — at **$0.001805/MP** (fal, September 2026): a 5 s 720p clip is ~$0.20, 8 s ~$0.32; `auto` on a 1152×2048 still answered 1056×1920, so 5 s of that is ~$0.44. fal's body carries no price, so `cost.amount` stays null; fal's dashboard is the bill |
 | Camera LoRAs | `camera_lora` — fal's own dolly/jib adapters, `none` by default; `camera_lora_scale` for its strength |
 
 ## Invoke
@@ -53,6 +53,20 @@ studio run --model ltx-2.3-i2v-lora --project <project> \
 Describe the motion, not the frame, and **say the trigger word the LoRA was
 trained on** — with prompt expansion off, what is written is what the model
 reads. A LoRA with no trigger in the prompt is loaded and barely used.
+
+## What the first clips showed (2026-09-20)
+
+The final checkpoint of a 1500-step run, `lora_scale 1`, seed 7, 121 frames,
+from a full-body still: the face held through both clips and matched the
+still at the last frame; *takes his t-shirt off* finished cleanly inside
+5 s with the body consistent with the frame; *turns his head over his
+left shoulder, then back to camera and smiles* became a smaller head turn
+the other way, ending in profile with the camera crept in — the action
+read loosely. The same prompt at `lora_scale 0` turned the whole body and
+came back smiling, closer to the words but a more generic face. So at
+scale 1 the adapter costs some prompt adherence on motion; try 0.6–0.8
+before rewriting the prompt. No wardrobe or background bleed from the
+dataset in any clip.
 
 ## What it is for
 
