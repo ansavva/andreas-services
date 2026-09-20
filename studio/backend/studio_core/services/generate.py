@@ -510,38 +510,79 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict) -> dict:
     scale = payload.pop(scale_param, None) if scale_param else None
     if scale is None:
         scale = 1.0
+    # A worker of ours queues: one worker, and a clip ahead of this one can
+    # run half an hour, so its sends live as long as its output grant. A
+    # public endpoint starts within seconds and gets the service's TTL. The
+    # first proof run against `wan-2.2-i2v-studio` queued 16 minutes behind
+    # the job before it and fetched its still one minute after the 15-minute
+    # URL had expired — a 403, a failed run, and a paid render of nothing.
+    grant = registry.output_grant(entry)
+    ttl = OUTPUT_GRANT_TTL if grant else None
     for field, value in bindings.items():
         if field in loras:
             nodes = value if isinstance(value, list) else [value]
-            payload[field] = [{"path": presign_node(one), "scale": scale} for one in nodes]
+            payload[field] = [{"path": presign_node(one, expires_in=ttl), "scale": scale}
+                              for one in nodes]
         else:
             payload[field] = (
-                [presign_node(one) for one in value]
+                [presign_node(one, expires_in=ttl) for one in value]
                 if isinstance(value, list)
-                else presign_node(value)
+                else presign_node(value, expires_in=ttl)
             )
     if bindings:
         logger.info("Minted presigned URLs for %s on run %s",
                     sorted(bindings), record["id"])
+    if grant:
+        payload.update(output_grant_urls(record, grant))
     provider = registry.provider_of(entry)
     return client_for(provider).create_prediction(
         entry["model"], payload, webhook=callback_url(record["id"], provider)
     )
 
 
-def presign_node(node_id: str) -> str:
+#: Where a rented worker's result lands before the closing path files it. Not
+#: an entity's prefix: nothing in the catalog names a scratch key, and the
+#: media bucket's `expire-scratch` lifecycle rule removes it after a week.
+SCRATCH_PREFIX = "scratch"
+#: How long the grant pair stays good. A cold worker pulls a 15 GB image and
+#: loads 60 GB of weights before it renders, and the render itself can run
+#: twenty minutes; six hours is generous and still bounded.
+OUTPUT_GRANT_TTL = 6 * 3600
+
+
+def output_grant_urls(record: dict, grant: dict) -> dict:
+    """The two presigned URLs a worker of ours gets for its result.
+
+    One scratch key, `scratch/<run id>/result<ext>`; a PUT the worker uploads
+    to (`presign_put_unsized`, because the size of a clip is not known at
+    dispatch) and a GET it answers as `output.result`, which the closing path
+    downloads and files under `output/` like any provider's URL. The GET is
+    ours, so `_unsigned_input` scrubs it out of the stored response the way it
+    scrubs the inputs.
+    """
+    key = f"{SCRATCH_PREFIX}/{record['id']}/result{grant['ext']}"
+    return {
+        grant["put"]: s3.presign_put_unsized(
+            key, content_type=grant["content_type"], expires_in=OUTPUT_GRANT_TTL),
+        grant["get"]: s3.presign(key, expires_in=OUTPUT_GRANT_TTL),
+    }
+
+
+def presign_node(node_id: str, *, expires_in: int | None = None) -> str:
     """A short-lived GET for one node's bytes. **The only way to a provider.**
 
-    There is no expiry argument: the TTL is the service's
-    (`STUDIO_PRESIGN_TTL_SECONDS`) and a caller does not get to lengthen the
-    window in which an identity reference is fetchable by anyone holding the URL.
+    The TTL is the service's (`STUDIO_PRESIGN_TTL_SECONDS`) unless the caller
+    is `dispatch` sending to a worker of ours, which passes `OUTPUT_GRANT_TTL`
+    because that worker queues (see `dispatch`). Nothing else gets to
+    lengthen the window in which an identity reference is fetchable by
+    anyone holding the URL.
     """
     record = catalog.node(node_id)
     if not record.get("blob_key"):
         raise ValidationError(
             f"node {node_id} has no bytes behind it and cannot be sent to a model"
         )
-    return s3.presign(record["blob_key"])
+    return s3.presign(record["blob_key"], expires_in=expires_in)
 
 
 # ───────────────────────────────── closing ──────────────────────────────────
@@ -723,6 +764,14 @@ def _after_the_output_expired(record: dict, gone: Exception):
 _URI = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:")
 
 
+def _is_our_grant(value) -> bool:
+    """Whether `value` is a presigned URL on this service's own media bucket."""
+    if not isinstance(value, str) or "X-Amz-Signature=" not in value:
+        return False
+    bucket = config.media_bucket()
+    return bool(bucket) and bucket in value.split("?", 1)[0]
+
+
 def _unsigned_input(record: dict, prediction: dict) -> dict:
     """The provider's echo of `input`, with our presigned URLs put back as node ids.
 
@@ -758,6 +807,16 @@ def _unsigned_input(record: dict, prediction: dict) -> dict:
     webhook = prediction.get("webhook")
     if isinstance(webhook, str) and "?" in webhook:
         prediction = {**prediction, "webhook": webhook.split("?", 1)[0]}
+
+    # The one exception to "output is untouched": a worker of ours answers
+    # `result` with the GET grant `output_grant_urls` minted, which is OUR
+    # signature on OUR bucket — the thing this function exists not to file.
+    # The provider's own URLs carry no `X-Amz-Signature` for our bucket, so
+    # nothing of theirs matches.
+    output = prediction.get("output")
+    if isinstance(output, dict) and _is_our_grant(output.get("result")):
+        prediction = {**prediction, "output": {
+            **output, "result": "[studio's own output grant; the file is under output/]"}}
 
     payload = prediction.get("input")
     if not isinstance(payload, dict):

@@ -93,6 +93,24 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
       days_after_initiation = 7
     }
   }
+
+  # `scratch/<run>/` is where a worker studio rents (the Wan 2.2 endpoint in
+  # `worker/wan22/`) PUTs its result on a grant minted at dispatch. The
+  # closing path copies the file into the run's own folder and never reads
+  # the scratch key again, so it is an orphan from that moment; a week is
+  # long enough for a reconcile that runs late.
+  rule {
+    id     = "expire-scratch"
+    status = "Enabled"
+
+    filter {
+      prefix = "scratch/"
+    }
+
+    expiration {
+      days = 7
+    }
+  }
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "this" {

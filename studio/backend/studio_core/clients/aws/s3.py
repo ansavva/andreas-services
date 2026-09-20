@@ -194,9 +194,11 @@ def presign(key: str, *, disposition: str = "inline", filename: str | None = Non
         name = (filename or key.rsplit("/", 1)[-1]).replace('"', "")
         params["ResponseContentDisposition"] = f'attachment; filename="{name}"'
 
-    # `expires_in` is for one caller: a training pod reads its dataset over
+    # `expires_in` is for two callers: a training pod reads its dataset over
     # the first minutes of a multi-hour job, after an image pull nobody can
-    # time. Everything else takes the service's TTL and cannot lengthen it.
+    # time, and a worker of ours (`generate.dispatch` with an output grant)
+    # queues behind the job before it. Everything else takes the service's
+    # TTL and cannot lengthen it.
     try:
         return client().generate_presigned_url(
             "get_object", Params=params,

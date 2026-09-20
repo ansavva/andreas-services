@@ -1795,6 +1795,236 @@
         "refreshed": "2026-09-15"
       }
     },
+    "wan-2.2-i2v-studio": {
+      "model": "runpod/unrxp9badsq4g2",
+      "provider": "runpod",
+      "kind": "video",
+      "skill": "studio-media-wan-2-2-i2v-studio",
+      "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": "image",
+        "end": "end_image",
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "loras": {
+        "high": "high_noise_loras",
+        "low": "low_noise_loras",
+        "accepts_ext": [
+          ".safetensors"
+        ],
+        "scale_param": "lora_scale"
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "video": {
+        "negative": "param",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": null,
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "output_grant": {
+        "put": "output_url",
+        "get": "result_url",
+        "content_type": "video/mp4",
+        "ext": ".mp4"
+      },
+      "aliases": [],
+      "note": "Wan 2.2 I2V A14B on STUDIO'S OWN Runpod serverless endpoint (`worker/wan22/`, ComfyUI on the stock `runpod/worker-comfyui` image, fp16 weights on a network volume), not a public one. Same LoRA contract as `wan-2.2-i2v-lora` — `high_noise_loras` / `low_noise_loras` are lists of `{path, scale}`, one adapter per denoising expert, bound with --lora-high-key / --lora-low-key and presigned at submit, `lora_scale` studio's one number for every `scale` — plus everything the public endpoint refuses: an END FRAME (`end_image`, bound with --end-run / --end-key, Wan 2.2's own first-last-frame conditioning), any length in frames (`num_frames`, 4k+1, 81 = 5 s at 16 fps, 121 = 7.5 s, the registry caps at 161; 121 and 129 measured on an H100 80GB), `fps`, `width`/`height` (unset: 1280x720 for a landscape still, 720x1280 for a portrait one; the still is centre-cropped to the aspect), `steps`, `guidance` (cfg), `shift`, a real `negative_prompt` (Wan's own when unset), a repeatable `seed`, and a `mode`: `quality` (Wan's 20 steps) or `fast` (the Wan 2.2 Lightning 4-step distillation pair loaded ahead of yours; about a fifth of the time and cost). No safety checker, no prompt expansion. The worker PUTs the mp4 to a grant `dispatch` mints on `scratch/<run>/` (`output_grant`) and answers `result` + `cost`; the closing path files it under `output/` like any Runpod clip. Cost is worker-seconds x the GPU's flex price (H100: $0.00116/s): $1.66 measured for 121 frames at 720p in quality mode with an end frame (24 min on the serverless worker; a dev pod on the same GPU type ran twice as fast, unexplained yet), about a third of that in fast mode, plus a cold start of ~1 min plus the first model load (~2 min) when no worker is warm (max 1 worker, scales to zero; the 100 GB volume is the standing cost, ~$7/month). `studio/scripts/runpod-endpoint-up.sh` creates it, `-down.sh` removes it.",
+      "input": {
+        "required": [
+          "prompt",
+          "image"
+        ],
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "The motion — what moves, how the camera moves, what changes by the end. The frame is already there; say the LoRA's trigger word."
+          },
+          "image": {
+            "type": "string",
+            "format": "uri",
+            "title": "Image",
+            "description": "The still to animate. Required: the clip starts on this frame."
+          },
+          "end_image": {
+            "type": "string",
+            "format": "uri",
+            "title": "End image",
+            "description": "Optional last frame, bound with --end-run / --end-key. With it the clip is made to land on this frame (first-last-frame conditioning); without it the ending is the model's."
+          },
+          "negative_prompt": {
+            "type": "string",
+            "title": "Negative prompt",
+            "description": "What to keep out. Unset sends Wan's own standard negative."
+          },
+          "high_noise_loras": {
+            "type": "array",
+            "title": "High-noise LoRAs",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL of the .safetensors file."
+                },
+                "scale": {
+                  "type": "number",
+                  "description": "How strongly the adapter is applied."
+                }
+              }
+            },
+            "description": "Adapters for the high-noise (early, composition) expert. Bound with --lora-high-key; each goes out as {path, scale}."
+          },
+          "low_noise_loras": {
+            "type": "array",
+            "title": "Low-noise LoRAs",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL of the .safetensors file."
+                },
+                "scale": {
+                  "type": "number",
+                  "description": "How strongly the adapter is applied."
+                }
+              }
+            },
+            "description": "Adapters for the low-noise (late, detail) expert. Bound with --lora-low-key; each goes out as {path, scale}."
+          },
+          "lora_scale": {
+            "type": "number",
+            "title": "LoRA scale",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1.0,
+            "description": "Studio's: the `scale` written into every bound LoRA. Never sent under this name."
+          },
+          "num_frames": {
+            "type": "integer",
+            "title": "Frames",
+            "minimum": 17,
+            "maximum": 161,
+            "default": 81,
+            "description": "Clip length in frames, 4k+1 (anything else rounds down). 81 is 5 s at 16 fps, 121 is 7.5 s, 161 is 10 s. Render time and cost scale with it; past ~121 the motion can drift."
+          },
+          "fps": {
+            "type": "integer",
+            "title": "FPS",
+            "minimum": 8,
+            "maximum": 30,
+            "default": 16,
+            "description": "Playback rate of the mp4. Wan generates at 16; another value changes speed, not the frame count."
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width",
+            "minimum": 256,
+            "maximum": 1920,
+            "description": "Output width, a multiple of 16. Leave width and height unset to follow the still's orientation at 720p."
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height",
+            "minimum": 256,
+            "maximum": 1920,
+            "description": "Output height, a multiple of 16. Set with width or not at all."
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "enum": [
+              "quality",
+              "fast"
+            ],
+            "default": "quality",
+            "description": "`quality`: Wan's own 20-step sampling (steps 20, guidance 3.5, shift 8). `fast`: the Wan 2.2 Lightning 4-step distillation pair loaded ahead of yours (steps 4, guidance 1, shift 5) — about a fifth of the render time and cost, slightly flatter motion. An explicit steps/guidance/shift overrides the mode's."
+          },
+          "steps": {
+            "type": "integer",
+            "title": "Steps",
+            "minimum": 2,
+            "maximum": 50,
+            "description": "Sampler steps, split half to the high-noise expert and half to the low. Unset takes the mode's (20 quality, 4 fast)."
+          },
+          "guidance": {
+            "type": "number",
+            "title": "Guidance",
+            "minimum": 0,
+            "maximum": 10,
+            "description": "Classifier-free guidance (cfg). Unset takes the mode's (3.5 quality, 1 fast)."
+          },
+          "shift": {
+            "type": "number",
+            "title": "Shift",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "Flow-matching timestep shift. Unset takes the mode's (8 quality, 5 fast); lower favours detail, higher favours motion."
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": -1,
+            "description": "-1 for a random draw; any other value repeats one. The run records the seed used."
+          }
+        }
+      },
+      "snapshot": {
+        "lora_scale": {
+          "default": 1.0,
+          "minimum": 0,
+          "maximum": 2
+        },
+        "num_frames": {
+          "default": 81,
+          "minimum": 17,
+          "maximum": 161
+        },
+        "fps": {
+          "default": 16,
+          "minimum": 8,
+          "maximum": 30
+        },
+        "mode": {
+          "enum": [
+            "quality",
+            "fast"
+          ],
+          "default": "quality"
+        },
+        "steps": {
+          "minimum": 2,
+          "maximum": 50
+        },
+        "guidance": {
+          "minimum": 0,
+          "maximum": 10
+        },
+        "shift": {
+          "minimum": 1,
+          "maximum": 20
+        },
+        "seed": {
+          "default": -1
+        },
+        "refreshed": "2026-09-20"
+      }
+    },
     "wan-3.0-t2v": {
       "model": "fal/alibaba/wan-3.0/text-to-video",
       "provider": "fal",

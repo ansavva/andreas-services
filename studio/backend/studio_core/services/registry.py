@@ -192,6 +192,28 @@ def lora_fields(entry: dict) -> set[str]:
     return {v for k, v in loras.items() if k not in ("accepts_ext", "scale_param") and isinstance(v, str)}
 
 
+def output_grant(entry: dict) -> dict | None:
+    """The upload a worker of ours wants minted into its request, or None.
+
+    A public endpoint hosts its own output and answers a URL. A worker studio
+    rents (`worker/wan22/`) has nowhere to put a file, so the entry says
+    `output_grant: {put, get, content_type, ext}` and `dispatch` mints two
+    presigned URLs on one scratch key — a PUT the worker uploads to under the
+    `put` field name, a GET it hands back as `output.result` under the `get`
+    name — so the closing path files the clip exactly as it files a public
+    endpoint's. Both names default to what the wan22 handler reads.
+    """
+    grant = entry.get("output_grant")
+    if not grant:
+        return None
+    return {
+        "put": grant.get("put") or "output_url",
+        "get": grant.get("get") or "result_url",
+        "content_type": grant.get("content_type") or "application/octet-stream",
+        "ext": grant.get("ext") or "",
+    }
+
+
 def lora_scale_param(entry: dict) -> str | None:
     """The plan param carrying the LoRA strength, or None. **Studio's own name.**
 

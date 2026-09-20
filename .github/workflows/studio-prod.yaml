@@ -39,6 +39,9 @@ on:
       - '!studio/.claude/**'
       - '!studio/docs/**'
       - '!studio/pipeline/**'
+      # The Wan 2.2 worker deploys to Runpod by hand (scripts/runpod-*.sh),
+      # never through this workflow; its code rides on a network volume.
+      - '!studio/worker/**'
       - '.github/workflows/studio-prod.yaml'
   workflow_dispatch:
     inputs:

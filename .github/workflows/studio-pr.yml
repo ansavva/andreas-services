@@ -236,6 +236,14 @@ jobs:
       - name: Lint
         run: uv run --project studio/pipeline ruff check studio/pipeline
 
+      # The Wan 2.2 worker (studio/worker/wan22/) deploys to Runpod by hand
+      # and has no suite of its own; a lint and a compile are what a PR can
+      # check without a GPU.
+      - name: Lint the Runpod worker
+        run: |
+          uv run --project studio/pipeline ruff check studio/worker
+          uv run --project studio/pipeline python -m py_compile studio/worker/wan22/handler.py
+
       # `dev-seed` is its own project — it holds AWS clients and the CLI
       # deliberately does not — so the pipeline's lint step and suite do not
       # reach it. It is the only Python in the repo that writes DynamoDB
