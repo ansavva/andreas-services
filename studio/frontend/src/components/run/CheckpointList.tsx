@@ -106,7 +106,17 @@ export function CheckpointList({ row, flying }: { row: RunFeedRow; flying: boole
 
   return (
     <div className="col-span-full flex min-w-0 flex-col gap-1.5" data-checkpoint-list="">
+      {/* Whose LoRA this is, first. The files carry the character's slug,
+          but a listing is read faster than a filename. */}
       <Text variant="caption" tone="muted">
+        {row.cast[0]?.name ? <span className="font-medium text-ink">{row.cast[0].name}</span> : null}
+        {row.cast[0]?.name ? " · " : ""}
+        {typeof row.plan?.params.trigger === "string" ? (
+          <>
+            <span className="font-mono">{row.plan.params.trigger}</span>
+            {" · "}
+          </>
+        ) : null}
         {flying
           ? `${landed} of ${total} checkpoint pairs so far`
           : `${landed} checkpoint pair${landed === 1 ? "" : "s"}`}

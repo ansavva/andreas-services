@@ -623,7 +623,7 @@ function FeedRow({
           />
         </div>
 
-        <SendThumbs sends={row.sends} />
+        <SendThumbs sends={row.sends} cast={row.cast} />
 
         <RunPrompt row={row} />
 
