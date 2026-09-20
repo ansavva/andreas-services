@@ -24,6 +24,7 @@ import base64
 import json
 
 import pytest
+from botocore.exceptions import ClientError
 
 from studio_core import config
 from studio_core.clients import replicate
@@ -165,6 +166,151 @@ def test_a_submitted_run_is_counted_once(empty_api):
 
     after = empty_api.get(f"/api/projects/{project['id']}").get_json()
     assert after["counts"]["runs"] == before["counts"]["runs"] + 1
+
+
+# ── two submits in one project at once ──────────────────────────────────────
+#
+# Every submission bumps `counts.runs` on the PROJECT row inside its own
+# transaction, so two runs in one project submitted within the same second
+# touch one item from two transactions. DynamoDB cancels the later one whole —
+# `TransactionConflict: Transaction is ongoing for the item` — which is not a
+# condition failing and not something botocore retries. Three CLI processes
+# submitting three drafts hit it on 2026-09-19: two landed, the third surfaced
+# as "Could not write to the catalog", and a retry a minute later succeeded.
+# moto serialises writes and never raises the conflict, so it is staged here
+# on the counter step, exactly as the prod log showed it.
+
+
+def _conflict_on(position: int, *, steps: int) -> ClientError:
+    """DynamoDB's cancellation, with the conflict on one step and `None` elsewhere.
+
+    The codes are the string `'None'`, not a null — that is what the service
+    sends and what the prod log recorded.
+    """
+    reasons = [{"Code": "None"} for _ in range(steps)]
+    reasons[position] = {"Code": "TransactionConflict",
+                         "Message": "Transaction is ongoing for the item"}
+    return ClientError(
+        {"Error": {"Code": "TransactionCanceledException",
+                   "Message": "Transaction cancelled, please refer cancellation reasons"},
+         "CancellationReasons": reasons},
+        "TransactWriteItems",
+    )
+
+
+class _Contended:
+    """The real client, with the counter-bumping transaction refused N times first."""
+
+    def __init__(self, real, *, refusals):
+        self._real = real
+        self.refusals = refusals
+        self.calls = 0
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+    def transact_write_items(self, *, TransactItems):
+        touches_project_counts = any(
+            "#counts" in (item.get("Update") or {}).get("ExpressionAttributeNames", {})
+            for item in TransactItems
+        )
+        if touches_project_counts:
+            self.calls += 1
+            if self.calls <= self.refusals:
+                raise _conflict_on(len(TransactItems) - 1, steps=len(TransactItems))
+        return self._real.transact_write_items(TransactItems=TransactItems)
+
+
+def test_two_drafts_submitted_at_once_both_land_and_are_both_counted(empty_api, monkeypatch):
+    """**The contended write is the project row's `counts.runs`, and it retries.**
+
+    Each submit's transaction — run row, listing row, project counter — is
+    cancelled once with `TransactionConflict` on the counter step, the way the
+    second and third of three simultaneous submits were in prod. Both must
+    still go out, both must reach `running`, and the project must count two:
+    a cancelled transaction applied nothing, so re-sending lands it once.
+    """
+    real = catalog.dynamodb.client()
+    contended = _Contended(real, refusals=1)
+    monkeypatch.setattr(catalog.dynamodb, "client", lambda: contended)
+    monkeypatch.setattr(catalog.time, "sleep", lambda seconds: None)
+    project = _project(empty_api)
+    first = _draft(empty_api, project)
+    second = _draft(empty_api, project)
+    contended.calls = 0
+
+    resp_first = empty_api.post(f"/api/runs/{first['id']}/submit")
+    contended.calls = 0
+    resp_second = empty_api.post(f"/api/runs/{second['id']}/submit")
+
+    assert resp_first.status_code == 200, resp_first.get_data(as_text=True)
+    assert resp_second.status_code == 200, resp_second.get_data(as_text=True)
+    assert resp_first.get_json()["status"] == "running"
+    assert resp_second.get_json()["status"] == "running"
+    assert catalog.entity(catalog.ENTITY_RUN, first["id"])["status"] == "running"
+    assert catalog.entity(catalog.ENTITY_RUN, second["id"])["status"] == "running"
+    counts = empty_api.get(f"/api/projects/{project['id']}").get_json()["counts"]
+    assert counts["runs"] == 2, "a retried bump lands exactly once"
+
+
+def test_a_conflict_that_outlasts_the_retries_is_the_generic_write_error(empty_api, monkeypatch):
+    """Bounded: a row that stays contended is reported, not waited on forever.
+
+    And nothing is declared — the run is still a draft, because the transition
+    to `pending` is the transaction that never landed.
+    """
+    real = catalog.dynamodb.client()
+    contended = _Contended(real, refusals=catalog.WRITE_ATTEMPTS)
+    monkeypatch.setattr(catalog.dynamodb, "client", lambda: contended)
+    monkeypatch.setattr(catalog.time, "sleep", lambda seconds: None)
+    project = _project(empty_api)
+    run = _draft(empty_api, project)
+    contended.calls = 0
+
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    assert resp.status_code == 502
+    assert resp.get_json()["error"] == "Could not write to the catalog"
+    assert contended.calls == catalog.WRITE_ATTEMPTS
+    assert catalog.entity(catalog.ENTITY_RUN, run["id"])["status"] == "draft"
+    counts = empty_api.get(f"/api/projects/{project['id']}").get_json()["counts"]
+    assert counts["runs"] == 0
+
+
+def test_a_condition_failure_is_never_retried(empty_api, monkeypatch):
+    """The retry is for conflicts only; a guard that fired is the answer.
+
+    Re-sending a transaction whose condition failed could only fail it again
+    or, worse, land it against a row that changed in between — so
+    `ConditionalCheckFailed` raises its step's own error on the first try.
+    """
+    real = catalog.dynamodb.client()
+    sent = []
+
+    class Refusing:
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+        def transact_write_items(self, *, TransactItems):
+            sent.append(TransactItems)
+            reasons = [{"Code": "None"} for _ in TransactItems]
+            reasons[0] = {"Code": "ConditionalCheckFailed",
+                          "Message": "The conditional request failed"}
+            raise ClientError(
+                {"Error": {"Code": "TransactionCanceledException", "Message": "cancelled"},
+                 "CancellationReasons": reasons},
+                "TransactWriteItems",
+            )
+
+    project = _project(empty_api)
+    run = _draft(empty_api, project)
+    monkeypatch.setattr(catalog.dynamodb, "client", lambda: Refusing())
+    monkeypatch.setattr(catalog.time, "sleep", lambda seconds: None)
+
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    assert resp.status_code == 404, "the run step's guard is `attribute_exists`, a 404"
+    assert len(sent) == 1
 
 
 def test_the_response_says_how_this_run_will_be_closed(empty_api, monkeypatch):
