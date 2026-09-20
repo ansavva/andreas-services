@@ -266,6 +266,15 @@ BATCH_GET_ATTEMPTS = 4
 # partition throttle, and this runs inside a request a person is waiting on.
 BATCH_GET_BACKOFF = 0.05
 
+# How many times one `TransactWriteItems` is sent again after DynamoDB cancels
+# it with `TransactionConflict`, and the first pause before doing so, doubling
+# each attempt. A conflict is two transactions touching one item at once —
+# the project row, when two runs in one project are submitted within the same
+# second — and DynamoDB cancels the later one whole, applying nothing. See
+# `_write`.
+WRITE_ATTEMPTS = 4
+WRITE_BACKOFF = 0.05
+
 _marshal = TypeSerializer().serialize
 _deserialize = TypeDeserializer().deserialize
 
@@ -825,23 +834,55 @@ def _write(steps: list[tuple[dict, Exception | None]]) -> None:
     A step with no exception is one that carries no condition and so can never
     be the cancelled item; the deletes below are all of that kind.
 
-    Anything the reasons cannot explain is upstream: a throttle, a transaction
-    conflict with another writer, a table that is not there.
+    **A `TransactionConflict` is sent again, bounded; nothing else is.** Two
+    transactions that touch one item at the same moment are serialised by
+    DynamoDB cancelling the later one — `Transaction is ongoing for the item` —
+    and botocore's retry policy does not cover it. Three `runs submit` calls in
+    one project a second apart hit exactly this on the project row, whose
+    `counts` every submission bumps: two landed, the third came back as a
+    generic write error, and a retry a minute later succeeded. Re-sending is
+    safe because a cancelled transaction applied nothing, so the second attempt
+    lands it exactly once; and it weakens no guard, because every condition
+    is evaluated afresh against the row as it now stands — a `rev` that has
+    moved, a name that has been taken or a run that has already left `draft`
+    still cancels as `ConditionalCheckFailed`, which is raised at once and
+    never retried. The counter step is `+ :delta` on the live value, not a
+    number read earlier, so two bumps land as two.
+
+    Anything the reasons cannot explain is upstream: a throttle, a table that
+    is not there, or a conflict that outlasted the retries.
     """
-    try:
-        dynamodb.client().transact_write_items(TransactItems=[item for item, _ in steps])
-    except ClientError as exc:
-        if exc.response.get("Error", {}).get("Code") != "TransactionCanceledException":
-            logger.warning("TransactWriteItems failed: %s", exc)
-            raise UpstreamError("Could not write to the catalog") from exc
+    items = [item for item, _ in steps]
+    for attempt in range(WRITE_ATTEMPTS):
+        if attempt:
+            time.sleep(WRITE_BACKOFF * 2 ** (attempt - 1))
+        try:
+            dynamodb.client().transact_write_items(TransactItems=items)
+            return
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") != "TransactionCanceledException":
+                logger.warning("TransactWriteItems failed: %s", exc)
+                raise UpstreamError("Could not write to the catalog") from exc
 
-        reasons = exc.response.get("CancellationReasons") or []
-        for (_, failure), reason in zip(steps, reasons):
-            if failure is not None and reason.get("Code") == "ConditionalCheckFailed":
-                raise failure from exc
+            reasons = exc.response.get("CancellationReasons") or []
+            for (_, failure), reason in zip(steps, reasons):
+                if failure is not None and reason.get("Code") == "ConditionalCheckFailed":
+                    raise failure from exc
 
-        logger.warning("TransactWriteItems cancelled: %s", reasons)
-        raise UpstreamError("Could not write to the catalog") from exc
+            codes = {reason.get("Code") for reason in reasons}
+            conflicted = "TransactionConflict" in codes and codes <= {
+                "None", None, "TransactionConflict"
+            }
+            if not conflicted:
+                logger.warning("TransactWriteItems cancelled: %s", reasons)
+                raise UpstreamError("Could not write to the catalog") from exc
+            logger.info("TransactWriteItems conflicted (attempt %d of %d): %s",
+                        attempt + 1, WRITE_ATTEMPTS, reasons)
+            last = exc
+
+    logger.warning("TransactWriteItems still conflicted after %d attempts: %s",
+                   WRITE_ATTEMPTS, last.response.get("CancellationReasons"))
+    raise UpstreamError("Could not write to the catalog") from last
 
 
 def _put_name(record: dict, *, parent_id: str, name: str) -> dict:
