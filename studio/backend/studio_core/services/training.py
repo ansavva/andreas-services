@@ -224,7 +224,12 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict, *, webhoo
     models = layout.folder_under(character["root"], MODELS_FOLDER)
 
     run_id = record["id"]
-    stem = _slug(f"{knobs['trigger']}-{run_id[4:12]}")
+    # **The file says whose it is.** `<character>-<trigger>-<run>`: a weights
+    # file is opened from a folder listing, a sends line, a download — places
+    # with no run beside it — and `ohwx-pt-2d9a376a` told a person the trigger
+    # and a run id, not the character. The name is the character's slug at
+    # dispatch; the run id keeps two trainings of one character apart.
+    stem = _slug(f"{character.get('name') or 'character'}-{knobs['trigger']}-{run_id[4:12]}")
     ttl = knobs["max_hours"] * 3600 + 3600
 
     dataset = []

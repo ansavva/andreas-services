@@ -365,7 +365,10 @@ describe("a run in flight", () => {
 
     const article = await screen.findByRole("article");
     // The size is a checkpoint's, not a sample's.
-    expect(within(article).getByText("1 of 8 checkpoint pairs so far · 300 B each")).toBeTruthy();
+    // The header names whose LoRA it is and the trigger, then the count.
+    const header = article.querySelector("[data-checkpoint-list] > p, [data-checkpoint-list] > span");
+    expect(header?.textContent).toContain("ohwx");
+    expect(header?.textContent).toContain("1 of 8 checkpoint pairs so far · 300 B each");
     const rows = within(article).getAllByRole("listitem").filter((li) => li.hasAttribute("data-checkpoint"));
     expect(rows.map((li) => li.getAttribute("data-checkpoint"))).toEqual([
       "250", "500", "750", "1000", "1250", "1500", "1750", "final",
@@ -651,10 +654,11 @@ describe("a pointer at a node that is gone", () => {
     await draw([
       row({
         kind: "video",
+        cast: [{ id: "char-1", name: "Subject A" }],
         sends: [
           { node: "node-f", order: 1, field: "image", role: "start", name: "frame.jpg", url: "/f", source: { kind: "object" } },
-          { node: "node-h", order: 2, field: "high_noise_loras", role: "lora", name: "ohwx-1234_000001500_high_noise.safetensors", url: "/h", source: { kind: "object" } },
-          { node: "node-l", order: 3, field: "low_noise_loras", role: "lora", name: "ohwx-1234_000001500_low_noise.safetensors", url: "/l", source: { kind: "object" } },
+          { node: "node-h", order: 2, field: "high_noise_loras", role: "lora", name: "subject-a-ohwx-1234_000001500_high_noise.safetensors", url: "/h", source: { kind: "character", character: "char-1" } },
+          { node: "node-l", order: 3, field: "low_noise_loras", role: "lora", name: "subject-a-ohwx-1234_000001500_low_noise.safetensors", url: "/l", source: { kind: "character", character: "char-1" } },
         ],
       }),
     ]);
@@ -667,7 +671,9 @@ describe("a pointer at a node that is gone", () => {
     // The pair is one item: the stem, the save point, the two files as links.
     const loras = within(article).getByLabelText("LoRA");
     expect(within(loras).getAllByRole("listitem")).toHaveLength(1);
-    expect(within(loras).getByText("ohwx-1234")).toBeTruthy();
+    // Whose: the character the pair is filed under, by name, before the stem.
+    expect(within(loras).getByText("Subject A")).toBeTruthy();
+    expect(within(loras).getByText("subject-a-ohwx-1234")).toBeTruthy();
     expect(within(loras).getByText("step 1500")).toBeTruthy();
     expect(within(loras).getByRole("link", { name: /high-noise LoRA/ }).getAttribute("href")).toBe("/o/node-h");
     expect(within(loras).getByRole("link", { name: /low-noise LoRA/ }).getAttribute("href")).toBe("/o/node-l");

@@ -1269,6 +1269,8 @@ def test_a_training_run_rents_a_pod_writes_a_manifest_and_pre_makes_its_outputs(
     # 500 steps saving every 250: one periodic pair (250) and the final pair,
     # and at each of those two save points one sample per default prompt.
     stem = manifest["stem"]
+    # The file says whose it is: the character's slug, the trigger, the run.
+    assert stem == f"subject-a-ohwx-sa-{run['id'][4:12]}"
     weights = training.expected_files(stem, 500, 250)
     samples = training.expected_samples(stem, 500, 250, training.SAMPLE_PROMPTS)
     assert sorted(manifest["outputs"]) == sorted(weights + samples)

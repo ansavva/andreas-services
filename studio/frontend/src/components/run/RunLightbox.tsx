@@ -629,7 +629,7 @@ function Opened({
 
         {/* The sheet's order — pictures, prompt, tags — the same as the
             feed row's. */}
-        <SendThumbs sends={row.sends} />
+        <SendThumbs sends={row.sends} cast={row.cast} />
 
         {/* The feed's clamp and its More, not a scroll box of its own — a
             scroll inside the scroll the frame is on a phone cut the prompt

@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 
 import { Text } from "@ansavva/design-system";
 
-import type { RunSend } from "../../types";
+import type { RunFeedRow, RunSend } from "../../types";
 import { assetLabel } from "../../utils/format";
 import { objectPath } from "../../utils/location";
 import { pressInApp } from "../common/pressInApp";
@@ -75,7 +75,7 @@ const ROLE_CAPTION: Record<string, string> = {
  * behind it is deleted; the tile stays so the run still says what it was sent,
  * and a link to a file that cannot be drawn would only lead to an error page.
  */
-export function SendThumbs({ sends }: { sends: readonly RunSend[] }) {
+export function SendThumbs({ sends, cast }: { sends: readonly RunSend[]; cast?: RunFeedRow["cast"] }) {
   const navigate = useNavigate();
   if (sends.length === 0) return null;
 
@@ -159,7 +159,7 @@ export function SendThumbs({ sends }: { sends: readonly RunSend[] }) {
       })}
     </div>
     )}
-    {loras.length > 0 && <LoraSends sends={loras} />}
+    {loras.length > 0 && <LoraSends sends={loras} cast={cast} />}
     </div>
   );
 }
@@ -170,13 +170,17 @@ export function SendThumbs({ sends }: { sends: readonly RunSend[] }) {
  * as links to the files. A pair is one thing to a person even though it is
  * two sends, so the two are grouped by stem and step.
  */
-function LoraSends({ sends }: { sends: readonly RunSend[] }) {
+function LoraSends({ sends, cast }: { sends: readonly RunSend[]; cast?: RunFeedRow["cast"] }) {
   const navigate = useNavigate();
-  const pairs = new Map<string, { stem: string; step: number | null; files: Partial<Record<"high" | "low", RunSend>> }>();
+  // Whose weights: the send's source names the character it was filed under,
+  // and the run's cast has that character's name.
+  const nameOf = (send: RunSend) =>
+    cast?.find((c) => c.id === send.source?.character)?.name ?? null;
+  const pairs = new Map<string, { stem: string; step: number | null; who: string | null; files: Partial<Record<"high" | "low", RunSend>> }>();
   for (const send of sends) {
     const parsed = checkpointName(send.name ?? "");
     const key = parsed ? `${parsed.stem}:${parsed.step ?? "final"}` : (send.name ?? send.node);
-    const entry = pairs.get(key) ?? { stem: parsed?.stem ?? assetLabel(send.name), step: parsed?.step ?? null, files: {} };
+    const entry = pairs.get(key) ?? { stem: parsed?.stem ?? assetLabel(send.name), step: parsed?.step ?? null, who: nameOf(send), files: {} };
     entry.files[parsed?.expert ?? "high"] = send;
     pairs.set(key, entry);
   }
@@ -191,6 +195,11 @@ function LoraSends({ sends }: { sends: readonly RunSend[] }) {
           <Text variant="caption" weight="medium">
             LoRA
           </Text>
+          {pair.who ? (
+            <Text variant="caption" weight="medium">
+              {pair.who}
+            </Text>
+          ) : null}
           <Text variant="caption" family="mono" tone="muted" className="max-w-[12rem] truncate">
             {pair.stem}
           </Text>
