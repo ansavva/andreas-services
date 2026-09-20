@@ -27,10 +27,10 @@ failure modes holds here unchanged. This page is what differs.
 | The model | LTX-2.3 22B, one transformer for text-to-video and image-to-video alike — so there is **no `base` knob**, and a checkpoint is **one file, not a pair** |
 | The files | `<character>-<trigger>-<run>_<step>.safetensors` per save point, and the same without a step for the final one, under `<character>/models/`. The run page lists one link a row (`lora`) |
 | What it fits in | the 22B checkpoint and its 12B text encoder are quantised on the pod to fit the card beside the activations; the LoRA itself trains in bf16. Not a knob |
-| Samples | **text-only** stills, one per `sample_prompts` entry at each save point, filed under `<character>/models/samples/` beside the checkpoint. Because the model imagines the scene rather than re-rendering a photo, a sample here shows whether the face *travels* — the question the Wan `i2v` samples cannot answer. `[]` turns them off |
+| Samples | **text-only** stills, one per `sample_prompts` entry at each save point, filed under `<character>/models/samples/` beside the checkpoint. Because the model imagines the scene rather than re-rendering a photo, a sample here shows whether the face *travels* — the question the Wan `i2v` samples cannot answer. `[]` turns them off. **Say what the subject is in the prompt** — `{trigger}, a man cooking …` — a wide shot from the bare trigger drew the kitchen with nobody in it at two of six save points, while the head-and-shoulders prompt held the face from step 750 on |
 | `steps` | default **1500** (Wan's is 2000): a 22B model holds a face sooner, and each step is slower |
 | `gpu` | default **`h100`** — A100 placement failed twice the night this was added |
-| Cost | an H100 is ~$3.49/h; 1500 steps are roughly 1–1.5 h plus ~15 min pulling a 46 GB checkpoint and a 24 GB text encoder — **about $4–6** an attempt |
+| Cost | an H100 is $3.49/h. **Measured 2026-09-20**, 32 images, 1500 steps, two sample prompts: the first checkpoint 22 min after submit, then one every ~15 min (about 3.6 s a step with sampling), closed after 1 h 36 min at **$5.57**. Budget **$5–7** an attempt |
 | Which endpoint loads it | `ltx-2.3-i2v-lora` (fal), with `--lora-key` |
 
 ## Invoke
