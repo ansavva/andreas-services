@@ -799,6 +799,14 @@ def submit(entry: dict, record: dict, payload: dict, bindings: dict,
     **What is preserved exactly:** the API moves the run to `pending` before it
     calls the provider, so a submission that dies in flight still reads as
     "went out and never answered" rather than as a draft.
+
+    **A provider that raises hands the draft back.** The API puts the run
+    back to `draft` with the provider's words in its `error` and answers 502
+    with the same sentence, so the message below prints it plainly and says
+    the run is still a draft — the same `studio runs submit <run>` sends it
+    again, nothing to re-plan. A 4xx (a payload or a state the API refused
+    before anything was sent) reads the same way from here: the draft is as
+    it was.
     """
     kind = entry["kind"]
     d = defaults(kind)
@@ -811,10 +819,18 @@ def submit(entry: dict, record: dict, payload: dict, bindings: dict,
 
     try:
         sent = entities.submit_run(run_id)
-    except api.ApiError as exc:
+    except api.Conflict as exc:
+        # 409: the run is not a draft — already sent, or closed. Nothing here
+        # is a draft to send again.
         raise SubmitError(
             f"refusing to submit run {run_id}: {exc}\n"
-            f"       Read the payload: studio runs show {run_id}"
+            f"       Read it: studio runs show {run_id}"
+        ) from exc
+    except api.ApiError as exc:
+        raise SubmitError(
+            f"run {run_id} was not sent: {exc}\n"
+            f"       It is still a draft, unchanged. Read it: studio runs show {run_id}\n"
+            f"       Send it again: studio runs submit {run_id}"
         ) from exc
 
     prediction = sent.get("prediction_id")

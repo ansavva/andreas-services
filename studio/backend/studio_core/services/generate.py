@@ -483,16 +483,12 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict) -> dict:
     """Presign, then create the prediction. **This is the call that bills.**
 
     Called only after the run has been moved to `pending`, so the gate stands in
-    front of the money rather than behind it. A *silent* failure here — a
-    timeout, a dropped socket, a 5xx — leaves the run at `pending` with no
-    prediction id, which is exactly the state that reads as "a submission went
-    out and never answered": deliberately not rewritten to `failed`, because a
-    network error on the way *out* cannot distinguish a request the provider
-    never saw from one it accepted and answered into a dropped socket. A
-    *refusal* — a 4xx, `UpstreamError.refused` — is different: the provider
-    read the request and said no, nothing is queued, and `submit_run` closes
-    the run `failed` with the provider's words. Three runs sat at `pending`
-    over a `402 insufficient balance` before that distinction was drawn.
+    front of the money rather than behind it. **Anything raised from here hands
+    the run back as a draft**, with the reason in its `error` — `submit_run`
+    owns that transition and says why. What this function owes it is that a
+    raise leaves nothing behind: a hosted provider has no side effect before
+    `create_prediction`, and `training.dispatch` takes back its nodes, its
+    manifest and its pod before re-raising.
     """
     provider = registry.provider_of(entry)
     if provider == registry.RUNPOD_POD:

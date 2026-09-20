@@ -253,11 +253,10 @@ def _request(method: str, url: str, *, body: dict | None = None,
 def _refused(method: str, url: str, status: int, document: dict) -> FalError:
     """A fal answer that is a no, as the seam's error.
 
-    Carries `status` and fal's own `detail`, because `UpstreamError.refused`
-    is what `submit_run` reads to close a run `failed` rather than leave it
-    `pending`: without them a `401 Authentication is required` wedged a run
-    at `pending` on 2026-09-16, the same way Runpod's 402 had hours earlier
-    and one provider after that fix landed.
+    Carries `status` and fal's own `detail`, because `detail` is what
+    `submit_run` writes on the draft it hands back — without it a `401
+    Authentication is required` reached the run as a URL and a blob, back
+    when a submission that raised wedged the run at `pending` (2026-09-16).
     """
     return FalError(
         f"{method} {url} -> {status}: {json.dumps(document)[:500]}",

@@ -209,19 +209,25 @@ recorded on the run, so a second machine and a colleague are caught, not only
 the same machine submitting twice. An
 unsubmitted draft never counts: repeating a `--dry-run` is ordinary.
 
-### A failed run is redrafted, not resubmitted
+### A run the provider would not take is a draft again
 
-A run the provider refused is `failed`, and **a failed run cannot be sent
-again**: `studio runs submit <run>` refuses it — `is failed, not a draft` —
-because submit takes drafts only. And the guard above counts a failed run as
-a submission, so the same command that made it is refused too, with the
-failed run named: `this exact payload was already submitted … (failed)`.
-Nothing was billed either time. The way through is the same command with
-`--again`, which drafts and sends a fresh run of the identical payload.
+A submission the provider refused — or never answered — comes back as the
+same **draft**, with the provider's own words on it: `studio runs show <run>`
+prints them in `error`, and `studio runs submit <run>` prints them and says
+the run is still a draft. Nothing was billed, nothing about the run changed,
+and **the same command sends it again** once the cause is dealt with — a
+topped-up account, a machine that is free now. The guard above never counts
+a draft, so neither the resubmit nor the same `studio run` is refused for it.
 
 Measured 2026-09-18 on fal: `403 User is locked. Reason: TOP_UP` /
-`Exhausted balance` — the account, not the payload; nothing billed, the run
-`failed`, and `--again` after the top-up was the whole fix.
+`Exhausted balance` — the account, not the payload. And 2026-09-20 on a
+training run: Runpod's `500 create pod: This machine does not have the
+resources to deploy your pod` — a machine, not the payload; the run used to
+wedge at `pending` over that, with `runs delete` the only way out.
+
+A run that **did** go out and then failed is closed `failed`, and a closed
+run is never sent again: `--again` drafts and sends a fresh run of the
+identical payload.
 
 **An `owner/name` that is not a registry key runs off the live schema.** Trying
 a model before onboarding it had no supported path, so a four-way upscaler

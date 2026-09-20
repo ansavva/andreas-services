@@ -256,10 +256,10 @@ def _error_text(document: dict) -> str:
 def _refused(method: str, url: str, status: int, document: dict) -> OpenRouterError:
     """An OpenRouter answer that is a no, as the seam's error.
 
-    Carries `status` and OpenRouter's own `message`, because
-    `UpstreamError.refused` is what `submit_run` reads to close a run `failed`
-    rather than leave it `pending` — a `402 Insufficient credits` is the
-    ordinary one here, and it must not wedge a draft.
+    Carries `status` and OpenRouter's own `message`, because `detail` is
+    what `submit_run` writes on the draft it hands back — a `402
+    Insufficient credits` is the ordinary one here, and the run should say
+    so in those words.
     """
     return OpenRouterError(
         f"{method} {url} -> {status}: {json.dumps(document)[:500]}",

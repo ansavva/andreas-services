@@ -356,14 +356,21 @@ def test_a_webhook_url_is_never_part_of_the_payload(empty_api, monkeypatch):
     assert sent["payload"] == {"prompt": "a porch at dusk"}
 
 
-# ── the provider says no, or says nothing ───────────────────────────────────
+# ── the provider says no, or says nothing: the draft comes back ─────────────
+#
+# A dispatch that raises hands the run back as a draft with the provider's
+# words in `error`, whatever raised and whichever provider. Two rules preceded
+# this: a 4xx closed the run `failed` (a dead run to re-plan), and a silence
+# or a 5xx left it `pending` with no prediction id, which `reconcile` refuses
+# — the only exit was `runs delete`. `routes/runs.submit_run` has the trade.
 
 
-def test_a_refused_submission_closes_the_run_failed(empty_api, monkeypatch):
-    """**A 4xx is an answer, and the answer is no.** Three runs sat at `pending`
-    over Runpod's `402 insufficient balance` with nothing in flight, nothing
-    the SPA could press, and a spinner where the reason should have been. The
-    provider's words land in `error`; the caller still gets the 502.
+def test_a_refused_submission_hands_the_draft_back_with_the_providers_words(
+        empty_api, monkeypatch):
+    """**A 4xx is an answer, and the answer is no** — nothing is in flight,
+    so the run is a draft again: plan, payload and sends as they were, the
+    provider's sentence on it, the grid row moved with the envelope, and the
+    caller's 502 carries the same sentence rather than a URL and a blob.
     """
     def refuse(model, payload, *, webhook=None):
         raise replicate.ReplicateError(
@@ -372,27 +379,35 @@ def test_a_refused_submission_closes_the_run_failed(empty_api, monkeypatch):
     monkeypatch.setattr(replicate, "create_prediction", refuse)
     project = _project(empty_api)
     run = _draft(empty_api, project)
+    before = empty_api.get(f"/api/runs/{run['id']}").get_json()
 
     resp = empty_api.post(f"/api/runs/{run['id']}/submit")
 
     assert resp.status_code == 502
-    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
-    assert record["status"] == "failed"
-    assert record["error"] == (
+    assert resp.get_json()["error"] == (
         "replicate refused the submission (402): insufficient balance")
-    assert record["completed"]
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    assert record["status"] == "draft"
+    assert record["error"] == "replicate refused the submission (402): insufficient balance"
     assert record.get("prediction_id") is None
-    listing = empty_api.get(f"/api/runs?project={project['id']}").get_json()
-    assert [r["status"] for r in listing["runs"]] == ["failed"], \
+    assert record.get("completed") is None
+    assert record.get("submitted") is None, "a draft has not been sent"
+    again = empty_api.get(f"/api/runs/{run['id']}").get_json()
+    assert again["plan"] == before["plan"] and again["sends"] == before["sends"]
+    assert again["payload"] == before["payload"]
+    assert empty_api.get(f"/api/runs?project={project['id']}").get_json()["runs"] == [], \
+        "the feed hides drafts, and this is one again"
+    listing = empty_api.get(f"/api/runs?project={project['id']}&include=drafts").get_json()
+    assert [r["status"] for r in listing["runs"]] == ["draft"], \
         "the grid row moved with the envelope"
 
 
-def test_a_silent_submission_stays_pending(empty_api, monkeypatch):
-    """**No status means nothing is known**, and `pending` with no prediction
-    id is the honest row: a request that timed out on the way out may still
-    have been queued and billed, and `failed` over a live job would be a lie
-    the callback later contradicts. A 5xx is the same case — a proxy's 502
-    does not say whether the queue behind it took the job."""
+def test_a_silent_or_broken_submission_hands_the_draft_back_too(empty_api, monkeypatch):
+    """**No status, or a 5xx: the same draft, with the transport's words.**
+    A reply lost after the provider took the job can now be sent twice; the
+    error on the draft is what a person reads before sending again. What it
+    buys is a run that can be moved: `pending` with no prediction id could
+    not be reconciled, resubmitted or closed, only deleted."""
     def vanish(model, payload, *, webhook=None):
         raise replicate.ReplicateError("POST … failed: timed out")
 
@@ -404,8 +419,8 @@ def test_a_silent_submission_stays_pending(empty_api, monkeypatch):
 
     assert resp.status_code == 502
     record = catalog.entity(catalog.ENTITY_RUN, run["id"])
-    assert record["status"] == "pending"
-    assert "error" not in record
+    assert record["status"] == "draft"
+    assert record["error"] == "replicate did not take the submission: POST … failed: timed out"
 
     def broken(model, payload, *, webhook=None):
         raise replicate.ReplicateError("POST … -> 503: {…}", status=503,
@@ -414,7 +429,48 @@ def test_a_silent_submission_stays_pending(empty_api, monkeypatch):
     monkeypatch.setattr(replicate, "create_prediction", broken)
     other = _draft(empty_api, project)
     empty_api.post(f"/api/runs/{other['id']}/submit")
-    assert catalog.entity(catalog.ENTITY_RUN, other["id"])["status"] == "pending"
+    record = catalog.entity(catalog.ENTITY_RUN, other["id"])
+    assert record["status"] == "draft"
+    assert record["error"] == "replicate refused the submission (503): try later"
+
+
+def test_a_draft_handed_back_is_sent_again_clean_and_counted_once(empty_api, monkeypatch):
+    """The second submit is the ordinary one: the error is cleared with the
+    transition, the run goes `running` with a prediction id, and the project
+    counted it once — on the first attempt, when it left the draft states."""
+    def refuse(model, payload, *, webhook=None):
+        raise replicate.ReplicateError(
+            "POST … -> 402: {…}", status=402, detail="insufficient balance")
+
+    project = _project(empty_api)
+    before = empty_api.get(f"/api/projects/{project['id']}").get_json()["counts"]["runs"]
+    run = _draft(empty_api, project)
+    real_create = replicate.create_prediction
+    monkeypatch.setattr(replicate, "create_prediction", refuse)
+    assert empty_api.post(f"/api/runs/{run['id']}/submit").status_code == 502
+    monkeypatch.setattr(replicate, "create_prediction", real_create)
+
+    body = empty_api.post(f"/api/runs/{run['id']}/submit").get_json()
+
+    assert body["status"] == "running" and body["prediction_id"].startswith("fake")
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    assert "error" not in record, "cleared with the transition, not left from the last try"
+    after = empty_api.get(f"/api/projects/{project['id']}").get_json()["counts"]["runs"]
+    assert after == before + 1
+
+
+def test_a_provider_naming_no_prediction_hands_the_draft_back(empty_api, monkeypatch):
+    monkeypatch.setattr(replicate, "create_prediction",
+                        lambda model, payload, *, webhook=None: {"status": "starting"})
+    project = _project(empty_api)
+    run = _draft(empty_api, project)
+
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    assert resp.status_code == 502
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    assert record["status"] == "draft"
+    assert "no prediction id" in record["error"]
 
 
 def test_a_refusal_carries_the_providers_own_words(monkeypatch):
@@ -1523,6 +1579,122 @@ def test_a_training_run_is_refused_before_pending_without_a_trigger_or_enough_im
     assert empty_api.get(f"/api/runs/{run['id']}").get_json()["status"] == "draft"
 
 
+def _models_children(character):
+    """Everything under the character's `models/`, recursively — or nothing,
+    when the folder itself was never made."""
+    try:
+        models = catalog.child_by_name(character["root"], "models")
+    except NotFoundError:
+        return []
+    found = []
+    for child in catalog.children(models["node_id"]):
+        found.append(child)
+        if child.get("kind") == catalog.KIND_FOLDER:
+            found.extend(catalog.children(child["node_id"]))
+    return found
+
+
+def test_a_pod_that_cannot_be_rented_hands_the_draft_back_and_takes_its_nodes_with_it(
+        empty_api, media_bucket, monkeypatch):
+    """**The 2026-09-20 wedge.** Runpod answered `POST /v1/pods -> 500 create
+    pod: This machine does not have the resources to deploy your pod`; the
+    run sat `pending` with no prediction id, a second submit was refused as
+    `pending, not a draft`, twelve empty nodes sat under the character's
+    `models/`, and the way out was `runs delete`. Now: a draft again with
+    Runpod's own words on it, the character's tree as it was — no file nodes,
+    no `models/` folder this dispatch made — no manifest in the bucket, and
+    the same run rents a pod on the next submit once the machine is there.
+    """
+    from studio_core.clients import runpod_pods
+    from studio_core.services import training
+    project = _project(empty_api)
+    character = _character(empty_api)
+    run = _training_draft(empty_api, project, character, _dataset(empty_api, character))
+    real_create_pod = runpod_pods.create_pod
+    pods_before = set(runpod_pods._FAKE_PODS)
+
+    def no_machine(**kwargs):
+        raise runpod_pods.RunpodPodError(
+            "POST https://rest.runpod.io/v1/pods -> 500: {…}", status=500,
+            detail="create pod: This machine does not have the resources to deploy your pod. "
+                   "Please try a different machine")
+
+    monkeypatch.setattr(runpod_pods, "create_pod", no_machine)
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    assert resp.status_code == 502
+    assert resp.get_json()["error"] == (
+        "runpod-pod refused the submission (500): create pod: This machine does not "
+        "have the resources to deploy your pod. Please try a different machine")
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    assert record["status"] == "draft"
+    assert record["error"] == resp.get_json()["error"]
+    assert record.get("prediction_id") is None
+    assert "training" not in (record.get("payload") or {}), "nothing of the failed rent is recorded"
+    assert _models_children(character) == [], "the character's tree is as it was"
+    with pytest.raises(Exception):
+        media_bucket.get_object(Bucket=config.media_bucket(),
+                                Key=training.MANIFEST_KEY.format(run=run["id"]))
+    assert set(runpod_pods._FAKE_PODS) == pods_before, "no machine is billing"
+
+    monkeypatch.setattr(runpod_pods, "create_pod", real_create_pod)
+    body = empty_api.post(f"/api/runs/{run['id']}/submit").get_json()
+
+    assert body["status"] == "running", body
+    assert body["prediction_id"].startswith("fakepod")
+    assert body.get("error") is None
+    made = catalog.entity(catalog.ENTITY_RUN, run["id"])["payload"]["training"]["outputs"]
+    assert {n["node_id"] for n in _models_children(character) if n.get("kind") == catalog.KIND_FILE} \
+        == set(made.values()), "the second rent's nodes, and only those"
+    media_bucket.get_object(Bucket=config.media_bucket(),
+                            Key=training.MANIFEST_KEY.format(run=run["id"]))
+
+
+def test_a_rent_that_fails_after_the_pod_terminates_it_and_drops_the_manifest(
+        empty_api, media_bucket, monkeypatch):
+    """The pod is rented before the manifest is written, so a write failing
+    after it is the one order of failure that would leave a machine billing
+    with no run pointing at it. The unwind terminates it first, then takes
+    the manifest and the nodes; the weights already in `models/` — another
+    training's — are not touched, and neither is the folder."""
+    from studio_core.clients import runpod_pods
+    from studio_core.services import training
+    project = _project(empty_api)
+    character = _character(empty_api)
+    root = empty_api.get(f"/api/characters/{character['id']}").get_json()["root"]
+    models = empty_api.post("/api/nodes", json={"parent": root, "name": "models",
+                                                "kind": "folder"}).get_json()
+    earlier = _uploaded(empty_api, models["id"], "earlier_high_noise.safetensors")
+    run = _training_draft(empty_api, project, character, _dataset(empty_api, character))
+    pods_before = set(runpod_pods._FAKE_PODS)
+    terminated = []
+    real_terminate = runpod_pods.terminate
+    monkeypatch.setattr(runpod_pods, "terminate",
+                        lambda pod_id: terminated.append(pod_id) or real_terminate(pod_id))
+    real_update = catalog.update_project_entity
+
+    def refuse_the_record(kind, record, assignments, *args, **kwargs):
+        if "training" in (assignments.get("payload") or {}):
+            raise RuntimeError("DynamoDB refused the write")
+        return real_update(kind, record, assignments, *args, **kwargs)
+
+    monkeypatch.setattr(catalog, "update_project_entity", refuse_the_record)
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    assert resp.status_code == 500
+    monkeypatch.setattr(catalog, "update_project_entity", real_update)
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    assert record["status"] == "draft"
+    assert record["error"] == "DynamoDB refused the write"
+    assert len(terminated) == 1, "the meter stopped"
+    assert set(runpod_pods._FAKE_PODS) == pods_before, "no machine of this run's is billing"
+    with pytest.raises(Exception):
+        media_bucket.get_object(Bucket=config.media_bucket(),
+                                Key=training.MANIFEST_KEY.format(run=run["id"]))
+    left = _models_children(character)
+    assert [n["node_id"] for n in left] == [earlier["node_id"]], "the earlier weights, and the folder"
+
+
 def test_the_pod_callback_is_verified_like_a_public_endpoints(empty_api, media_bucket, monkeypatch):
     """The receiver forwards `?sig=`; the consumer recomputes it under the same
     key the pod's URL was minted with, and routes the body to the closer."""
@@ -2287,11 +2459,11 @@ def test_the_fal_submit_puts_the_webhook_in_the_query_and_the_payload_bare(monke
     assert got == {"id": "req-2", "status": "IN_QUEUE", "output": None, "error": None}
 
 
-def test_a_fal_refusal_closes_the_run_failed_with_fals_words(empty_api, monkeypatch):
+def test_a_fal_refusal_hands_the_draft_back_with_fals_words(empty_api, monkeypatch):
     """**The same gap as Runpod's 402, one provider later.** fal's `401
     Authentication is required` wedged a run at `pending` because `FalError`
-    carried no status, so `submit_run` could not tell a refusal from a dropped
-    socket. It carries one now, and `detail` is fal's sentence."""
+    carried no status and no detail. It carries both now, and `detail` is
+    fal's sentence — the one on the draft that comes back."""
     from studio_core.clients import fal
 
     def answer(method, url, *, body=None, **kw):
@@ -2307,15 +2479,15 @@ def test_a_fal_refusal_closes_the_run_failed_with_fals_words(empty_api, monkeypa
 
     assert resp.status_code == 502
     record = catalog.entity(catalog.ENTITY_RUN, run["id"])
-    assert record["status"] == "failed"
+    assert record["status"] == "draft"
     assert record["error"] == (
         'fal refused the submission (401): Cannot access application "fal-ai/wan-3". '
         "Authentication is required to access this application.")
 
 
-def test_a_fal_answer_with_no_request_id_closes_the_run_failed(empty_api, monkeypatch):
+def test_a_fal_answer_with_no_request_id_hands_the_draft_back(empty_api, monkeypatch):
     """Accepted and named nothing is knowable too: the route's own "no
-    prediction id" branch closes it, rather than a raise that reads as silence."""
+    prediction id" branch hands the draft back, saying so."""
     from studio_core.clients import fal
 
     monkeypatch.setenv("STUDIO_FAL_MODE", "live")
@@ -2328,8 +2500,9 @@ def test_a_fal_answer_with_no_request_id_closes_the_run_failed(empty_api, monkey
 
     assert resp.status_code == 502
     record = catalog.entity(catalog.ENTITY_RUN, run["id"])
-    assert record["status"] == "failed"
-    assert record["error"] == "the provider returned no prediction id"
+    assert record["status"] == "draft"
+    assert record["error"] == (
+        "fal did not take the submission: fal answered the submission with no prediction id")
 
 
 def test_a_fal_422_names_the_field_and_drops_the_presigned_echo(empty_api, media_bucket):
@@ -2562,10 +2735,10 @@ def test_a_bound_first_frame_reaches_openrouter_as_a_frame_image(empty_api, medi
     assert seen["body"]["model"] == "alibaba/wan-3.0"
 
 
-def test_an_openrouter_refusal_closes_the_run_failed_with_its_words(empty_api, monkeypatch):
+def test_an_openrouter_refusal_hands_the_draft_back_with_its_words(empty_api, monkeypatch):
     """A `402 Insufficient credits` is the ordinary refusal here, and it must
-    not wedge a draft at `pending` — the same distinction Runpod's and fal's
-    clients draw."""
+    not wedge a draft at `pending` — the draft comes back with OpenRouter's
+    sentence on it, as with Runpod's and fal's."""
     from studio_core.clients import openrouter
 
     monkeypatch.setenv("STUDIO_OPENROUTER_MODE", "live")
@@ -2579,7 +2752,7 @@ def test_an_openrouter_refusal_closes_the_run_failed_with_its_words(empty_api, m
 
     assert resp.status_code == 502
     record = catalog.entity(catalog.ENTITY_RUN, run["id"])
-    assert record["status"] == "failed"
+    assert record["status"] == "draft"
     assert record["error"] == ("openrouter refused the submission (402): Insufficient "
                                "credits. Add more using https://openrouter.ai/credits")
 
