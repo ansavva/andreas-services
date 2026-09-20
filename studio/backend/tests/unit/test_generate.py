@@ -1387,6 +1387,7 @@ def test_a_lora_send_goes_out_as_path_and_scale_and_the_scale_never_by_name(
     assert "lora_scale" not in payload
     assert payload["duration"] == 5 and payload["seed"] == 3
     assert payload["image"].startswith("http")
+    assert "X-Amz-Expires=900" in payload["image"]   # a public endpoint: the service's TTL
     for field in ("high_noise_loras", "low_noise_loras"):
         assert len(payload[field]) == 1
         assert payload[field][0]["scale"] == 0.8
@@ -1398,6 +1399,104 @@ def test_a_lora_send_goes_out_as_path_and_scale_and_the_scale_never_by_name(
     assert unsigned["high_noise_loras"] == [{"path": high["node_id"], "scale": 0.8}]
     assert unsigned["low_noise_loras"] == [{"path": low["node_id"], "scale": 0.8}]
     assert unsigned["image"] == still["node_id"]
+
+
+STUDIO_WORKER = {"model": "runpod/wan22-test", "kind": "video", "key": "wan-2.2-i2v-studio",
+                 "output_grant": {"put": "output_url", "get": "result_url",
+                                  "content_type": "video/mp4", "ext": ".mp4"}}
+
+
+def test_the_output_grant_is_read_off_the_entry_and_defaults_its_names():
+    from studio_core.services import registry
+    assert registry.output_grant(LORA) is None
+    assert registry.output_grant(STUDIO_WORKER) == {
+        "put": "output_url", "get": "result_url", "content_type": "video/mp4", "ext": ".mp4"}
+    assert registry.output_grant({"output_grant": {}}) is None
+    assert registry.output_grant({"output_grant": {"ext": ".mp4"}}) == {
+        "put": "output_url", "get": "result_url", "content_type": "application/octet-stream", "ext": ".mp4"}
+    # The shipped entry declares one; that is what makes dispatch mint the pair.
+    assert registry.output_grant(registry.get("wan-2.2-i2v-studio"))["ext"] == ".mp4"
+
+
+def test_a_studio_worker_run_gets_a_grant_pair_and_files_the_clip_it_answers(
+        empty_api, media_bucket, monkeypatch):
+    """`wan-2.2-i2v-studio` is our own endpoint: the same LoRA sends as the
+    public one plus an end frame, and — because the worker has nowhere to
+    host a file — two presigned URLs on one scratch key minted INTO the
+    payload: a PUT it uploads to and a GET it echoes as `output.result`. The
+    closing path files that result like any Runpod URL, records the cost the
+    worker computed, and the stored response carries neither URL: the inputs
+    are marked as unmapped, the output result as our own grant."""
+    from studio_core.clients import runpod
+    seen = {}
+    monkeypatch.setattr(runpod, "create_prediction",
+                        lambda model, payload, *, webhook=None:
+                        (seen.update(model=model, payload=payload) or {"id": "job-studio-u1", "status": "IN_QUEUE"}))
+    project = _project(empty_api)
+    root = empty_api.get(f"/api/projects/{project['id']}").get_json()["root"]
+    still = _uploaded(empty_api, root, "first.png")
+    last = _uploaded(empty_api, root, "last.png")
+    high = _uploaded(empty_api, root, "subject-a_high_noise.safetensors")
+    low = _uploaded(empty_api, root, "subject-a_low_noise.safetensors")
+    from studio_core.services import registry
+    entry = registry.get("wan-2.2-i2v-studio")
+    resp = empty_api.post("/api/runs", json={
+        "project": project["id"], "kind": "video", "engine": "wan-2.2-i2v-studio",
+        "model": entry["model"],
+        "plan": {"version": 1, "origin": "authored", "prompt": "ohwx takes his jacket off",
+                 "params": {"num_frames": 121, "seed": 8, "lora_scale": 1.0, "steps": 20}},
+        "sends": [
+            {"field": "image", "role": "start", "node": still["node_id"]},
+            {"field": "end_image", "role": "end", "node": last["node_id"]},
+            {"field": "high_noise_loras", "role": "lora", "node": high["node_id"]},
+            {"field": "low_noise_loras", "role": "lora", "node": low["node_id"]},
+        ],
+    })
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    run = resp.get_json()
+
+    body = empty_api.post(f"/api/runs/{run['id']}/submit").get_json()
+    assert body["status"] == "running", body
+    assert seen["model"] == entry["model"]
+    payload = seen["payload"]
+    assert payload["num_frames"] == 121 and payload["seed"] == 8 and payload["steps"] == 20
+    assert "lora_scale" not in payload
+    assert payload["image"].startswith("http") and payload["end_image"].startswith("http")
+    # The sends outlive a queue: one worker, and the clip ahead can take half
+    # an hour. The first proof run fetched a 15-minute URL after 16 minutes.
+    for url in (payload["image"], payload["end_image"], payload["high_noise_loras"][0]["path"]):
+        assert f"X-Amz-Expires={generate.OUTPUT_GRANT_TTL}" in url
+    assert payload["high_noise_loras"][0]["scale"] == 1.0
+    assert payload["low_noise_loras"][0]["path"].startswith("http")
+    # The grant pair: one scratch key, signed twice, for the worker's mp4.
+    key = f"scratch/{run['id']}/result.mp4"
+    assert key in payload["output_url"] and "X-Amz-Signature=" in payload["output_url"]
+    assert key in payload["result_url"] and "X-Amz-Signature=" in payload["result_url"]
+    assert payload["output_url"] != payload["result_url"]
+
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    prediction = {
+        "id": "job-studio-u1", "status": "COMPLETED", "executionTime": 712000,
+        "input": payload,
+        "output": {"result": payload["result_url"], "cost": 0.83, "seed": 8,
+                   "seconds": 712.4, "frames": 121, "end_frame": True},
+    }
+    closed = generate.close_from_prediction(record, prediction)
+    assert closed["status"] == "succeeded", closed.get("error")
+    assert closed["cost"] == {"amount": 0.83, "currency": "USD", "predict_time": 712.0}
+    assert catalog.node(closed["outputs"][0])["name"].endswith(".mp4")
+
+    unsigned = generate._unsigned_input(record, prediction)
+    assert unsigned["input"]["image"] == still["node_id"]
+    assert unsigned["input"]["end_image"] == last["node_id"]
+    assert unsigned["input"]["high_noise_loras"] == [{"path": high["node_id"], "scale": 1.0}]
+    assert unsigned["input"]["output_url"] == "[a presigned URL studio did not store]"
+    assert unsigned["input"]["result_url"] == "[a presigned URL studio did not store]"
+    assert "X-Amz-Signature" not in unsigned["output"]["result"]
+    assert unsigned["output"]["cost"] == 0.83 and unsigned["output"]["seed"] == 8
+    # A provider's own URL is not ours, and stays.
+    theirs = generate._unsigned_input(record, {"output": {"result": "https://image.runpod.ai/x.mp4"}})
+    assert theirs["output"]["result"] == "https://image.runpod.ai/x.mp4"
 
 
 def test_the_wan_i2v_entry_speaks_the_workers_schema_not_the_docs():

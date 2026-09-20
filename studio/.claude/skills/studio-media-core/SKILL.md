@@ -32,6 +32,7 @@ This skill is the plumbing. For how to *use* a given model, read its own skill:
 | `wan-2.6-i2v` | [`studio-media-wan-2-6-i2v`](../studio-media-wan-2-6-i2v/SKILL.md) |
 | `wan-2.2-i2v-lora` | [`studio-media-wan-2-2-i2v-lora`](../studio-media-wan-2-2-i2v-lora/SKILL.md) |
 | `ltx-2.3-i2v-lora` | [`studio-media-ltx-2-3-i2v-lora`](../studio-media-ltx-2-3-i2v-lora/SKILL.md) |
+| `wan-2.2-i2v-studio` | [`studio-media-wan-2-2-i2v-studio`](../studio-media-wan-2-2-i2v-studio/SKILL.md) |
 | `wan-3.0-t2v` | [`studio-media-wan-3-0-t2v`](../studio-media-wan-3-0-t2v/SKILL.md) |
 | `wan-3.0-i2v` | [`studio-media-wan-3-0-i2v`](../studio-media-wan-3-0-i2v/SKILL.md) |
 | `wan-3.0-r2v` | [`studio-media-wan-3-0-r2v`](../studio-media-wan-3-0-r2v/SKILL.md) |
