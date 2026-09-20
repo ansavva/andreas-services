@@ -124,13 +124,17 @@ def _fake_pod(name: str, gpu: str) -> dict:
 # ── pods ────────────────────────────────────────────────────────────────────
 
 
-def create_pod(*, name: str, gpu: str, cloud: str, env: dict, start_cmd: list[str]) -> dict:
+def create_pod(*, name: str, gpu: str, cloud: str, env: dict, start_cmd: list[str],
+               image: str | None = None) -> dict:
     """Rent one machine. **This is the call that starts billing.**
 
     On-demand (not interruptible): a spot pod reclaimed mid-run would lose
     hours of training with nothing to resume from. The image's own entrypoint
     is replaced by `start_cmd`, which fetches the manifest and runs the job;
-    nothing of the image's SSH or web UI is started.
+    nothing of the image's SSH or web UI is started. `image` is the pinned
+    ai-toolkit image unless the trainer says otherwise — the HunyuanVideo
+    job runs musubi-tuner off a plain PyTorch image, since ai-toolkit has no
+    arch for it.
     """
     if mode() == runpod.FAKE:
         logger.info("[runpod-pod:FAKE] create_pod %s — nothing billed", name)
@@ -138,7 +142,7 @@ def create_pod(*, name: str, gpu: str, cloud: str, env: dict, start_cmd: list[st
 
     body = {
         "name": name,
-        "imageName": IMAGE,
+        "imageName": image or IMAGE,
         "cloudType": "COMMUNITY" if cloud == "community" else "SECURE",
         "gpuTypeIds": GPU_TYPES.get(gpu, [gpu]),
         "gpuCount": 1,

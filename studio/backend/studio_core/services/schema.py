@@ -86,7 +86,7 @@ def fetch(model: str) -> tuple[dict, dict]:
         return props, {"Input": {"required": spec.get("required") or [], **spec}}
     if provider == registry.FAL:
         try:
-            return fal.model_schema(model)
+            return _with_own_fields(entry, *fal.model_schema(model))
         except fal.FalError as exc:
             logger.warning("Could not fetch the schema for %s: %s", model, exc)
             return {}, {}
@@ -102,6 +102,23 @@ def fetch(model: str) -> tuple[dict, dict]:
     except replicate.ReplicateError as exc:
         logger.warning("Could not fetch the input schema for %s: %s", model, exc)
         return {}, {}
+
+
+def _with_own_fields(entry: dict, props: dict, schemas: dict) -> tuple[dict, dict]:
+    """A live schema plus the fields the entry declares as studio's own.
+
+    `lora_scale` is the case: the endpoint wants a `scale` inside every
+    `{path, scale}` object and has no top-level field for it, so the entry's
+    `input` block declares one as if it were the model's, and `dispatch`
+    folds it in and never sends the name (`registry.lora_scale_param`). On a
+    Runpod entry the `input` block IS the schema; on a fal entry the schema
+    is live and the block is the overlay — without it `check` refuses the
+    field as unknown before the run leaves `draft`.
+    """
+    own = ((entry or {}).get("input") or {}).get("properties") or {}
+    if not own or not props:
+        return props, schemas
+    return {**props, **own}, schemas
 
 
 def enum_of(spec: dict, schemas: dict) -> list | None:

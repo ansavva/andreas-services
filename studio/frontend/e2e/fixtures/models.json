@@ -2364,6 +2364,603 @@
           "minimum": 250
         }
       }
+    },
+    "ltx-2.3-lora-train": {
+      "aliases": [
+        "ltx-2-lora-train"
+      ],
+      "defaults": {
+        "cloud": "secure",
+        "gpu": "h100",
+        "lr": 0.0001,
+        "max_hours": 6,
+        "rank": 32,
+        "resolution": 768,
+        "sample_prompts": [
+          "{trigger}, cooking in a bright kitchen, medium shot",
+          "{trigger}, walking down a city street at night, neon signs, waist-up",
+          "{trigger}, in a dark suit and tie at a formal event, head and shoulders",
+          "{trigger}, sitting on a beach at sunset, full body"
+        ],
+        "sample_seed": 42,
+        "sample_steps": 20,
+        "save_every": 250,
+        "steps": 1500
+      },
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ],
+        "end": null,
+        "max_refs": 40,
+        "refs": "dataset",
+        "start": null,
+        "start_excludes_refs": false
+      },
+      "input": {
+        "properties": {
+          "cloud": {
+            "default": "secure",
+            "description": "Runpod's Secure Cloud (datacenter) or Community Cloud (cheaper, peer hardware).",
+            "enum": [
+              "secure",
+              "community"
+            ],
+            "title": "Cloud",
+            "type": "string"
+          },
+          "dataset": {
+            "description": "The stills the LoRA learns from — the character's images tagged `dataset`, bound with --character <name> --pick-tag dataset. Each file's description is its caption (scene only, never the face), prefixed with the trigger.",
+            "items": {
+              "format": "uri",
+              "type": "string"
+            },
+            "title": "Dataset",
+            "type": "array"
+          },
+          "gpu": {
+            "default": "h100",
+            "description": "Which card the pod rents. 80 GB (a100/h100) holds the quantised 22B model and its text encoder; h100 because A100 placement failed twice on 2026-09-20. 4090 is not supported by this job.",
+            "enum": [
+              "a100",
+              "h100",
+              "4090"
+            ],
+            "title": "GPU",
+            "type": "string"
+          },
+          "lr": {
+            "default": 0.0001,
+            "description": "How big each nudge is. 1e-4 is the trainer's default.",
+            "maximum": 0.001,
+            "minimum": 1e-05,
+            "title": "Learning rate",
+            "type": "number"
+          },
+          "max_hours": {
+            "default": 6,
+            "description": "The pod's own time cap: the trainer is killed and the run reports `failed` past this. Billing cannot outlive it.",
+            "maximum": 12,
+            "minimum": 1,
+            "title": "Max hours",
+            "type": "integer"
+          },
+          "rank": {
+            "default": 32,
+            "description": "The LoRA's thinness. 32 is the trainer's default for a face; 16 is smaller and faster, 64 holds more and overfits sooner.",
+            "enum": [
+              16,
+              32,
+              64
+            ],
+            "title": "Rank",
+            "type": "integer"
+          },
+          "resolution": {
+            "default": 768,
+            "description": "The training resolution the dataset is bucketed to.",
+            "enum": [
+              512,
+              768,
+              1024
+            ],
+            "title": "Resolution",
+            "type": "integer"
+          },
+          "sample_prompts": {
+            "default": [
+              "{trigger}, cooking in a bright kitchen, medium shot",
+              "{trigger}, walking down a city street at night, neon signs, waist-up",
+              "{trigger}, in a dark suit and tie at a formal event, head and shoulders",
+              "{trigger}, sitting on a beach at sunset, full body"
+            ],
+            "description": "One still per prompt at every save point, rendered by the trainer with the checkpoint just written and filed beside it under `<character>/models/samples/` — the face emerging, without a video run by hand. `{trigger}` is replaced with the run's trigger. Text-only on this model (one transformer does both modes), so scenes the dataset does NOT contain show whether the face travels rather than whether a photo was memorised. `[]` disables sampling. Each prompt adds ~20 sampler steps of a 22B model per save point.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sample prompts",
+            "type": "array"
+          },
+          "sample_seed": {
+            "default": 42,
+            "description": "The seed every sample is drawn with, the same at every save point, so the only thing that changes down the column is the LoRA.",
+            "title": "Sample seed",
+            "type": "integer"
+          },
+          "sample_steps": {
+            "default": 20,
+            "description": "Sampler steps per sample. 20 is enough to judge a face; more is slower for no more judgement.",
+            "maximum": 50,
+            "minimum": 1,
+            "title": "Sample steps",
+            "type": "integer"
+          },
+          "save_every": {
+            "default": 250,
+            "description": "A checkpoint pair is written every this many steps — the candidates the evaluation compares.",
+            "enum": [
+              250,
+              500
+            ],
+            "title": "Save every",
+            "type": "integer"
+          },
+          "steps": {
+            "default": 1500,
+            "description": "Training steps. One step is one image through the model and one nudge to the LoRA; 1500 over ~30 images sees each ~50 times, which is where a 22B model holds a face.",
+            "maximum": 4000,
+            "minimum": 250,
+            "title": "Steps",
+            "type": "integer"
+          },
+          "trigger": {
+            "description": "The token every caption starts with and every prompt will say — the word the identity is bound to. One made-up word, e.g. `ohwx_pt`.",
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trigger"
+        ]
+      },
+      "key": "ltx-2.3-lora-train",
+      "kind": "training",
+      "model": "runpod-pod/ai-toolkit-ltx23-22b",
+      "note": "Not a model: a TRAINER. Rents a Runpod GPU pod from the official ai-toolkit image and trains an LTX-2.3 22B LoRA (Lightricks/LTX-2.3, `ltx-2.3-22b-dev.safetensors`, quantised to fit the 80 GB card beside its Gemma 3 text encoder) on the character's images tagged `dataset`. ONE FILE per checkpoint, not a pair — LTX is one transformer — uploaded into `<character>/models/` as it lands, and at every save point one text-only sample still per `sample_prompts` entry into `<character>/models/samples/`. Captions are each file's description with the trigger in front — scene only, never the face. No prompt. Billed by the hour: an H100 80GB is ~$3.49/h and 1500 steps take roughly 1–1.5 h plus ~15 min of setup (a 46 GB checkpoint and a 24 GB text encoder), so ~$4–6 an attempt; the run records pod-hours × rate. `max_hours` caps it on the pod itself. The file loads into `ltx-2.3-i2v-lora` (fal) with --lora-key. Runs ONLY where the API can reach Runpod's pod API and receive a callback; locally `studio runs reconcile` reads the pod's result from the bucket.",
+      "prompt": null,
+      "provider": "runpod-pod",
+      "skill": "studio-media-ltx-2-3-lora-train",
+      "snapshot": {
+        "cloud": {
+          "default": "secure",
+          "enum": [
+            "secure",
+            "community"
+          ]
+        },
+        "gpu": {
+          "default": "h100",
+          "enum": [
+            "a100",
+            "h100",
+            "4090"
+          ]
+        },
+        "lr": {
+          "default": 0.0001,
+          "maximum": 0.001,
+          "minimum": 1e-05
+        },
+        "max_hours": {
+          "default": 6,
+          "maximum": 12,
+          "minimum": 1
+        },
+        "rank": {
+          "default": 32,
+          "enum": [
+            16,
+            32,
+            64
+          ]
+        },
+        "refreshed": "2026-09-20",
+        "resolution": {
+          "default": 768,
+          "enum": [
+            512,
+            768,
+            1024
+          ]
+        },
+        "sample_prompts": {
+          "default": [
+            "{trigger}, cooking in a bright kitchen, medium shot",
+            "{trigger}, walking down a city street at night, neon signs, waist-up",
+            "{trigger}, in a dark suit and tie at a formal event, head and shoulders",
+            "{trigger}, sitting on a beach at sunset, full body"
+          ]
+        },
+        "sample_seed": {
+          "default": 42
+        },
+        "sample_steps": {
+          "default": 20,
+          "maximum": 50,
+          "minimum": 1
+        },
+        "save_every": {
+          "default": 250,
+          "enum": [
+            250,
+            500
+          ]
+        },
+        "steps": {
+          "default": 1500,
+          "maximum": 4000,
+          "minimum": 250
+        }
+      }
+    },
+    "hunyuan-video-lora-train": {
+      "aliases": [],
+      "defaults": {
+        "cloud": "secure",
+        "gpu": "h100",
+        "lr": 0.0002,
+        "max_hours": 6,
+        "rank": 32,
+        "resolution": 768,
+        "sample_prompts": [],
+        "sample_seed": 42,
+        "sample_steps": 20,
+        "save_every": 250,
+        "steps": 2000
+      },
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ],
+        "end": null,
+        "max_refs": 40,
+        "refs": "dataset",
+        "start": null,
+        "start_excludes_refs": false
+      },
+      "input": {
+        "properties": {
+          "cloud": {
+            "default": "secure",
+            "description": "Runpod's Secure Cloud (datacenter) or Community Cloud (cheaper, peer hardware).",
+            "enum": [
+              "secure",
+              "community"
+            ],
+            "title": "Cloud",
+            "type": "string"
+          },
+          "dataset": {
+            "description": "The stills the LoRA learns from — the character's images tagged `dataset`, bound with --character <name> --pick-tag dataset. Each file's description is its caption (scene only, never the face), prefixed with the trigger.",
+            "items": {
+              "format": "uri",
+              "type": "string"
+            },
+            "title": "Dataset",
+            "type": "array"
+          },
+          "gpu": {
+            "default": "h100",
+            "description": "Which card the pod rents. 80 GB (a100/h100) trains bf16 unquantised; 4090 is not supported by this job yet.",
+            "enum": [
+              "a100",
+              "h100",
+              "4090"
+            ],
+            "title": "GPU",
+            "type": "string"
+          },
+          "lr": {
+            "default": 0.0002,
+            "description": "How big each nudge is. 2e-4 is musubi-tuner's documented starting point for HunyuanVideo.",
+            "maximum": 0.001,
+            "minimum": 1e-05,
+            "title": "Learning rate",
+            "type": "number"
+          },
+          "max_hours": {
+            "default": 6,
+            "description": "The pod's own time cap: the trainer is killed and the run reports `failed` past this. Billing cannot outlive it.",
+            "maximum": 12,
+            "minimum": 1,
+            "title": "Max hours",
+            "type": "integer"
+          },
+          "rank": {
+            "default": 32,
+            "description": "The LoRA's thinness. 32 is the trainer's default for a face; 16 is smaller and faster, 64 holds more and overfits sooner.",
+            "enum": [
+              16,
+              32,
+              64
+            ],
+            "title": "Rank",
+            "type": "integer"
+          },
+          "resolution": {
+            "default": 768,
+            "description": "The training resolution the dataset is bucketed to.",
+            "enum": [
+              512,
+              768,
+              1024
+            ],
+            "title": "Resolution",
+            "type": "integer"
+          },
+          "sample_prompts": {
+            "default": [],
+            "description": "Not supported by this job: musubi-tuner's sampler needs the text encoders resident beside the transformer and its own prompt file. Must be `[]`.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sample prompts",
+            "type": "array"
+          },
+          "sample_seed": {
+            "default": 42,
+            "description": "The seed every sample is drawn with, the same at every save point, so the only thing that changes down the column is the LoRA.",
+            "title": "Sample seed",
+            "type": "integer"
+          },
+          "sample_steps": {
+            "default": 20,
+            "description": "Sampler steps per sample. 20 is enough to judge a face; more is slower for no more judgement.",
+            "maximum": 50,
+            "minimum": 1,
+            "title": "Sample steps",
+            "type": "integer"
+          },
+          "save_every": {
+            "default": 250,
+            "description": "A checkpoint pair is written every this many steps — the candidates the evaluation compares.",
+            "enum": [
+              250,
+              500
+            ],
+            "title": "Save every",
+            "type": "integer"
+          },
+          "steps": {
+            "default": 2000,
+            "description": "Training steps. One step is one image through the model and one nudge to the LoRA; 2000 over ~18 images sees each ~110 times.",
+            "maximum": 4000,
+            "minimum": 250,
+            "title": "Steps",
+            "type": "integer"
+          },
+          "trigger": {
+            "description": "The token every caption starts with and every prompt will say — the word the identity is bound to. One made-up word, e.g. `ohwx_pt`.",
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trigger"
+        ]
+      },
+      "key": "hunyuan-video-lora-train",
+      "kind": "training",
+      "model": "runpod-pod/musubi-hunyuan-video",
+      "note": "Not a model: a TRAINER, and the one here that studio cannot yet USE the output of. Rents a Runpod GPU pod from a plain PyTorch image, installs kohya-ss/musubi-tuner (ai-toolkit has no HunyuanVideo arch) and trains a HunyuanVideo 13B LoRA (tencent/HunyuanVideo, the official 720p T2V transformer, with ComfyUI's repackaged text encoders) on the character's images tagged `dataset`: latents and text embeddings cached first, then `hv_train_network.py`. ONE FILE per checkpoint, converted on the pod to the diffusers/ComfyUI key layout and uploaded into `<character>/models/` as it lands. No samples (`sample_prompts` must be `[]`). NO HOSTED ENDPOINT loads a HunyuanVideo LoRA into image-to-video as of 2026-09-20 — fal retired `hunyuan-video-lora` and `hunyuan-video-img2vid-lora`, Replicate's `zsxkib/hunyuan-video-lora` is text-to-video only and takes a bare URL — so a file this trains has no `--lora-key` destination in studio yet, and the job has not been run on a real pod. Billed by the hour; `max_hours` caps it on the pod itself.",
+      "prompt": null,
+      "provider": "runpod-pod",
+      "skill": "studio-media-hunyuan-video-lora-train",
+      "snapshot": {
+        "cloud": {
+          "default": "secure",
+          "enum": [
+            "secure",
+            "community"
+          ]
+        },
+        "gpu": {
+          "default": "h100",
+          "enum": [
+            "a100",
+            "h100",
+            "4090"
+          ]
+        },
+        "lr": {
+          "default": 0.0002,
+          "maximum": 0.001,
+          "minimum": 1e-05
+        },
+        "max_hours": {
+          "default": 6,
+          "maximum": 12,
+          "minimum": 1
+        },
+        "rank": {
+          "default": 32,
+          "enum": [
+            16,
+            32,
+            64
+          ]
+        },
+        "refreshed": "2026-09-20",
+        "resolution": {
+          "default": 768,
+          "enum": [
+            512,
+            768,
+            1024
+          ]
+        },
+        "sample_prompts": {
+          "default": []
+        },
+        "sample_seed": {
+          "default": 42
+        },
+        "sample_steps": {
+          "default": 20,
+          "maximum": 50,
+          "minimum": 1
+        },
+        "save_every": {
+          "default": 250,
+          "enum": [
+            250,
+            500
+          ]
+        },
+        "steps": {
+          "default": 2000,
+          "maximum": 4000,
+          "minimum": 250
+        }
+      }
+    },
+    "ltx-2.3-i2v-lora": {
+      "aliases": [
+        "ltx-2-i2v-lora"
+      ],
+      "defaults": {
+        "enable_prompt_expansion": false,
+        "generate_audio": false,
+        "num_frames": 121
+      },
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ],
+        "end": "end_image_url",
+        "max_refs": null,
+        "refs": null,
+        "start": "image_url",
+        "start_excludes_refs": false
+      },
+      "input": {
+        "properties": {
+          "lora_scale": {
+            "default": 1.0,
+            "description": "Studio's: the `scale` written into every bound LoRA. Never sent under this name.",
+            "maximum": 4,
+            "minimum": 0,
+            "title": "LoRA scale",
+            "type": "number"
+          }
+        },
+        "required": []
+      },
+      "key": "ltx-2.3-i2v-lora",
+      "kind": "video",
+      "loras": {
+        "accepts_ext": [
+          ".safetensors"
+        ],
+        "lora": "loras",
+        "scale_param": "lora_scale"
+      },
+      "model": "fal/fal-ai/ltx-2.3-22b/image-to-video/lora",
+      "note": "Lightricks' LTX-2.3 22B, image-to-video WITH YOUR OWN LoRA, on fal.ai's queue API (`provider: fal`). The destination for a LoRA `ltx-2.3-lora-train` leaves: `loras` takes a list of `{path, scale}`, one file per adapter (LTX is one transformer, so a checkpoint is one file, not Wan 2.2's pair). In studio a LoRA is a SEND — a `.safetensors` node in the library, bound with --lora-key, presigned at submit — never a pasted URL (hard rule #3); `lora_scale` is studio's one number for every adapter's `scale` (0–4 on this endpoint). One REQUIRED start frame (`image_url`, --start-run / --start-key) and an optional end frame (`end_image_url`); `video_size: auto` follows the frame. Length is `num_frames` at `fps` (24): 121 frames is 5 s, 193 is 8 s; the endpoint rounds to 8n+1. `generate_audio` is OFF here by default (the model makes a soundtrack; a character test does not want one) and so is `enable_prompt_expansion`, so the trigger word reaches the model as written. `negative_prompt` carries a long default of its own. `seed` repeats a draw. Live schema from fal's OpenAPI document. Priced per megapixel of output (width × height × frames): $0.001805/MP (fal, September 2026) — a 5 s 720p clip is ~$0.20, 8 s ~$0.32 — and fal's body carries no price, so `cost.amount` stays null. `fal-ai/ltx-2/*` and `fal-ai/ltx-2-19b/*` are deprecated since 2026-08-15 (fal's banner: migrate to LTX-2.3), which is why this is the 2.3 endpoint and the trainer is the 2.3 arch.",
+      "prompt": {
+        "max_chars": null
+      },
+      "provider": "fal",
+      "skill": "studio-media-ltx-2-3-i2v-lora",
+      "snapshot": {
+        "acceleration": {
+          "default": "regular",
+          "enum": [
+            "none",
+            "regular",
+            "high",
+            "full"
+          ]
+        },
+        "camera_lora": {
+          "default": "none",
+          "enum": [
+            "dolly_in",
+            "dolly_out",
+            "dolly_left",
+            "dolly_right",
+            "jib_up",
+            "jib_down",
+            "static",
+            "none"
+          ]
+        },
+        "enable_prompt_expansion": {
+          "default": true
+        },
+        "enable_safety_checker": {
+          "default": true
+        },
+        "fps": {
+          "default": 24,
+          "maximum": 60,
+          "minimum": 1
+        },
+        "generate_audio": {
+          "default": true
+        },
+        "lora_scale": {
+          "default": 1.0,
+          "maximum": 4,
+          "minimum": 0
+        },
+        "num_frames": {
+          "default": 121,
+          "maximum": 481,
+          "minimum": 9
+        },
+        "num_inference_steps": {
+          "default": 40,
+          "maximum": 50,
+          "minimum": 8
+        },
+        "refreshed": "2026-09-20",
+        "scheduler": {
+          "default": "ltx2",
+          "enum": [
+            "ltx2",
+            "linear_quadratic",
+            "beta"
+          ]
+        },
+        "video_quality": {
+          "default": "high",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "maximum"
+          ]
+        }
+      },
+      "video": {
+        "allow_intelligent_duration": false,
+        "image_tokens": false,
+        "max_cuts": null,
+        "negative": "negative_prompt",
+        "resolution_field": null,
+        "resolution_map": null,
+        "technical": "api"
+      }
     }
   }
 }

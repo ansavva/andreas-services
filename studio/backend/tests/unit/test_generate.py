@@ -22,13 +22,14 @@ closes what comes back.
 
 import base64
 import json
+import pathlib
 
 import pytest
 from botocore.exceptions import ClientError
 
 from studio_core import config
 from studio_core.clients import replicate
-from studio_core.errors import NotFoundError
+from studio_core.errors import NotFoundError, ValidationError
 from studio_core.services import catalog, generate
 
 
@@ -2840,3 +2841,272 @@ def test_the_job_script_reports_once_and_then_holds_the_container():
     assert script.rstrip().endswith("exec sleep infinity")
     assert script.index("touch /workspace/.reported") > script.index('m["callback"]'), \
         "the mark is set only after the report and callback"
+
+
+# ── three trainers, one run shape ───────────────────────────────────────────
+#
+# `wan-2.2-lora-train` writes a pair per save point; `ltx-2.3-lora-train` and
+# `hunyuan-video-lora-train` write one file. The job script reads `arch` off
+# the manifest; the Wan config it writes is held to a golden copy captured
+# before the switch existed, byte for byte.
+
+GOLDEN = pathlib.Path(__file__).parent / "fixtures" / "wan22-job-config.json"
+
+
+def test_the_wan_config_the_job_writes_is_byte_for_byte_what_it_was(tmp_path):
+    """Captured 2026-09-20 from the single-arch script, for both bases with
+    and without sampling. The arch switch may add trainers; it may not move
+    a value in the config the Wan run gets."""
+    golden = json.loads(GOLDEN.read_text())
+    assert len(golden) == 4
+    for case, expected in golden.items():
+        manifest = dict(expected["manifest"])
+        assert "arch" not in manifest, "a manifest from before the switch names no arch"
+        (tmp_path / case).mkdir()
+        assert _written_config(tmp_path / case, manifest) == expected["process"], case
+        # And with the arch spelled out, the same.
+        (tmp_path / (case + "-named")).mkdir()
+        assert _written_config(tmp_path / (case + "-named"), {**manifest, "arch": "wan22", "experts": ["high", "low"]}) == expected["process"], case
+
+
+def test_the_job_writes_the_ltx_config_for_the_ltx_arch(tmp_path):
+    """One transformer: no expert split, the mono checkpoint ai-toolkit's own
+    registry names for `ltx2.3`, quantised the way that registry defaults it,
+    latents cached, `weighted` timesteps; samples text-only (no `--ctrl_img`),
+    at the guidance the arch's registry names."""
+    manifest = {
+        "arch": "ltx23", "experts": [], "stem": "subject-a-ohwx-sa-1234", "trigger": "ohwx_sa",
+        "steps": 1500, "save_every": 250, "rank": 32, "lr": 1e-4, "resolution": 768, "base": None,
+        "sample_prompts": ["ohwx_sa, cooking in a bright kitchen, medium shot"],
+        "sample_seed": 42, "sample_steps": 20,
+        "dataset": [{"name": "a.png", "url": "https://bucket.test/a.png?x", "caption": "ohwx_sa, grey t-shirt"}],
+    }
+    cfg = _written_config(tmp_path, manifest)
+    assert cfg["model"] == {"name_or_path": "Lightricks/LTX-2.3/ltx-2.3-22b-dev.safetensors",
+                            "arch": "ltx2.3", "quantize": True, "quantize_te": True, "low_vram": False}
+    assert cfg["network"] == {"type": "lora", "linear": 32, "linear_alpha": 32}
+    assert cfg["train"]["timestep_type"] == "weighted"
+    assert "switch_boundary_every" not in cfg["train"]
+    assert cfg["datasets"][0]["cache_latents_to_disk"] is True
+    assert cfg["datasets"][0]["num_frames"] == 1
+    assert cfg["sample"]["prompts"] == ["ohwx_sa, cooking in a bright kitchen, medium shot"]
+    assert cfg["sample"]["guidance_scale"] == 3.0
+    assert cfg["sample"]["num_frames"] == 1
+    assert cfg["train"]["disable_sampling"] is False
+
+
+def test_expected_files_are_one_per_save_point_without_experts():
+    from studio_core.services import training
+    assert training.expected_files("s", 750, 250, ()) == [
+        "s_000000250.safetensors", "s_000000500.safetensors", "s.safetensors"]
+    assert training.expected_files("s", 750, 250) == training.expected_files("s", 750, 250, ("high", "low"))
+    assert training.trainer_of({"model": training.LTX23})["experts"] == ()
+    assert training.trainer_of({"model": training.WAN22})["experts"] == ("high", "low")
+    with pytest.raises(ValidationError):
+        training.trainer_of({"model": "runpod-pod/nothing-like-this"})
+
+
+def _ltx_training_draft(api, project, character, nodes, **params):
+    resp = api.post("/api/runs", json={
+        "project": project["id"], "kind": "training", "engine": "ltx-2.3-lora-train",
+        "model": "runpod-pod/ai-toolkit-ltx23-22b", "characters": [character["id"]],
+        "plan": {"version": 1, "origin": "authored", "prompt": None,
+                 "params": {"trigger": "ohwx_sa", "steps": 500, "save_every": 250,
+                            "sample_prompts": [], **params}},
+        "sends": [{"field": "dataset", "role": "reference", "node": n} for n in nodes],
+    })
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    return resp.get_json()
+
+
+def test_an_ltx_training_run_pre_makes_one_file_per_save_point_and_names_its_arch(
+        empty_api, media_bucket):
+    """Same dispatch, different naming: the manifest says `arch: ltx23` and no
+    experts, the script is ai-toolkit's, the outputs are `<stem>_<step>` and
+    a bare `<stem>` — three nodes for 500 steps at 250, not six — and the
+    pod is rented from the pinned ai-toolkit image."""
+    from studio_core.clients import runpod_pods
+    from studio_core.services import training
+    project = _project(empty_api)
+    character = _character(empty_api)
+    run = _ltx_training_draft(empty_api, project, character, _dataset(empty_api, character))
+
+    body = empty_api.post(f"/api/runs/{run['id']}/submit").get_json()
+    assert body["status"] == "running", body
+    manifest = json.loads(media_bucket.get_object(
+        Bucket=config.media_bucket(), Key=training.MANIFEST_KEY.format(run=run["id"]))["Body"].read())
+    assert manifest["arch"] == "ltx23" and manifest["experts"] == []
+    assert manifest["base"] is None
+    assert manifest["script"] == training.JOB_SCRIPT
+    stem = manifest["stem"]
+    assert sorted(manifest["outputs"]) == sorted([f"{stem}_000000250.safetensors", f"{stem}.safetensors"])
+    assert manifest["samples"] == []
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    made = record["payload"]["training"]["outputs"]
+    assert set(made) == set(manifest["outputs"])
+    pod = runpod_pods.get_pod(body["prediction_id"])
+    assert pod["gpu"]["id"] == "NVIDIA H100 80GB HBM3", "the entry defaults to an H100"
+
+
+def test_the_pod_is_rented_from_the_trainers_image(monkeypatch):
+    """`create_pod` sends the pinned ai-toolkit image unless the trainer names
+    its own — the musubi job does."""
+    from studio_core.clients import runpod_pods
+    sent = {}
+    monkeypatch.setenv("STUDIO_RUNPOD_MODE", "live")
+    monkeypatch.setattr(runpod_pods, "_request",
+                        lambda method, url, body=None: (sent.update(body=body) or {"id": "pod-x"}))
+    runpod_pods.create_pod(name="n", gpu="h100", cloud="secure", env={}, start_cmd=["true"])
+    assert sent["body"]["imageName"] == runpod_pods.IMAGE
+    runpod_pods.create_pod(name="n", gpu="h100", cloud="secure", env={}, start_cmd=["true"],
+                           image="runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04")
+    assert sent["body"]["imageName"] == "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04"
+
+
+def test_a_hunyuan_training_run_gets_the_musubi_job_and_draws_no_samples(empty_api, media_bucket):
+    """No ai-toolkit arch for HunyuanVideo: the manifest carries the musubi
+    script, single-file outputs, and a sample list is refused before
+    `pending` because that job cannot draw one."""
+    from studio_core.services import training
+    project = _project(empty_api)
+    character = _character(empty_api)
+    nodes = _dataset(empty_api, character)
+    refused = empty_api.post("/api/runs", json={
+        "project": project["id"], "kind": "training", "engine": "hunyuan-video-lora-train",
+        "model": "runpod-pod/musubi-hunyuan-video", "characters": [character["id"]],
+        "plan": {"version": 1, "origin": "authored", "prompt": None,
+                 "params": {"trigger": "ohwx_sa", "steps": 500, "save_every": 250,
+                            "sample_prompts": ["{trigger}, on a beach"]}},
+        "sends": [{"field": "dataset", "role": "reference", "node": n} for n in nodes],
+    }).get_json()
+    resp = empty_api.post(f"/api/runs/{refused['id']}/submit")
+    assert resp.status_code == 400 and "sample_prompts" in resp.get_data(as_text=True)
+    assert empty_api.get(f"/api/runs/{refused['id']}").get_json()["status"] == "draft"
+
+    run = empty_api.post("/api/runs", json={
+        "project": project["id"], "kind": "training", "engine": "hunyuan-video-lora-train",
+        "model": "runpod-pod/musubi-hunyuan-video", "characters": [character["id"]],
+        "plan": {"version": 1, "origin": "authored", "prompt": None,
+                 "params": {"trigger": "ohwx_sa", "steps": 500, "save_every": 250}},
+        "sends": [{"field": "dataset", "role": "reference", "node": n} for n in nodes],
+    }).get_json()
+    body = empty_api.post(f"/api/runs/{run['id']}/submit").get_json()
+    assert body["status"] == "running", body
+    manifest = json.loads(media_bucket.get_object(
+        Bucket=config.media_bucket(), Key=training.MANIFEST_KEY.format(run=run["id"]))["Body"].read())
+    assert manifest["arch"] == "hunyuan" and manifest["experts"] == []
+    assert manifest["script"] == training.MUSUBI_JOB_SCRIPT
+    assert manifest["lr"] == 0.0002, "the entry's own default, not the module's"
+    assert manifest["sample_prompts"] == []
+    assert sorted(manifest["outputs"]) == sorted([f"{manifest['stem']}_000000250.safetensors",
+                                                  f"{manifest['stem']}.safetensors"])
+    # The musubi script is bash around the same uploader and the same report.
+    assert "hv_train_network.py" in manifest["script"]
+    assert training.UPLOADER in manifest["script"] and training.REPORT in manifest["script"]
+    assert training.UPLOADER in training.JOB_SCRIPT and training.REPORT in training.JOB_SCRIPT
+
+
+def test_the_uploader_files_a_single_file_checkpoint_and_renames_musubis(tmp_path, monkeypatch):
+    """With no experts the sweep takes every `.safetensors` in the output
+    folder; a musubi name (`<stem>-step00000250`) goes up as studio's
+    `<stem>_000000250`, the last one as `<stem>`. The conversion step is
+    stubbed: it is musubi's own script, not here to test."""
+    import subprocess
+    import urllib.request
+    out = tmp_path / "output" / "stem"
+    out.mkdir(parents=True)
+    for name in ["stem-step00000250.safetensors", "stem-step00000500.safetensors", "stem.safetensors"]:
+        (out / name).write_bytes(b"w" * 16)
+    (out / "stem-step00000250-state").mkdir()
+    names = ["stem_000000250.safetensors", "stem.safetensors"]
+    job = tmp_path / "job.json"
+    job.write_text(json.dumps({
+        "pod": {"id": "pod-1"}, "stem": "stem", "steps": 500, "arch": "hunyuan", "experts": [],
+        "outputs": {name: f"https://bucket.test/{name}?grant" for name in names},
+        "callback": None,
+    }))
+    calls = []
+    converted = []
+
+    class _Answer:
+        def read(self):
+            return b""
+
+    def urlopen(req, timeout=None):
+        calls.append((req.get_method(), req.full_url, req.data))
+        return _Answer()
+
+    def run(cmd, check):
+        converted.append(cmd)
+        pathlib.Path(cmd[cmd.index("--output") + 1]).write_bytes(b"c" * 8)
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr("sys.argv", ["uploader", "final"])
+    source = (_uploader_source()
+              .replace("/tmp/job.json", str(job))
+              .replace("/workspace/output", str(tmp_path / "output"))
+              .replace("/tmp/converted", str(tmp_path / "converted"))
+              .replace("/tmp/uploaded.json", str(tmp_path / "uploaded.json")))
+    exec(compile(source, "uploader.py", "exec"), {"__name__": "__main__"})
+
+    puts = [(url, data) for method, url, data in calls if method == "PUT"]
+    # step 500 IS the final step, so `-step00000500` maps onto `stem` too and
+    # the first file to claim the name wins; nothing is uploaded twice.
+    assert [url for url, _ in puts] == [f"https://bucket.test/{n}?grant" for n in names]
+    assert all(data == b"c" * 8 for _, data in puts), "the converted bytes go up, not musubi's"
+    assert len(converted) == 2 and all("--target" in cmd and "other" in cmd for cmd in converted)
+    assert json.loads((tmp_path / "uploaded.json").read_text()) == sorted(names)
+
+
+def test_a_fal_entrys_own_fields_overlay_its_live_schema():
+    """`lora_scale` is studio's, declared in the entry's `input` block as it
+    is on a Runpod entry; on a fal entry the live schema lacks it, and without
+    the overlay `check` would refuse the field as unknown."""
+    from studio_core.services import registry, schema
+    entry = registry.get("ltx-2.3-i2v-lora")
+    live = {"prompt": {"type": "string"}, "loras": {"type": "array"}, "image_url": {"type": "string"}}
+    props, schemas = schema._with_own_fields(entry, live, {"Input": {"required": ["prompt"]}})
+    assert set(props) == {"prompt", "loras", "image_url", "lora_scale"}
+    assert props["lora_scale"]["maximum"] == 4
+    assert schema.check({"prompt": "x", "lora_scale": 0.9}, {"loras": ["n1"], "image_url": "n2"},
+                        entry["model"], props, schemas) == []
+    # A fetch that failed stays failed: nothing is overlaid on an empty map.
+    assert schema._with_own_fields(entry, {}, {}) == ({}, {})
+    assert registry.lora_fields(entry) == {"loras"}
+    assert registry.lora_scale_param(entry) == "lora_scale"
+
+
+def test_a_single_slot_lora_send_goes_out_as_path_and_scale_on_fal(empty_api, monkeypatch):
+    """The LTX endpoint has one `loras` list; a LoRA bound to it goes out as
+    `[{path, scale}]` with the plan's `lora_scale` folded in, exactly as Wan's
+    two slots do."""
+    from studio_core.clients import fal
+    seen = {}
+    monkeypatch.setattr(fal, "create_prediction",
+                        lambda model, payload, *, webhook=None:
+                        (seen.update(model=model, payload=payload) or {"id": "req-lora", "status": "IN_QUEUE"}))
+    project = _project(empty_api)
+    root = empty_api.get(f"/api/projects/{project['id']}").get_json()["root"]
+    still = _uploaded(empty_api, root, "frame.png")
+    lora = _uploaded(empty_api, root, "subject-a-ohwx-sa-1234.safetensors")
+    resp = empty_api.post("/api/runs", json={
+        "project": project["id"], "kind": "video", "engine": "ltx-2.3-i2v-lora",
+        "model": "fal/fal-ai/ltx-2.3-22b/image-to-video/lora",
+        "plan": {"version": 1, "origin": "authored", "prompt": "ohwx_sa turns to camera",
+                 "params": {"num_frames": 121, "seed": 3, "lora_scale": 1.1, "generate_audio": False}},
+        "sends": [
+            {"field": "image_url", "role": "start", "node": still["node_id"]},
+            {"field": "loras", "role": "lora", "node": lora["node_id"]},
+        ],
+    })
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    run = resp.get_json()
+    body = empty_api.post(f"/api/runs/{run['id']}/submit").get_json()
+    assert body["status"] == "running", body
+    payload = seen["payload"]
+    assert seen["model"] == "fal/fal-ai/ltx-2.3-22b/image-to-video/lora"
+    assert "lora_scale" not in payload
+    assert payload["loras"] == [{"path": payload["loras"][0]["path"], "scale": 1.1}]
+    assert payload["loras"][0]["path"].startswith("http") and payload["image_url"].startswith("http")
+    assert payload["num_frames"] == 121 and payload["generate_audio"] is False

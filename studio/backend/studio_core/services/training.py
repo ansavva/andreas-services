@@ -104,6 +104,35 @@ A clean, faithful frame says the pair still renders its subject; drift,
 colour shift or a smeared face says the pair has damaged the model. Whether
 the face travels to a new scene is the evaluation's question, on video.
 `t2v` samples are text-only, as before.
+
+## Three trainers, one run shape
+
+`TRAINERS` says what each `runpod-pod` entry rents and what it leaves, keyed
+by the entry's model id. Two run ai-toolkit off the same image and job
+script — the script reads `arch` off the manifest and writes the config
+that arch wants — and the third runs musubi-tuner off a plain PyTorch image,
+because ai-toolkit has no HunyuanVideo arch. What a trainer writes differs
+in one thing that every reader of the run has to know: **whether a
+checkpoint is a pair or a file.** Wan 2.2 is two experts, so a save point
+is `<stem>_<step>_high_noise` + `_low_noise`; LTX-2.3 and HunyuanVideo are
+one transformer, so a save point is `<stem>_<step>.safetensors` — studio's
+own name, which the uploader gives a musubi file on the way up (musubi
+writes `<stem>-step<8 digits>`). `expected_files` takes the experts, and the
+run page groups by step off the name either way.
+
+Verified 2026-09-20 against ostris/ai-toolkit `8bf12e4` (0.13.12, the image
+pinned in `clients/runpod_pods.py`): `LTX23Model.arch == "ltx2.3"`,
+`toolkit/models/registry.py` names `Lightricks/LTX-2.3/ltx-2.3-22b-dev.safetensors`
+with `quantize` and `quantize_te` on as its defaults, and
+`generate_single_image` handles `num_frames == 1` as a still through the
+text-to-video pipeline — so an LTX sample is text-only and shows whether the
+face travels. The LoRA is saved in the original (ComfyUI) key layout
+(`lora_keys_use_comfy_prefix`, `convert_lora_weights_before_save`), which is
+the layout fal's `ltx-2.3-22b/*/lora` endpoints load. The HunyuanVideo job
+is written against kohya-ss/musubi-tuner `4e7c714` (2026-09-16) and its
+`docs/hunyuan_video.md`, and has **not** run on a pod: no hosted endpoint
+loads a HunyuanVideo LoRA into image-to-video, so studio cannot use what it
+would train yet, and the budget went to LTX.
 """
 
 import json
@@ -145,7 +174,45 @@ DEFAULTS = {
     "sample_prompts": SAMPLE_PROMPTS, "sample_seed": 42, "sample_steps": 20,
 }
 
+#: Wan 2.2's two denoising experts, each its own LoRA file. A single-model
+#: trainer has none: `experts=()` and a checkpoint is one file.
 EXPERTS = ("high", "low")
+
+#: Wan 2.2 trains against one of two bases; the other trainers have one model
+#: for both modes, so `base` is not a knob of theirs and stays `None`.
+WAN22 = "runpod-pod/ai-toolkit-wan22-14b"
+LTX23 = "runpod-pod/ai-toolkit-ltx23-22b"
+HUNYUAN = "runpod-pod/musubi-hunyuan-video"
+
+#: The trainers, by the registry entry's model id. `arch` is what the job
+#: script switches on; `experts` is how a checkpoint is named; `image` is
+#: the pod's; `script` is the job; `defaults` overlay `DEFAULTS` for the
+#: knobs a trainer spells differently; `samples` says whether the job can
+#: draw a still at each save point at all.
+TRAINERS: dict[str, dict] = {
+    WAN22: {"arch": "wan22", "experts": EXPERTS, "image": None, "script": None,
+            "defaults": {}, "samples": True},
+    LTX23: {"arch": "ltx23", "experts": (), "image": None, "script": None,
+            "defaults": {"base": None, "steps": 1500}, "samples": True},
+    HUNYUAN: {"arch": "hunyuan", "experts": (), "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+              "script": "musubi", "defaults": {"base": None, "sample_prompts": [], "lr": 2e-4},
+              "samples": False},
+}
+
+
+def trainer_of(entry: dict) -> dict:
+    """What this entry rents and leaves — `TRAINERS` by model id, with the
+    entry's own `defaults` laid over the trainer's for the knobs a plan may
+    not say (the registry says `gpu: h100` for the LTX trainer; a plan the
+    API was handed without one gets that, not the module's `a100`)."""
+    model = entry.get("model") or ""
+    try:
+        trainer = TRAINERS[model]
+    except KeyError:
+        raise ValidationError(f"{model} is not a trainer this service knows how to drive") from None
+    own = {k: v for k, v in (entry.get("defaults") or {}).items() if k in DEFAULTS}
+    return {**trainer, "defaults": {**own, **trainer["defaults"]}}
+
 
 #: What ai-toolkit calls a sample, in the `samples/` folder beside the
 #: weights: `<ms-since-epoch>__<step:09d>_<prompt index>.jpg`. Read off
@@ -166,8 +233,9 @@ def _slug(value: str) -> str:
     return _SLUG.sub("-", (value or "").lower()).strip("-") or "lora"
 
 
-def _knobs(payload: dict) -> dict:
-    knobs = {**DEFAULTS, **{k: v for k, v in payload.items() if k in DEFAULTS}}
+def _knobs(payload: dict, trainer: dict = TRAINERS[WAN22]) -> dict:
+    defaults = {**DEFAULTS, **trainer["defaults"]}
+    knobs = {**defaults, **{k: v for k, v in payload.items() if k in defaults}}
     knobs["trigger"] = payload.get("trigger")
     if not isinstance(knobs["trigger"], str) or not knobs["trigger"].strip():
         raise ValidationError("a training run needs a `trigger` — the token its captions start with")
@@ -175,6 +243,8 @@ def _knobs(payload: dict) -> dict:
     prompts = knobs["sample_prompts"]
     if not isinstance(prompts, list) or not all(isinstance(p, str) and p.strip() for p in prompts):
         raise ValidationError("`sample_prompts` is a list of prompts, each naming `{trigger}` — or [] for no samples")
+    if prompts and not trainer["samples"]:
+        raise ValidationError("this trainer draws no samples: pass `sample_prompts: []`")
     # ai-toolkit reads `--<flag>` off a sample prompt (`GenerateImageConfig`
     # splits on `--`), and the job appends its own; a prompt carrying one
     # would be cut there, silently.
@@ -195,19 +265,27 @@ def save_points(steps: int, save_every: int) -> list[int]:
     return [s for s in range(save_every, steps + 1, save_every) if s < steps]
 
 
-def expected_files(stem: str, steps: int, save_every: int) -> list[str]:
+def expected_files(stem: str, steps: int, save_every: int,
+                   experts: tuple[str, ...] = EXPERTS) -> list[str]:
     """Every file the trainer will write, by ai-toolkit's own naming.
 
     `<name>_<step:09d>` for a periodic save and bare `<name>` for the final
-    one, each split into `_high_noise` / `_low_noise` because
-    `split_multistage_loras` is on — the pair the inference endpoint takes.
+    one. With `experts` (Wan 2.2), each is split into `_high_noise` /
+    `_low_noise` because `split_multistage_loras` is on — the pair the
+    inference endpoint takes. With none (LTX-2.3, HunyuanVideo) a save point
+    is the one file, which is also the name the uploader gives a musubi
+    checkpoint on the way up.
     """
     names = []
     for step in save_points(steps, save_every):
-        for expert in EXPERTS:
-            names.append(f"{stem}_{step:09d}_{expert}_noise.safetensors")
-    for expert in EXPERTS:
-        names.append(f"{stem}_{expert}_noise.safetensors")
+        if experts:
+            names.extend(f"{stem}_{step:09d}_{expert}_noise.safetensors" for expert in experts)
+        else:
+            names.append(f"{stem}_{step:09d}.safetensors")
+    if experts:
+        names.extend(f"{stem}_{expert}_noise.safetensors" for expert in experts)
+    else:
+        names.append(f"{stem}.safetensors")
     return names
 
 
@@ -270,7 +348,7 @@ def preflight(record: dict, entry: dict, payload: dict, bindings: dict) -> tuple
     what it reads; raising there would leave `pending` with no pod behind
     it, the state that reads as "went out and never answered".
     """
-    knobs = _knobs(payload)
+    knobs = _knobs(payload, trainer_of(entry))
     dataset_field = registry.field(entry, "images.refs") or "dataset"
     dataset_nodes = bindings.get(dataset_field) or []
     if isinstance(dataset_nodes, str):
@@ -304,6 +382,7 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict, *, webhoo
     exception this re-raises.
     """
     knobs, dataset_nodes = preflight(record, entry, payload, bindings)
+    trainer = trainer_of(entry)
     character = catalog.entity(catalog.ENTITY_CHARACTER, record["characters"][0])
 
     run_id = record["id"]
@@ -337,7 +416,7 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict, *, webhoo
         outputs: dict[str, str] = {}
         grants: dict[str, str] = {}
         owner = catalog.blob_owner_for(models["node_id"])
-        for name in expected_files(stem, knobs["steps"], knobs["save_every"]):
+        for name in expected_files(stem, knobs["steps"], knobs["save_every"], trainer["experts"]):
             node = catalog.create_node(models["node_id"], name, catalog.KIND_FILE, owner=owner)
             made_nodes.append(node["node_id"])
             outputs[name] = node["node_id"]
@@ -366,6 +445,7 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict, *, webhoo
             gpu=knobs["gpu"], cloud=knobs["cloud"],
             env={"STUDIO_JOB_URL": manifest_url},
             start_cmd=["bash", "-lc", BOOT],
+            image=trainer["image"],
         )
         created_at = datetime.now(timezone.utc).isoformat()
         sample_plan = sample_records(knobs["sample_prompts"], [d["name"] for d in dataset], knobs["base"])
@@ -373,6 +453,8 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict, *, webhoo
             "run": run_id,
             "pod": {"id": pod["id"], "rate": pod.get("costPerHr"), "created_at": created_at},
             "trainer": entry.get("model"),
+            "arch": trainer["arch"],
+            "experts": list(trainer["experts"]),
             **{k: knobs[k] for k in ("trigger", "steps", "save_every", "rank", "lr",
                                      "resolution", "base", "max_hours",
                                      "sample_prompts", "sample_seed", "sample_steps")},
@@ -382,7 +464,7 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict, *, webhoo
             "outputs": grants,
             "result_url": s3.presign_put_unsized(result_key, content_type="application/json", expires_in=ttl),
             "callback": webhook,
-            "script": JOB_SCRIPT,
+            "script": JOB_SCRIPTS[trainer["script"]],
         }
         s3.put_text(manifest_key, json.dumps(manifest).encode(), "application/json")
         written = True
@@ -600,154 +682,17 @@ BOOT = (
     "&& bash /tmp/job.sh"
 )
 
-#: The job. Bash around three Python passes: fetch the dataset and write the
-#: ai-toolkit config; upload checkpoints as the trainer writes them, telling
-#: the callback URL after each one; write the result and call back.
-#: Everything the pod learns is in the manifest and everything it says goes
-#: to the bucket — it holds no credential.
-JOB_SCRIPT = r'''#!/usr/bin/env bash
-set -uo pipefail
-export PYTHONUNBUFFERED=1
-# A pod restarts its container when the command exits, and the container disk
-# survives the restart. Without this guard a finished job ran again: the trainer
-# found its final checkpoint, exited 0 in seconds, and the result was re-written
-# and re-sent with a bigger bill every six minutes until studio terminated the
-# pod. Reported once, the machine holds idle for studio to terminate.
-if [ -f /workspace/.reported ]; then echo "already reported; holding"; exec sleep infinity; fi
-mkdir -p /workspace/dataset /workspace/output
-cd /app/ai-toolkit
-
-python3 - <<'PYEOF'
-import json, pathlib, urllib.request, yaml
-m = json.load(open("/tmp/job.json"))
-ds = pathlib.Path("/workspace/dataset")
-for item in m["dataset"]:
-    p = ds / item["name"]
-    urllib.request.urlretrieve(item["url"], p)
-    p.with_suffix(".txt").write_text(item["caption"])
-i2v = m.get("base", "i2v") == "i2v"
-# Samples at every save point, one still per prompt, or none at all. The
-# prompts arrive with the trigger already in them. `skip_first_sample`: no
-# step-0 baseline, it is not a checkpoint. Field names are ai-toolkit's
-# `SampleConfig` (toolkit/config_modules.py); `guidance_scale` is left at
-# its default.
-prompts = list(m.get("sample_prompts") or [])
-if i2v and prompts:
-    # The I2V base samples from an image or not at all: without one,
-    # wan22_pipeline prepares 36-channel latents against a 16-channel
-    # prediction and the scheduler crashes (the trainer's first sample, the
-    # first time). `--ctrl_img <path>` on the prompt is how ai-toolkit's
-    # GenerateImageConfig takes the first frame (toolkit/config_modules.py,
-    # `_process_prompt_string`; wan22_14b_i2v_model.generate_single_image
-    # reads `gen_config.ctrl_img`). The photos are the dataset's, dealt
-    # round-robin in manifest order — the same rule the manifest's
-    # `samples` records — so each prompt re-renders one real photo through
-    # the pair. `--w`/`--h` keep the photo's aspect: the sampler resizes the
-    # control image to the sample's size, and a square would squash a face
-    # into something likeness cannot be read off. Multiples of 16, Wan 2.2's
-    # bucket divisibility.
-    names = [item["name"] for item in m["dataset"]]
-    def fit(path, size):
-        try:
-            from PIL import Image
-            w, h = Image.open(path).size
-        except Exception:
-            return None
-        scale = size / max(w, h)
-        return max(16, int(w * scale) // 16 * 16), max(16, int(h * scale) // 16 * 16)
-    flagged = []
-    for i, prompt in enumerate(prompts):
-        name = names[i % len(names)]
-        box = fit(ds / name, m["resolution"])
-        size = f" --w {box[0]} --h {box[1]}" if box else ""
-        flagged.append(f"{prompt}{size} --ctrl_img /workspace/dataset/{name}")
-        print("sample", i, "re-renders", name, flush=True)
-    prompts = flagged
-cfg = {"job": "extension", "config": {"name": m["stem"], "process": [{
-    "type": "sd_trainer", "training_folder": "/workspace/output", "device": "cuda:0",
-    "network": {"type": "lora", "linear": m["rank"], "linear_alpha": m["rank"],
-                "split_multistage_loras": True},
-    "save": {"dtype": "float16", "save_every": m["save_every"], "max_step_saves_to_keep": 100},
-    "datasets": [{"folder_path": "/workspace/dataset", "caption_ext": "txt",
-                  "caption_dropout_rate": 0.05, "num_frames": 1, "resolution": [m["resolution"]]}],
-    "train": {"batch_size": 1, "steps": m["steps"], "gradient_accumulation": 1,
-              "train_unet": True, "train_text_encoder": False, "gradient_checkpointing": True,
-              "noise_scheduler": "flowmatch", "timestep_type": "linear",
-              "optimizer": "adamw8bit", "lr": m["lr"], "optimizer_params": {"weight_decay": 1e-4},
-              "dtype": "bf16", "switch_boundary_every": 10, "cache_text_embeddings": True,
-              "disable_sampling": not prompts, "skip_first_sample": True},
-    "model": {"name_or_path": "Wan-AI/Wan2.2-I2V-A14B-Diffusers" if i2v else "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
-              "arch": "wan22_14b_i2v" if i2v else "wan22_14b",
-              "quantize": False, "low_vram": False,
-              "model_kwargs": {"train_high_noise": True, "train_low_noise": True}},
-    "sample": {"sampler": "flowmatch", "sample_every": m["save_every"] if prompts else 10**9,
-               "sample_start_step": 0, "width": m["resolution"], "height": m["resolution"],
-               "num_frames": 1, "prompts": prompts, "neg": "", "seed": m.get("sample_seed", 42),
-               "walk_seed": False, "sample_steps": m.get("sample_steps", 20), "format": "jpg"},
-}]}}
-yaml.safe_dump(cfg, open("/tmp/train.yaml", "w"))
-open("/tmp/uploader.py", "w").write(r"""
-import json, os, pathlib, re, sys, time, urllib.request
-m = json.load(open("/tmp/job.json"))
-grants = m["outputs"]; out = pathlib.Path("/workspace/output") / m["stem"]
-done = set(); sizes = {}
-# ai-toolkit names a sample `<ms>__<step:09d>_<i>.jpg` (BaseSDTrainProcess.sample);
-# studio's name for it is `<stem>_<step:09d>_sample_<i>.jpg`, unnumbered at
-# the final step like the final pair. The grant is under studio's name.
-SAMPLE = re.compile(r"^\d+__(\d{9})_(\d+)\.jpg$")
-def studio_name(p):
-    if p.parent.name != "samples": return p.name
-    match = SAMPLE.match(p.name)
-    if not match: return None
-    step, index = int(match.group(1)), int(match.group(2))
-    if step >= int(m["steps"]): return f"{m['stem']}_sample_{index}.jpg"
-    return f"{m['stem']}_{step:09d}_sample_{index}.jpg"
-def put(p, name):
-    data = p.read_bytes()
-    kind = "image/jpeg" if name.endswith(".jpg") else "application/octet-stream"
-    req = urllib.request.Request(grants[name], data=data, method="PUT",
-                                 headers={"Content-Type": kind})
-    urllib.request.urlopen(req, timeout=600).read()
-def progress():
-    # Best effort: what has landed so far, so studio can show it before the
-    # end. A failure here costs nothing — the final report names everything.
-    if not m.get("callback"): return
-    body = json.dumps({"id": m["pod"]["id"], "status": "IN_PROGRESS",
-                       "output": {"uploaded": sorted(done)}}).encode()
-    try:
-        req = urllib.request.Request(m["callback"], data=body, method="POST",
-                                     headers={"Content-Type": "application/json"})
-        urllib.request.urlopen(req, timeout=20).read()
-    except Exception as exc:
-        print("progress callback failed", exc, flush=True)
-def sweep(final=False):
-    if not out.is_dir(): return
-    files = sorted(out.glob("*_noise.safetensors")) + sorted((out / "samples").glob("*.jpg"))
-    for p in files:
-        name = studio_name(p)
-        if not name or name in done or name not in grants: continue
-        size = p.stat().st_size
-        if not final and sizes.get(name) != size:
-            sizes[name] = size; continue  # wait until the size holds still
-        try:
-            put(p, name); done.add(name); print("uploaded", p.name, "as", name, size, flush=True)
-        except Exception as exc:
-            print("upload failed", p.name, exc, flush=True); continue
-        progress()
-    json.dump(sorted(done), open("/tmp/uploaded.json", "w"))
-if sys.argv[1:] == ["final"]:
-    sweep(final=True); sweep(final=True)
-else:
-    while not os.path.exists("/tmp/train.exit"):
-        sweep(); time.sleep(30)
-""")
-PYEOF
-
-MAX_SECONDS=$(python3 -c "import json;print(int(json.load(open('/tmp/job.json'))['max_hours']*3600))")
-( timeout ${MAX_SECONDS}s python run.py /tmp/train.yaml > /workspace/train.log 2>&1; echo $? > /tmp/train.exit ) &
-python3 /tmp/uploader.py &
-wait
-python3 /tmp/uploader.py final
+#: What every job ends with, whatever trained: the uploader's final sweep,
+#: the result document PUT to the bucket and POSTed to the callback, then
+#: the hold. Its own constant so the two job scripts share it verbatim.
+#:
+#: A pod restarts its container when the command exits, and the container
+#: disk survives the restart. Without the `.reported` guard at the top of
+#: each script a finished job ran again: the trainer found its final
+#: checkpoint, exited 0 in seconds, and the result was re-written and re-sent
+#: with a bigger bill every six minutes until studio terminated the pod.
+#: Reported once, the machine holds idle for studio to terminate.
+REPORT = r'''python3 /tmp/uploader.py final
 
 python3 - <<'PYEOF'
 import json, time, urllib.request
@@ -787,3 +732,285 @@ PYEOF
 touch /workspace/.reported
 exec sleep infinity
 '''
+
+#: The uploader both jobs run beside the trainer: sweep the output folder,
+#: PUT each finished file on its grant, tell the callback after each one.
+#: Written to `/tmp/uploader.py` by the job's first Python pass. What it
+#: knows about naming: ai-toolkit's sample name (`<ms>__<step:09d>_<i>.jpg`),
+#: which it files under studio's; and musubi's checkpoint name
+#: (`<stem>-step<8 digits>`), which it files as `<stem>_<step:09d>` — the
+#: single-file shape `expected_files` promised. A pair file is already
+#: named as studio expects and passes through.
+UPLOADER = r'''
+import json, os, pathlib, re, subprocess, sys, time, urllib.request
+m = json.load(open("/tmp/job.json"))
+grants = m["outputs"]; out = pathlib.Path("/workspace/output") / m["stem"]
+done = set(); sizes = {}
+# ai-toolkit names a sample `<ms>__<step:09d>_<i>.jpg` (BaseSDTrainProcess.sample);
+# studio's name for it is `<stem>_<step:09d>_sample_<i>.jpg`, unnumbered at
+# the final step like the final pair. The grant is under studio's name.
+SAMPLE = re.compile(r"^\d+__(\d{9})_(\d+)\.jpg$")
+# musubi-tuner names a periodic save `<stem>-step<8 digits>` (train_utils.STEP_FILE_NAME)
+# and the last one `<stem>`; studio's name is `<stem>_<step:09d>` / `<stem>`.
+MUSUBI = re.compile(r"^" + re.escape(m["stem"]) + r"-step(\d{8})\.safetensors$")
+# Wan 2.2 writes a pair per save point; a one-model trainer writes one file.
+WEIGHTS = "*_noise.safetensors" if m.get("experts", ["high", "low"]) else "*.safetensors"
+def studio_name(p):
+    if p.parent.name == "samples":
+        match = SAMPLE.match(p.name)
+        if not match: return None
+        step, index = int(match.group(1)), int(match.group(2))
+        if step >= int(m["steps"]): return f"{m['stem']}_sample_{index}.jpg"
+        return f"{m['stem']}_{step:09d}_sample_{index}.jpg"
+    match = MUSUBI.match(p.name)
+    if match:
+        step = int(match.group(1))
+        if step >= int(m["steps"]): return f"{m['stem']}.safetensors"
+        return f"{m['stem']}_{step:09d}.safetensors"
+    return p.name
+def convert(p):
+    # A musubi LoRA is in sd-scripts' key layout; `--target other` rewrites
+    # it to the diffusers/ComfyUI layout every loader outside musubi reads.
+    if m.get("arch") != "hunyuan" or p.suffix != ".safetensors": return p
+    target = pathlib.Path("/tmp/converted") / p.name
+    target.parent.mkdir(exist_ok=True)
+    subprocess.run([sys.executable, "/workspace/musubi-tuner/src/musubi_tuner/convert_lora.py",
+                    "--input", str(p), "--output", str(target), "--target", "other"], check=True)
+    return target
+def put(p, name):
+    data = convert(p).read_bytes()
+    kind = "image/jpeg" if name.endswith(".jpg") else "application/octet-stream"
+    req = urllib.request.Request(grants[name], data=data, method="PUT",
+                                 headers={"Content-Type": kind})
+    urllib.request.urlopen(req, timeout=600).read()
+def progress():
+    # Best effort: what has landed so far, so studio can show it before the
+    # end. A failure here costs nothing — the final report names everything.
+    if not m.get("callback"): return
+    body = json.dumps({"id": m["pod"]["id"], "status": "IN_PROGRESS",
+                       "output": {"uploaded": sorted(done)}}).encode()
+    try:
+        req = urllib.request.Request(m["callback"], data=body, method="POST",
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=20).read()
+    except Exception as exc:
+        print("progress callback failed", exc, flush=True)
+def sweep(final=False):
+    if not out.is_dir(): return
+    files = sorted(out.glob(WEIGHTS)) + sorted((out / "samples").glob("*.jpg"))
+    for p in files:
+        name = studio_name(p)
+        if not name or name in done or name not in grants: continue
+        size = p.stat().st_size
+        if not final and sizes.get(name) != size:
+            sizes[name] = size; continue  # wait until the size holds still
+        try:
+            put(p, name); done.add(name); print("uploaded", p.name, "as", name, size, flush=True)
+        except Exception as exc:
+            print("upload failed", p.name, exc, flush=True); continue
+        progress()
+    json.dump(sorted(done), open("/tmp/uploaded.json", "w"))
+if sys.argv[1:] == ["final"]:
+    sweep(final=True); sweep(final=True)
+else:
+    while not os.path.exists("/tmp/train.exit"):
+        sweep(); time.sleep(30)
+'''
+
+#: The ai-toolkit job — Wan 2.2 and LTX-2.3. Bash around three Python
+#: passes: fetch the dataset and write the ai-toolkit config for the
+#: manifest's `arch`; upload checkpoints as the trainer writes them, telling
+#: the callback URL after each one; write the result and call back.
+#: Everything the pod learns is in the manifest and everything it says goes
+#: to the bucket — it holds no credential.
+JOB_SCRIPT = r'''#!/usr/bin/env bash
+set -uo pipefail
+export PYTHONUNBUFFERED=1
+# A pod restarts its container when the command exits, and the container disk
+# survives the restart. Without this guard a finished job ran again: the trainer
+# found its final checkpoint, exited 0 in seconds, and the result was re-written
+# and re-sent with a bigger bill every six minutes until studio terminated the
+# pod. Reported once, the machine holds idle for studio to terminate.
+if [ -f /workspace/.reported ]; then echo "already reported; holding"; exec sleep infinity; fi
+mkdir -p /workspace/dataset /workspace/output
+cd /app/ai-toolkit
+
+python3 - <<'PYEOF'
+import json, pathlib, urllib.request, yaml
+m = json.load(open("/tmp/job.json"))
+ds = pathlib.Path("/workspace/dataset")
+for item in m["dataset"]:
+    p = ds / item["name"]
+    urllib.request.urlretrieve(item["url"], p)
+    p.with_suffix(".txt").write_text(item["caption"])
+arch = m.get("arch", "wan22")
+i2v = arch == "wan22" and m.get("base", "i2v") == "i2v"
+# Samples at every save point, one still per prompt, or none at all. The
+# prompts arrive with the trigger already in them. `skip_first_sample`: no
+# step-0 baseline, it is not a checkpoint. Field names are ai-toolkit's
+# `SampleConfig` (toolkit/config_modules.py); `guidance_scale` is left at
+# its default.
+prompts = list(m.get("sample_prompts") or [])
+if i2v and prompts:
+    # The I2V base samples from an image or not at all: without one,
+    # wan22_pipeline prepares 36-channel latents against a 16-channel
+    # prediction and the scheduler crashes (the trainer's first sample, the
+    # first time). `--ctrl_img <path>` on the prompt is how ai-toolkit's
+    # GenerateImageConfig takes the first frame (toolkit/config_modules.py,
+    # `_process_prompt_string`; wan22_14b_i2v_model.generate_single_image
+    # reads `gen_config.ctrl_img`). The photos are the dataset's, dealt
+    # round-robin in manifest order — the same rule the manifest's
+    # `samples` records — so each prompt re-renders one real photo through
+    # the pair. `--w`/`--h` keep the photo's aspect: the sampler resizes the
+    # control image to the sample's size, and a square would squash a face
+    # into something likeness cannot be read off. Multiples of 16, Wan 2.2's
+    # bucket divisibility.
+    names = [item["name"] for item in m["dataset"]]
+    def fit(path, size):
+        try:
+            from PIL import Image
+            w, h = Image.open(path).size
+        except Exception:
+            return None
+        scale = size / max(w, h)
+        return max(16, int(w * scale) // 16 * 16), max(16, int(h * scale) // 16 * 16)
+    flagged = []
+    for i, prompt in enumerate(prompts):
+        name = names[i % len(names)]
+        box = fit(ds / name, m["resolution"])
+        size = f" --w {box[0]} --h {box[1]}" if box else ""
+        flagged.append(f"{prompt}{size} --ctrl_img /workspace/dataset/{name}")
+        print("sample", i, "re-renders", name, flush=True)
+    prompts = flagged
+if arch == "wan22":
+    model = {"name_or_path": "Wan-AI/Wan2.2-I2V-A14B-Diffusers" if i2v else "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+             "arch": "wan22_14b_i2v" if i2v else "wan22_14b",
+             "quantize": False, "low_vram": False,
+             "model_kwargs": {"train_high_noise": True, "train_low_noise": True}}
+    network = {"type": "lora", "linear": m["rank"], "linear_alpha": m["rank"],
+               "split_multistage_loras": True}
+    train = {"timestep_type": "linear", "switch_boundary_every": 10}
+    sample = {}
+else:
+    # LTX-2.3 22B, the mono checkpoint (DiT, both VAEs, vocoder, connectors
+    # in one file) and the Gemma 3 text encoder the arch names for itself.
+    # `quantize` + `quantize_te` are the trainer's own defaults for this arch
+    # (toolkit/models/registry.py): 22B in bf16 is 44 GB and Gemma 12B is 24
+    # more, which an 80 GB card does not hold beside activations; the LoRA
+    # itself trains in bf16 either way. `timestep_type: weighted` is the
+    # arch's default too. One transformer, so no expert split: a save point
+    # is one file. Samples are text-only stills (`num_frames: 1` is the still
+    # path in ltx2.py's generate_single_image), at the guidance the arch's
+    # registry names for it.
+    model = {"name_or_path": "Lightricks/LTX-2.3/ltx-2.3-22b-dev.safetensors",
+             "arch": "ltx2.3", "quantize": True, "quantize_te": True, "low_vram": False}
+    network = {"type": "lora", "linear": m["rank"], "linear_alpha": m["rank"]}
+    train = {"timestep_type": "weighted"}
+    sample = {"guidance_scale": 3.0}
+cfg = {"job": "extension", "config": {"name": m["stem"], "process": [{
+    "type": "sd_trainer", "training_folder": "/workspace/output", "device": "cuda:0",
+    "network": network,
+    "save": {"dtype": "float16", "save_every": m["save_every"], "max_step_saves_to_keep": 100},
+    "datasets": [{"folder_path": "/workspace/dataset", "caption_ext": "txt",
+                  "caption_dropout_rate": 0.05, "num_frames": 1, "resolution": [m["resolution"]],
+                  **({"cache_latents_to_disk": True} if arch != "wan22" else {})}],
+    "train": {"batch_size": 1, "steps": m["steps"], "gradient_accumulation": 1,
+              "train_unet": True, "train_text_encoder": False, "gradient_checkpointing": True,
+              "noise_scheduler": "flowmatch",
+              "optimizer": "adamw8bit", "lr": m["lr"], "optimizer_params": {"weight_decay": 1e-4},
+              "dtype": "bf16", "cache_text_embeddings": True,
+              "disable_sampling": not prompts, "skip_first_sample": True, **train},
+    "model": model,
+    "sample": {"sampler": "flowmatch", "sample_every": m["save_every"] if prompts else 10**9,
+               "sample_start_step": 0, "width": m["resolution"], "height": m["resolution"],
+               "num_frames": 1, "prompts": prompts, "neg": "", "seed": m.get("sample_seed", 42),
+               "walk_seed": False, "sample_steps": m.get("sample_steps", 20), "format": "jpg", **sample},
+}]}}
+yaml.safe_dump(cfg, open("/tmp/train.yaml", "w"))
+open("/tmp/uploader.py", "w").write(r"""''' + UPLOADER + r'''""")
+PYEOF
+
+MAX_SECONDS=$(python3 -c "import json;print(int(json.load(open('/tmp/job.json'))['max_hours']*3600))")
+( timeout ${MAX_SECONDS}s python run.py /tmp/train.yaml > /workspace/train.log 2>&1; echo $? > /tmp/train.exit ) &
+python3 /tmp/uploader.py &
+wait
+''' + REPORT
+
+#: The musubi-tuner job — HunyuanVideo, which ai-toolkit has no arch for.
+#: A plain PyTorch image, so the job installs the trainer first. Then the
+#: trainer's own three stages (docs/hunyuan_video.md): cache the VAE latents,
+#: cache the text-encoder outputs, train — the DiT is the official
+#: `mp_rank_00_model_states.pt`, the text encoders ComfyUI's repackaged
+#: files, all from ungated repos. Steps rather than epochs so `save_every`
+#: means what it means on the other trainers. No sampling: musubi's sampler
+#: needs the text encoders resident beside the DiT and its own prompt file
+#: format, and nothing downstream loads this LoRA yet — so the entry's
+#: `sample_prompts` is `[]` and `_knobs` refuses anything else.
+#:
+#: **Not yet run on a pod.** Written against musubi-tuner `4e7c714`; the
+#: fake pod covers what studio does with it, not what the trainer does.
+MUSUBI_JOB_SCRIPT = r'''#!/usr/bin/env bash
+set -uo pipefail
+export PYTHONUNBUFFERED=1
+if [ -f /workspace/.reported ]; then echo "already reported; holding"; exec sleep infinity; fi
+mkdir -p /workspace/dataset /workspace/output /workspace/models /workspace/cache
+cd /workspace
+if [ ! -d musubi-tuner ]; then git clone --depth 1 https://github.com/kohya-ss/musubi-tuner.git; fi
+cd musubi-tuner
+pip install -q -e . "huggingface_hub>=0.34" pyyaml
+
+python3 - <<'PYEOF'
+import json, pathlib, urllib.request
+from huggingface_hub import hf_hub_download
+m = json.load(open("/tmp/job.json"))
+ds = pathlib.Path("/workspace/dataset")
+for item in m["dataset"]:
+    p = ds / item["name"]
+    urllib.request.urlretrieve(item["url"], p)
+    p.with_suffix(".txt").write_text(item["caption"])
+models = "/workspace/models"
+for repo, name in [("tencent/HunyuanVideo", "hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt"),
+                   ("tencent/HunyuanVideo", "hunyuan-video-t2v-720p/vae/pytorch_model.pt"),
+                   ("Comfy-Org/HunyuanVideo_repackaged", "split_files/text_encoders/llava_llama3_fp16.safetensors"),
+                   ("Comfy-Org/HunyuanVideo_repackaged", "split_files/text_encoders/clip_l.safetensors")]:
+    hf_hub_download(repo_id=repo, filename=name, local_dir=models)
+    print("fetched", name, flush=True)
+# musubi's dataset config (docs/dataset_config.md): one image folder with
+# caption files beside the images, bucketed to the run's resolution.
+r = int(m["resolution"])
+open("/tmp/dataset.toml", "w").write(
+    "[general]\nresolution = [%d, %d]\ncaption_extension = \".txt\"\nbatch_size = 1\n"
+    "enable_bucket = true\nbucket_no_upscale = false\n\n"
+    "[[datasets]]\nimage_directory = \"/workspace/dataset\"\ncache_directory = \"/workspace/cache\"\n" % (r, r))
+open("/tmp/uploader.py", "w").write(r"""''' + UPLOADER + r'''""")
+PYEOF
+
+M=/workspace/models
+python3 src/musubi_tuner/cache_latents.py --dataset_config /tmp/dataset.toml \
+  --vae $M/hunyuan-video-t2v-720p/vae/pytorch_model.pt --vae_chunk_size 32 --vae_tiling \
+  > /workspace/train.log 2>&1 || { echo 1 > /tmp/train.exit; }
+python3 src/musubi_tuner/cache_text_encoder_outputs.py --dataset_config /tmp/dataset.toml \
+  --text_encoder1 $M/split_files/text_encoders/llava_llama3_fp16.safetensors \
+  --text_encoder2 $M/split_files/text_encoders/clip_l.safetensors --batch_size 16 \
+  >> /workspace/train.log 2>&1 || { echo 1 > /tmp/train.exit; }
+
+if [ ! -f /tmp/train.exit ]; then
+MAX_SECONDS=$(python3 -c "import json;print(int(json.load(open('/tmp/job.json'))['max_hours']*3600))")
+read STEM STEPS SAVE RANK LR < <(python3 -c "import json;m=json.load(open('/tmp/job.json'));print(m['stem'],m['steps'],m['save_every'],m['rank'],m['lr'])")
+( timeout ${MAX_SECONDS}s accelerate launch --num_cpu_threads_per_process 1 --mixed_precision bf16 \
+    src/musubi_tuner/hv_train_network.py \
+    --dit $M/hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt \
+    --dataset_config /tmp/dataset.toml --sdpa --mixed_precision bf16 \
+    --optimizer_type adamw8bit --learning_rate $LR --gradient_checkpointing \
+    --max_data_loader_n_workers 2 --persistent_data_loader_workers \
+    --network_module networks.lora --network_dim $RANK \
+    --timestep_sampling shift --discrete_flow_shift 7.0 \
+    --max_train_steps $STEPS --save_every_n_steps $SAVE --seed 42 \
+    --output_dir /workspace/output/$STEM --output_name $STEM >> /workspace/train.log 2>&1; echo $? > /tmp/train.exit ) &
+python3 /tmp/uploader.py &
+wait
+fi
+''' + REPORT
+
+#: The job each trainer hands its pod, by `TRAINERS[...]["script"]`.
+JOB_SCRIPTS = {None: JOB_SCRIPT, "musubi": MUSUBI_JOB_SCRIPT}
