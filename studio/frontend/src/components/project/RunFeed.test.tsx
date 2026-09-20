@@ -392,6 +392,59 @@ describe("a run in flight", () => {
     expect(within(article).queryByTestId("in-flight-tile")).toBeNull();
   });
 
+  it("lists a one-file trainer's checkpoints with one link per step", async () => {
+    // LTX-2.3 is one transformer: a save point is `<stem>_<step>.safetensors`,
+    // not a pair. The row shows one link, the count says "checkpoint" not
+    // "pair", and the footer names the entry a file loads into.
+    await draw([
+      row({
+        id: "run-training-ltx",
+        kind: "training",
+        model: "runpod-pod/ai-toolkit-ltx23-22b",
+        status: "running",
+        submitted: ago(600),
+        completed: null,
+        cost: null,
+        thumb: null,
+        plan: {
+          version: 1,
+          origin: "authored",
+          prompt: null,
+          params: { trigger: "ohwx", steps: 1000, save_every: 250 },
+        },
+        outputs: [
+          {
+            node: "node-l1",
+            name: "subject-a-ohwx-1234_000000250.safetensors",
+            url: "/l1",
+            content_type: "application/octet-stream",
+            size: 500,
+          },
+          {
+            node: "node-l2",
+            name: "subject-a-ohwx-1234_000000500.safetensors",
+            url: "/l2",
+            content_type: "application/octet-stream",
+            size: 500,
+          },
+        ],
+      }),
+    ]);
+
+    const article = await screen.findByRole("article");
+    const header = article.querySelector("[data-checkpoint-list] > p, [data-checkpoint-list] > span");
+    expect(header?.textContent).toContain("2 of 4 checkpoints so far · 500 B");
+    expect(header?.textContent).not.toContain("pair");
+    const rows = within(article).getAllByRole("listitem").filter((li) => li.hasAttribute("data-checkpoint"));
+    expect(rows.map((li) => li.getAttribute("data-checkpoint"))).toEqual(["250", "500", "750", "final"]);
+    expect(within(rows[0]!).getAllByRole("link")).toHaveLength(1);
+    expect(within(rows[0]!).getByRole("link", { name: "Open checkpoint at step 250" }).getAttribute("href")).toBe("/o/node-l1");
+    expect(within(rows[0]!).getByRole("link").textContent).toBe("lora");
+    expect(within(rows[2]!).queryByRole("link")).toBeNull();
+    expect(within(rows[3]!).getByText("final · 1000")).toBeTruthy();
+    expect(article.textContent).toContain("A file loads into ltx-2.3-i2v-lora as --lora-key.");
+  });
+
   it("counts the tiles off the plan, one when it says nothing", () => {
     expect(expectedOutputs(row({ plan: null }))).toBe(1);
     expect(

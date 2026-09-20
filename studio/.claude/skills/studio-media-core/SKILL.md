@@ -31,11 +31,14 @@ This skill is the plumbing. For how to *use* a given model, read its own skill:
 | `wan-2.6-t2v` | [`studio-media-wan-2-6-t2v`](../studio-media-wan-2-6-t2v/SKILL.md) |
 | `wan-2.6-i2v` | [`studio-media-wan-2-6-i2v`](../studio-media-wan-2-6-i2v/SKILL.md) |
 | `wan-2.2-i2v-lora` | [`studio-media-wan-2-2-i2v-lora`](../studio-media-wan-2-2-i2v-lora/SKILL.md) |
+| `ltx-2.3-i2v-lora` | [`studio-media-ltx-2-3-i2v-lora`](../studio-media-ltx-2-3-i2v-lora/SKILL.md) |
 | `wan-3.0-t2v` | [`studio-media-wan-3-0-t2v`](../studio-media-wan-3-0-t2v/SKILL.md) |
 | `wan-3.0-i2v` | [`studio-media-wan-3-0-i2v`](../studio-media-wan-3-0-i2v/SKILL.md) |
 | `wan-3.0-r2v` | [`studio-media-wan-3-0-r2v`](../studio-media-wan-3-0-r2v/SKILL.md) |
 | `wan-3.0-openrouter` | [`studio-media-wan-3-0-openrouter`](../studio-media-wan-3-0-openrouter/SKILL.md) |
 | `wan-2.2-lora-train` | [`studio-media-lora-train`](../studio-media-lora-train/SKILL.md) — a trainer, not a model |
+| `ltx-2.3-lora-train` | [`studio-media-ltx-2-3-lora-train`](../studio-media-ltx-2-3-lora-train/SKILL.md) — a trainer, not a model |
+| `hunyuan-video-lora-train` | [`studio-media-hunyuan-video-lora-train`](../studio-media-hunyuan-video-lora-train/SKILL.md) — a trainer; nothing serves its LoRA yet |
 
 The rest of the family — a model skill points here, and here points onward, so
 the shared prose lives in one place rather than six:

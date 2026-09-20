@@ -176,12 +176,13 @@ function LoraSends({ sends, cast }: { sends: readonly RunSend[]; cast?: RunFeedR
   // and the run's cast has that character's name.
   const nameOf = (send: RunSend) =>
     cast?.find((c) => c.id === send.source?.character)?.name ?? null;
-  const pairs = new Map<string, { stem: string; step: number | null; who: string | null; files: Partial<Record<"high" | "low", RunSend>> }>();
+  // A one-stage model's LoRA is one file (`file`); Wan 2.2's is a pair.
+  const pairs = new Map<string, { stem: string; step: number | null; who: string | null; files: Partial<Record<"high" | "low" | "file", RunSend>> }>();
   for (const send of sends) {
     const parsed = checkpointName(send.name ?? "");
     const key = parsed ? `${parsed.stem}:${parsed.step ?? "final"}` : (send.name ?? send.node);
     const entry = pairs.get(key) ?? { stem: parsed?.stem ?? assetLabel(send.name), step: parsed?.step ?? null, who: nameOf(send), files: {} };
-    entry.files[parsed?.expert ?? "high"] = send;
+    entry.files[parsed?.expert ?? "file"] = send;
     pairs.set(key, entry);
   }
   return (
@@ -206,13 +207,14 @@ function LoraSends({ sends, cast }: { sends: readonly RunSend[]; cast?: RunFeedR
           <Text variant="caption" tone="muted" className="whitespace-nowrap tabular-nums">
             {pair.step === null ? "final" : `step ${pair.step}`}
           </Text>
-          {(["high", "low"] as const).map((expert) => {
+          {(["high", "low", "file"] as const).map((expert) => {
             const send = pair.files[expert];
             if (!send) return null;
+            const label = expert === "file" ? "lora" : expert;
             if (!send.url) {
               return (
                 <Text key={expert} variant="caption" tone="muted" className="font-mono line-through">
-                  {expert}
+                  {label}
                 </Text>
               );
             }
@@ -222,10 +224,10 @@ function LoraSends({ sends, cast }: { sends: readonly RunSend[]; cast?: RunFeedR
                 key={expert}
                 href={to}
                 onClick={pressInApp(navigate, to)}
-                aria-label={`Open ${expert}-noise LoRA — ${assetLabel(send.name)}`}
+                aria-label={expert === "file" ? `Open LoRA — ${assetLabel(send.name)}` : `Open ${expert}-noise LoRA — ${assetLabel(send.name)}`}
                 className="rounded-sm border border-line px-1.5 py-0.5 font-mono text-xs hover:bg-surface-alt focus-visible:outline focus-visible:outline-2"
               >
-                {expert}
+                {label}
               </a>
             );
           })}
