@@ -357,6 +357,50 @@ def test_untagging_takes_an_image_out_without_touching_the_file(library):
     assert S.node(library.face_1)["name"] == "front-neutral.webp"
 
 
+def test_a_characters_images_are_every_page_of_the_branch(library):
+    """**The listing pages, and a branch can be bigger than a page.**
+
+    Measured in production: a character holding ~370 images reported `images
+    200` and six of its seven `default` images, because one call took the
+    route's default page of 200 and stopped. This seeds more than the route's
+    hard cap of 1,000 as well, so passing needs both halves — asking for the
+    cap AND following `next_cursor` past it.
+    """
+    fake = library.fake
+    folder = fake._create_node(library.reference, "wardrobe", "folder")
+    seeded = set()
+    for i in range(fake.MAX_PAGE_SIZE + 3):
+        node = fake.put_file(folder["id"], f"look-{i:04d}.webp", b"w")
+        seeded.add(node["id"])
+    # The last one by name — the very end of the branch — is identity too.
+    last = fake._child(folder["id"], f"look-{fake.MAX_PAGE_SIZE + 2:04d}.webp")
+    S.describe_node(last["id"], tags=["default", "wardrobe"])
+
+    found = E.character_images(library.character)
+
+    assert len(found) == len(seeded) + 3
+    assert {e["id"] for e in found} == seeded | {
+        library.face_1, library.face_2, library.body_1}
+    assert sum("default" in (e.get("tags") or []) for e in found) == 3
+
+
+def test_an_image_tagged_past_the_first_page_is_found_by_tag(library):
+    """`images --tag` filters server-side, so the tail is only lost when the
+    TAGGED set is itself longer than a page. Make it so, and the last one
+    tagged must still come back."""
+    fake = library.fake
+    folder = fake._create_node(library.reference, "wardrobe", "folder")
+    tagged = []
+    for i in range(fake.DEFAULT_PAGE_SIZE + 30):
+        node = fake.put_file(folder["id"], f"look-{i:04d}.webp", b"w")
+        S.describe_node(node["id"], tags=["wardrobe"])
+        tagged.append(node["id"])
+
+    found = E.character_images(library.character, ["wardrobe"])
+
+    assert [e["id"] for e in found] == tagged
+
+
 # ── selection ───────────────────────────────────────────────────────────────
 
 
