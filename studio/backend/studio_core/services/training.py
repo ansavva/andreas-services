@@ -64,6 +64,46 @@ sampling off.
 ai-toolkit names a sample `<ms-since-epoch>__<step:09d>_<i>.jpg` — the
 time is not knowable at dispatch, so the uploader renames on the way up;
 `SAMPLE_FILE` is that pattern, read off the trainer's source.
+
+## An I2V sample is a photo re-rendered, not a scene imagined
+
+The `i2v` base conditions every frame on a first image, at training and at
+sampling alike, and a text-only sample crashed the first run that tried one
+(`The size of tensor a (36) must match the size of tensor b (16)`, $0.66).
+Read off ostris/ai-toolkit at 0.13.12 (`8bf12e47`), identical on `main`:
+
+- `extensions_built_in/diffusion_models/wan22/wan22_14b_i2v_model.py`
+  `generate_single_image`: with `gen_config.ctrl_img` set it opens the
+  image, resizes it to the sample's size, prepares 16-channel latents and
+  hands `add_first_frame_conditioning(...)` (`toolkit/models/wan21/wan_utils.py`)
+  the result — 16 latent + 4 mask + 16 encoded-frame channels, 36 in all.
+  With no `ctrl_img` it passes `latents=None`.
+- `wan22_pipeline.py` `__call__`: 36-channel latents are split — the first 16
+  denoise, the other 20 ride along as conditioning re-concatenated before
+  each transformer call. `None` makes it `prepare_latents` with
+  `transformer.config.in_channels`, which is 36 for the I2V transformer, and
+  the 16-channel noise prediction then fails inside `scheduler.step`. That
+  is the crash, and the control image is the only thing that avoids it.
+- `num_frames: 1` is fine with a control image: `generate_single_image`
+  snaps it to `((n - 1) // 4) * 4 + 1 = 1`, `add_first_frame_conditioning`
+  builds a one-frame condition and a mask of `2 ** sum(temperal_downsample)`
+  = 4 channels off one latent frame — the same call the trainer's own
+  `get_noise_prediction` makes on every single-frame training batch.
+- `toolkit/config_modules.py` `GenerateImageConfig._process_prompt_string`
+  splits a prompt on `--` and reads `--ctrl_img <path>`, `--w`, `--h` and
+  the rest off it; `jobs/process/BaseSDTrainProcess.py` `sample()` builds
+  one `GenerateImageConfig(prompt=...)` per entry and says "it will
+  autoparse the prompt". `SDTrainer.cache_sample_prompts` parses the same
+  way, so `cache_text_embeddings: True` caches the bare prompt.
+
+So on `i2v` every sample prompt carries `--ctrl_img /workspace/dataset/<image>`,
+the images dealt round-robin from the dataset the pod downloaded, and the
+manifest and the run say which photo each prompt re-renders (`samples`).
+What comes back is that photo through the pair: the prompt steers little.
+A clean, faithful frame says the pair still renders its subject; drift,
+colour shift or a smeared face says the pair has damaged the model. Whether
+the face travels to a new scene is the evaluation's question, on video.
+`t2v` samples are text-only, as before.
 """
 
 import json
@@ -135,6 +175,11 @@ def _knobs(payload: dict) -> dict:
     prompts = knobs["sample_prompts"]
     if not isinstance(prompts, list) or not all(isinstance(p, str) and p.strip() for p in prompts):
         raise ValidationError("`sample_prompts` is a list of prompts, each naming `{trigger}` — or [] for no samples")
+    # ai-toolkit reads `--<flag>` off a sample prompt (`GenerateImageConfig`
+    # splits on `--`), and the job appends its own; a prompt carrying one
+    # would be cut there, silently.
+    if any("--" in p for p in prompts):
+        raise ValidationError("a sample prompt cannot contain `--`: the trainer reads it as a flag")
     # Substituted here, once, so the manifest says exactly what the pod will
     # render and the pod substitutes nothing.
     knobs["sample_prompts"] = [p.replace("{trigger}", knobs["trigger"]) for p in prompts]
@@ -190,6 +235,20 @@ def expected_samples(stem: str, steps: int, save_every: int, prompts: list[str])
     return names
 
 
+def sample_records(prompts: list[str], dataset_names: list[str], base: str) -> list[dict]:
+    """What sample `i` is, at every save point: its prompt, and on the `i2v`
+    base the dataset photo it re-renders — `ctrl_img`, dealt round-robin
+    over the dataset in manifest order, the rule the job applies on the pod
+    (`JOB_SCRIPT`'s config pass reads the same `dataset[*].name` list).
+    `None` on `t2v`, whose samples are text-only.
+    """
+    records = []
+    for index, prompt in enumerate(prompts):
+        ctrl = dataset_names[index % len(dataset_names)] if base == "i2v" and dataset_names else None
+        records.append({"index": index, "prompt": prompt, "ctrl_img": ctrl})
+    return records
+
+
 def _caption(trigger: str, node: dict) -> str:
     """The trigger first, then whatever the file's description says.
 
@@ -202,11 +261,14 @@ def _caption(trigger: str, node: dict) -> str:
     return f"{trigger}, {description}" if description else trigger
 
 
-def dispatch(record: dict, entry: dict, payload: dict, bindings: dict, *, webhook: str | None) -> dict:
-    """Rent the machine and hand it the job. **This is the call that bills.**
+def preflight(record: dict, entry: dict, payload: dict, bindings: dict) -> tuple[dict, list[str]]:
+    """What the job needs, checked without writing or spending: the knobs,
+    at least five dataset images, exactly one character.
 
-    Returns what `routes/runs.py` expects of a provider: `{id, status}` with
-    the pod id as the prediction id.
+    Called from `generate.prepare` **before the run moves to `pending`** —
+    a refusal here leaves a draft. `dispatch` runs it again, since it is
+    what it reads; raising there would leave `pending` with no pod behind
+    it, the state that reads as "went out and never answered".
     """
     knobs = _knobs(payload)
     dataset_field = registry.field(entry, "images.refs") or "dataset"
@@ -220,7 +282,17 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict, *, webhoo
     characters = record.get("characters") or []
     if len(characters) != 1:
         raise ValidationError("a training run is OF exactly one character — pass --character once")
-    character = catalog.entity(catalog.ENTITY_CHARACTER, characters[0])
+    return knobs, list(dataset_nodes)
+
+
+def dispatch(record: dict, entry: dict, payload: dict, bindings: dict, *, webhook: str | None) -> dict:
+    """Rent the machine and hand it the job. **This is the call that bills.**
+
+    Returns what `routes/runs.py` expects of a provider: `{id, status}` with
+    the pod id as the prediction id.
+    """
+    knobs, dataset_nodes = preflight(record, entry, payload, bindings)
+    character = catalog.entity(catalog.ENTITY_CHARACTER, record["characters"][0])
     models = layout.folder_under(character["root"], MODELS_FOLDER)
 
     run_id = record["id"]
@@ -276,6 +348,7 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict, *, webhoo
         start_cmd=["bash", "-lc", BOOT],
     )
     created_at = datetime.now(timezone.utc).isoformat()
+    sample_plan = sample_records(knobs["sample_prompts"], [d["name"] for d in dataset], knobs["base"])
     manifest = {
         "run": run_id,
         "pod": {"id": pod["id"], "rate": pod.get("costPerHr"), "created_at": created_at},
@@ -285,6 +358,7 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict, *, webhoo
                                  "sample_prompts", "sample_seed", "sample_steps")},
         "stem": stem,
         "dataset": dataset,
+        "samples": sample_plan,
         "outputs": grants,
         "result_url": s3.presign_put_unsized(result_key, content_type="application/json", expires_in=ttl),
         "callback": webhook,
@@ -295,8 +369,12 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict, *, webhoo
     catalog.update_project_entity(
         catalog.ENTITY_RUN, record,
         {"payload": {**(record.get("payload") or {}),
+                     # `samples` stays on the run: the manifest that also
+                     # carries it is deleted at close, and which photo a
+                     # sample re-rendered is read after that.
                      "training": {"stem": stem, "outputs": outputs, "character": character["id"],
-                                  "pod": manifest["pod"], "dataset": len(dataset)}}},
+                                  "pod": manifest["pod"], "dataset": len(dataset),
+                                  "samples": sample_plan}}},
     )
     logger.info("Rented pod %s for training run %s (%d images, %d steps)",
                 pod["id"], run_id, len(dataset), knobs["steps"])
@@ -490,6 +568,37 @@ i2v = m.get("base", "i2v") == "i2v"
 # `SampleConfig` (toolkit/config_modules.py); `guidance_scale` is left at
 # its default.
 prompts = list(m.get("sample_prompts") or [])
+if i2v and prompts:
+    # The I2V base samples from an image or not at all: without one,
+    # wan22_pipeline prepares 36-channel latents against a 16-channel
+    # prediction and the scheduler crashes (the trainer's first sample, the
+    # first time). `--ctrl_img <path>` on the prompt is how ai-toolkit's
+    # GenerateImageConfig takes the first frame (toolkit/config_modules.py,
+    # `_process_prompt_string`; wan22_14b_i2v_model.generate_single_image
+    # reads `gen_config.ctrl_img`). The photos are the dataset's, dealt
+    # round-robin in manifest order — the same rule the manifest's
+    # `samples` records — so each prompt re-renders one real photo through
+    # the pair. `--w`/`--h` keep the photo's aspect: the sampler resizes the
+    # control image to the sample's size, and a square would squash a face
+    # into something likeness cannot be read off. Multiples of 16, Wan 2.2's
+    # bucket divisibility.
+    names = [item["name"] for item in m["dataset"]]
+    def fit(path, size):
+        try:
+            from PIL import Image
+            w, h = Image.open(path).size
+        except Exception:
+            return None
+        scale = size / max(w, h)
+        return max(16, int(w * scale) // 16 * 16), max(16, int(h * scale) // 16 * 16)
+    flagged = []
+    for i, prompt in enumerate(prompts):
+        name = names[i % len(names)]
+        box = fit(ds / name, m["resolution"])
+        size = f" --w {box[0]} --h {box[1]}" if box else ""
+        flagged.append(f"{prompt}{size} --ctrl_img /workspace/dataset/{name}")
+        print("sample", i, "re-renders", name, flush=True)
+    prompts = flagged
 cfg = {"job": "extension", "config": {"name": m["stem"], "process": [{
     "type": "sd_trainer", "training_folder": "/workspace/output", "device": "cuda:0",
     "network": {"type": "lora", "linear": m["rank"], "linear_alpha": m["rank"],

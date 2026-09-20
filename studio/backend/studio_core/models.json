@@ -2279,7 +2279,7 @@
               "{trigger}, in a dark suit and tie at a formal event, head and shoulders",
               "{trigger}, sitting on a beach at sunset, full body"
             ],
-            "description": "One still per prompt at every save point, rendered by the trainer with the checkpoint just written and filed beside the pair under `<character>/models/samples/` — the face emerging, without a video run by hand. `{trigger}` is replaced with the run's trigger. Scenes the dataset does NOT contain, so a sample shows whether the face travels rather than whether a photo was memorised. `[]` disables sampling. Each prompt adds ~20 sampler steps of a 14B model per save point (about a minute on an A100)."
+            "description": "One still per prompt at every save point, rendered by the trainer with the checkpoint just written and filed beside the pair under `<character>/models/samples/` — the face emerging, without a video run by hand. `{trigger}` is replaced with the run's trigger. On the `i2v` base (the default) each prompt re-renders one dataset photo — the I2V model samples from an image or not at all — dealt round-robin over the dataset, so a sample is that photo through the pair and the prompt steers little: read it for fidelity, not for the face travelling. On `t2v` a prompt is text-only, and scenes the dataset does NOT contain show whether the face travels rather than whether a photo was memorised. `[]` disables sampling. Each prompt adds ~20 sampler steps of a 14B model per save point (about a minute on an A100)."
           },
           "sample_seed": {
             "type": "integer",
