@@ -1281,8 +1281,8 @@ the entity's id.
 | `GET /api/nodes?under=&depth=&kind=&tag=&sort=&cursor=&limit=` | **The one listing.** Everything under a node — `depth=1` (default) for a folder, `depth=all` for the branch; `kind=` and `tag=` filter; paged. One `entries` array discriminated by `kind`, plus `breadcrumbs`, per-kind `counts`, `total`, `truncated`, `next_cursor`. Omit `under` for the library root |
 | `GET /api/nodes/<id>` | One node. 404 unknown id, 403 another library |
 | `GET /api/nodes/<id>/owner` | Which entity a node belongs to, derived from its ancestry — `{kind, id, name}` or null |
-| `GET /api/resolve?path=` | A slash-joined name path → the node it names. An empty path is the library root |
-| `POST /api/nodes` | `{parent, name, kind, blob_key?, size?, content_type?, on_conflict?}` → creates a folder or a file. **201.** 409 if the name is taken, unless `on_conflict: "number"` |
+| `GET /api/resolve?path=` | A slash-joined name path → the node it names. An empty path is the library root. A leading `char-<uuid>` / `loc-<uuid>` / `proj-<uuid>` is resolved from the entity record's root, whatever that folder is named; an id naming no entity is a 404 |
+| `POST /api/nodes` | `{parent, name, kind, blob_key?, size?, content_type?, on_conflict?}` → creates a folder or a file. **201.** 409 if the name is taken, unless `on_conflict: "number"`; 400 for a name shaped like an entity id — only an entity's create names a root |
 | `PATCH /api/nodes/<id>` | `{name}` to rename **or** `{parent}` to move — both at once is a 400, not a guess. `{description, tags}` → what a picture IS and what it is FOR |
 | `DELETE /api/nodes/<id>` | Node and subtree. Rows first, then blobs |
 | `POST /api/nodes/move` | `{ids: [...], destination}` → moves 1..N nodes, names kept. 409 if taken |

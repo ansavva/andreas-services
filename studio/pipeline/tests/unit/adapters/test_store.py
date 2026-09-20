@@ -523,6 +523,34 @@ def test_a_blob_key_carries_the_owner_and_the_node_and_no_name(library):
     assert "subject-a" not in key
 
 
+def test_a_name_path_led_by_an_entity_id_resolves_off_the_record(library):
+    """`char-<id>/reference` reaches the root however the folder is named.
+
+    A root renamed away from its id — one production character's is — used to
+    make `store.folder` walk the id as a name, find nothing, and build
+    `char-<id>/reference/…` from the library root: a tree outside the
+    character. The API resolves the id from the record now, so the ensure
+    lands inside it.
+    """
+    store.rename_node(library.character_root, "node-old-style-root")
+
+    ensured = store.folder(f"{library.character}/reference/wardrobe")
+
+    assert store.node(ensured["id"])["name"] == "wardrobe"
+    assert store.child(library.reference, "wardrobe")["id"] == ensured["id"]
+    assert store.child(library.fake.root["id"], library.character) is None
+
+
+def test_ensuring_a_folder_under_a_missing_entity_is_refused(library):
+    """No such character: an error naming it, and nothing made at the root."""
+    missing = "char-00000000-0000-4000-8000-00000000dead"
+
+    with pytest.raises(store.StoreError, match=f"no such entity: {missing}"):
+        store.folder(f"{missing}/reference/wardrobe")
+
+    assert store.child(library.fake.root["id"], missing) is None
+
+
 def test_deleting_an_entitys_root_folder_is_refused(library):
     """The one hard rule the convention-not-schema layout leaves.
 

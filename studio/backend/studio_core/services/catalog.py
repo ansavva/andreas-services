@@ -113,6 +113,7 @@ blob is now unreferenced is not a question a single delete can answer.
 
 import collections
 import logging
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -205,6 +206,52 @@ _KIND_BY_ID_PREFIX = {prefix: kind for kind, (prefix, _) in ENTITY_KEYS.items()}
 #: a different profile schema is the whole of the difference, which is why
 #: `routes/subjects.py` builds both blueprints from one function.
 SUBJECT_KINDS = (ENTITY_CHARACTER, ENTITY_LOCATION)
+
+#: What an entity id looks like, exactly: one of the six prefixes and a UUID.
+#: `entity_kind` reads the prefix off anything; this is the strict form a NAME
+#: is tested against, because a folder a person called `char-photos` is a
+#: folder, and only the full shape is reserved.
+_ENTITY_ID_RE = re.compile(
+    "^(?:" + "|".join(prefix for prefix, _ in ENTITY_KEYS.values()) + ")-"
+    "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+)
+
+
+def is_entity_id(name: str | None) -> bool:
+    """Whether a string is shaped exactly like an entity id.
+
+    **A name path's leading segment that passes this is an entity, never a
+    folder name.** `char-<uuid>/reference` addresses the character's `root`
+    node wherever that folder sits and whatever it is called — one production
+    character predates the id-named-root convention, and walking its id as a
+    folder name landed 32 uploads in a stray tree at the library root, outside
+    the character its selection reads. The same test is what keeps a client
+    from creating or renaming a folder into that shape.
+    """
+    return bool(name) and _ENTITY_ID_RE.match(name) is not None
+
+
+def _client_name(raw_name: str | None, *, own_entity: str | None = None) -> str:
+    """A name a client supplied, cleaned, and refused if it is an entity id.
+
+    An entity root is written by the entity's own create, named by the id it
+    was minted with, and that is the only way a folder comes to be named like
+    one. A client asking for a second — `POST /api/nodes` with `char-<uuid>`,
+    or a rename into that shape — would make a folder that `resolve` can never
+    reach, because the id resolves to the record's root instead. Refused with
+    a 400 rather than made and lost.
+
+    `own_entity` lets a root be renamed back to the id it carries, which is the
+    repair for a root that predates the convention.
+    """
+    name = keys.clean_name(raw_name)
+    if is_entity_id(name) and name != own_entity:
+        raise ValidationError(
+            f"'{name}' is shaped like an entity id; an entity's root folder is "
+            "made by creating the entity"
+        )
+    return name
+
 
 #: Which entity kinds a library lists. The sort key is the entity's own pk —
 #: `CHAR#<char_id>` under `LIB#<lib>` — so the index row and the record it points
@@ -1316,7 +1363,7 @@ def create_node(
     if kind == KIND_FOLDER and blob_key:
         raise ValidationError("a folder cannot carry a blob_key")
 
-    name = keys.clean_name(raw_name)
+    name = _client_name(raw_name)
     parent = _folder_node(parent_id)
     record = _new_node(parent, name, kind, size=size, content_type=content_type,
                        description=description, tags=clean_tags(tags) or None)
@@ -1482,7 +1529,7 @@ def rename_node(node_id: str, raw_name: str | None) -> dict:
     if not parent_id:
         raise ValidationError("the library root cannot be renamed")
 
-    name = keys.clean_name(raw_name)
+    name = _client_name(raw_name, own_entity=record.get("entity"))
     if name == record["name"]:
         return {**record, "renamed": False}
 
@@ -2082,6 +2129,21 @@ def entity_summary(entity_id: str) -> dict:
     kind = entity_kind(entity_id)
     record = entity(kind, entity_id)
     return {"kind": kind, "id": record["id"], "name": record.get("name")}
+
+
+def entity_root(entity_id: str) -> dict:
+    """The root folder's node record of the entity an id names.
+
+    What `GET /api/resolve` starts from when a name path leads with an id.
+    The record is the authority — `root` on a character or a project,
+    `folder` on a run, a scene or a movie — and the folder's own name is not
+    consulted, because it need not be the id and a rename is free.
+    """
+    record = entity(entity_kind(entity_id), entity_id)
+    root_id = record.get("root") or record.get("folder")
+    if not root_id:
+        raise NotFoundError(entity_id)
+    return node(root_id)
 
 
 def _members(lib: str, kind: str) -> list[dict]:

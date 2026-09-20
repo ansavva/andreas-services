@@ -12,8 +12,10 @@ is configured with, prod or this machine's dev stack.
 
 Each file lands at `<folder>/<basename>` (same-named keys are overwritten; the
 prod bucket is versioned so prior revisions are retained). The folder is created
-if it does not exist, missing ancestors included. Prints the path per file;
---presign also prints a temporary HTTPS URL.
+if it does not exist, missing ancestors included — but never an entity: a leading
+`char-<uuid>`, `loc-<uuid>` or `proj-<uuid>` resolves to that record's root, and one
+naming no entity is an error. Prints the path per file; --presign also prints a
+temporary HTTPS URL.
 """
 import json
 import mimetypes

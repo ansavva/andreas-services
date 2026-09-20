@@ -48,6 +48,13 @@ resolved against the tree as it is now; it is not a key, and no record stores
 one. The S3 key behind it is built from ids and is meaningless to everything
 outside the API. Ask for the path you mean; do not build one out of a prefix.
 
+**A leading `char-<uuid>`, `loc-<uuid>` or `proj-<uuid>` is the entity, not a
+folder name.**
+`char-<uuid>/reference` resolves from the character's record to its root
+folder, whatever that folder is called — and an id that names no entity is an
+error, never a folder to create. `character show` and `projects show` print
+the id.
+
 Bytes still travel straight to storage, not through the API: a presigned URL is
 handed back and the transfer happens against it. That is what keeps a video out
 of a request-size limit, and it is what makes the rule below hold.

@@ -66,6 +66,15 @@ class StoreError(RuntimeError):
 
 _NUM_RE = re.compile(r"(\d+)")
 
+#: A leading path segment shaped like an entity id names the ENTITY — the API
+#: resolves `char-<uuid>/…` from the record's root, not from a folder called
+#: that. Mirrors the strict shape the API tests; `folder` reads it so a missing
+#: entity is an error here rather than a folder made at the library root.
+_ENTITY_ID_RE = re.compile(
+    r"^(?:char|proj|run|scene|movie)-"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+)
+
 
 def natural_key(name: str):
     """Sort key so `<name>_2` precedes `<name>_10`, which lexical sort flips.
@@ -243,6 +252,13 @@ def folder(path: str, *, allow_new_root_folder: bool = False) -> dict:
     char-<uuid>/reference` (an id under the old `characters/` layout) each
     built a stray tree at the root, holding files nothing would ever list,
     and reported success.
+
+    **A leading segment shaped like an entity id says so by name.** It resolves
+    through the entity record, so its absence means no such entity — and the
+    error says that rather than the general one about top-level folders. This
+    branch once built `char-<uuid>/reference/…` from the library root for a
+    character whose root was not named by its id; the API now refuses that name
+    on create too.
     """
     clean = path.strip("/")
     try:
@@ -257,6 +273,10 @@ def folder(path: str, *, allow_new_root_folder: bool = False) -> dict:
         # The library root is created with the library, so its absence is not
         # something a client can fix by creating one.
         raise StoreError("The library root does not exist.")
+    if "/" not in clean and _ENTITY_ID_RE.match(clean):
+        # Reached by the recursion below once every deeper segment was found
+        # missing, so this is the entity itself the API could not resolve.
+        raise StoreError(f"no such entity: {clean}")
 
     parent_path, _, name = clean.rpartition("/")
     if not parent_path and not allow_new_root_folder:
