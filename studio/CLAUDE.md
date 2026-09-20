@@ -234,8 +234,8 @@ same library.
 
 ## Which skill
 
-**Load one before doing anything else in `studio/`.** Thirty-five skills in **two
-families** — thirty-four `studio-media-*` and one `studio-code-*`; route by what
+**Load one before doing anything else in `studio/`.** Thirty-eight skills in **two
+families** — thirty-seven `studio-media-*` and one `studio-code-*`; route by what
 the task *changes*, not by what it mentions.
 
 | If the task changes… | Load | Examples |
@@ -267,11 +267,11 @@ The app half (`backend/`, `frontend/`) has no skill of its own; read
 | Continue past a model's duration ceiling | `studio-media-scene` |
 | Cut finished scenes into one piece | `studio-media-movie` |
 | Work with a recurring character | `studio-media-character` |
-| Train a character LoRA for video | `studio-media-lora-train` |
+| Train a character LoRA for video | `studio-media-lora-train` (Wan 2.2) · `studio-media-ltx-2-3-lora-train` (LTX-2.3) · `studio-media-hunyuan-video-lora-train` (HunyuanVideo; nothing serves its LoRA yet) |
 | Write a tight, repeatable video prompt | `studio-media-prompt` |
 | Invoke a model generically, or inspect its schema | `studio-media-core` |
 | Register a new Replicate model | `studio-media-add-model` |
-| Pick a video engine | `studio-media-seedance` · `studio-media-seedance-2-5` · `studio-media-kling` · `studio-media-kling-v3-motion-control` · `studio-media-veo-3-1` · `studio-media-grok-imagine-video` · `studio-media-wan-2-6-t2v` · `studio-media-wan-2-6-i2v` · `studio-media-wan-2-2-i2v-lora` · `studio-media-wan-3-0-t2v` · `studio-media-wan-3-0-i2v` · `studio-media-wan-3-0-r2v` · `studio-media-wan-3-0-openrouter` |
+| Pick a video engine | `studio-media-seedance` · `studio-media-seedance-2-5` · `studio-media-kling` · `studio-media-kling-v3-motion-control` · `studio-media-veo-3-1` · `studio-media-grok-imagine-video` · `studio-media-wan-2-6-t2v` · `studio-media-wan-2-6-i2v` · `studio-media-wan-2-2-i2v-lora` · `studio-media-ltx-2-3-i2v-lora` · `studio-media-wan-3-0-t2v` · `studio-media-wan-3-0-i2v` · `studio-media-wan-3-0-r2v` · `studio-media-wan-3-0-openrouter` |
 | Pick an image engine | `studio-media-nano-banana-pro` · `studio-media-nano-banana-2` · `studio-media-gpt-image-2` · `studio-media-gpt-image-2-5-sunburst` · `studio-media-gpt-image-2-5-flare` · `studio-media-gpt-image-1-5` · `studio-media-seedream-5-pro` · `studio-media-krea-2-large` · `studio-media-flux-2-pro` · `studio-media-z-image-turbo` |
 
 **Ask which project before generating anything.** A run belongs to a project;
