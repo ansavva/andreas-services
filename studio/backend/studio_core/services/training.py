@@ -290,95 +290,159 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict, *, webhoo
 
     Returns what `routes/runs.py` expects of a provider: `{id, status}` with
     the pod id as the prediction id.
+
+    **A failure part-way takes back what came before it.** The output nodes
+    are made before the rent and the manifest is written after it, so a
+    `create_pod` that failed — Runpod answered `500 create pod: This machine
+    does not have the resources` on 2026-09-20 — left empty nodes under the
+    character's `models/`, and a write failing after the rent would have
+    left a billing pod and a manifest the same way. Everything from the
+    first node on is inside one `try`, and `_abandon` undoes whatever it
+    had reached: the pod terminated, the manifest deleted, the nodes and
+    any folder made here dropped, so the character's tree is as it was.
+    The run is the route's to put back — it reverts to `draft` on the
+    exception this re-raises.
     """
     knobs, dataset_nodes = preflight(record, entry, payload, bindings)
     character = catalog.entity(catalog.ENTITY_CHARACTER, record["characters"][0])
-    models = layout.folder_under(character["root"], MODELS_FOLDER)
 
     run_id = record["id"]
-    # **The file says whose it is.** `<character>-<trigger>-<run>`: a weights
-    # file is opened from a folder listing, a sends line, a download — places
-    # with no run beside it — and `ohwx-pt-2d9a376a` told a person the trigger
-    # and a run id, not the character. The name is the character's slug at
-    # dispatch; the run id keeps two trainings of one character apart.
-    stem = _slug(f"{character.get('name') or 'character'}-{knobs['trigger']}-{run_id[4:12]}")
-    ttl = knobs["max_hours"] * 3600 + 3600
-
-    dataset = []
-    for node_id in dataset_nodes:
-        node = catalog.node(node_id)
-        if not node.get("blob_key"):
-            raise ValidationError(f"dataset node {node_id} has no bytes behind it")
-        dataset.append({
-            "name": node.get("name") or f"{node_id}.png",
-            "url": s3.presign(node["blob_key"], expires_in=ttl),
-            "caption": _caption(knobs["trigger"], node),
-        })
-
-    outputs: dict[str, str] = {}
-    grants: dict[str, str] = {}
-    owner = catalog.blob_owner_for(models["node_id"])
-    for name in expected_files(stem, knobs["steps"], knobs["save_every"]):
-        node = catalog.create_node(models["node_id"], name, catalog.KIND_FILE, owner=owner)
-        outputs[name] = node["node_id"]
-        grants[name] = s3.presign_put_unsized(
-            node["blob_key"], content_type="application/octet-stream", expires_in=ttl)
-    samples = expected_samples(stem, knobs["steps"], knobs["save_every"], knobs["sample_prompts"])
-    if samples:
-        # The folder is made only when there is something to put in it.
-        folder = layout.folder_under(models["node_id"], SAMPLES_FOLDER)
-        for name in samples:
-            node = catalog.create_node(folder["node_id"], name, catalog.KIND_FILE, owner=owner)
-            outputs[name] = node["node_id"]
-            # The grant signs the content type, so the uploader must PUT
-            # `image/jpeg` — it reads the type off the extension.
-            grants[name] = s3.presign_put_unsized(
-                node["blob_key"], content_type=SAMPLE_CONTENT_TYPE, expires_in=ttl)
-
+    # What this call has made so far, for `_abandon`. Folders deepest first.
+    made_nodes: list[str] = []
+    made_folders: list[str] = []
+    pod: dict | None = None
     manifest_key = MANIFEST_KEY.format(run=run_id)
-    result_key = RESULT_KEY.format(run=run_id)
-    manifest_url = s3.presign(manifest_key, expires_in=ttl)
+    written = False
+    try:
+        models = _folder_made(character["root"], MODELS_FOLDER, made_folders)
+        # **The file says whose it is.** `<character>-<trigger>-<run>`: a weights
+        # file is opened from a folder listing, a sends line, a download — places
+        # with no run beside it — and `ohwx-pt-2d9a376a` told a person the trigger
+        # and a run id, not the character. The name is the character's slug at
+        # dispatch; the run id keeps two trainings of one character apart.
+        stem = _slug(f"{character.get('name') or 'character'}-{knobs['trigger']}-{run_id[4:12]}")
+        ttl = knobs["max_hours"] * 3600 + 3600
 
-    # The pod first, so the manifest can carry what only the pod knows — its
-    # id and its hourly rate — and the pod waits for the manifest to appear.
-    pod = runpod_pods.create_pod(
-        name=f"studio-train-{run_id[4:12]}",
-        gpu=knobs["gpu"], cloud=knobs["cloud"],
-        env={"STUDIO_JOB_URL": manifest_url},
-        start_cmd=["bash", "-lc", BOOT],
-    )
-    created_at = datetime.now(timezone.utc).isoformat()
-    sample_plan = sample_records(knobs["sample_prompts"], [d["name"] for d in dataset], knobs["base"])
-    manifest = {
-        "run": run_id,
-        "pod": {"id": pod["id"], "rate": pod.get("costPerHr"), "created_at": created_at},
-        "trainer": entry.get("model"),
-        **{k: knobs[k] for k in ("trigger", "steps", "save_every", "rank", "lr",
-                                 "resolution", "base", "max_hours",
-                                 "sample_prompts", "sample_seed", "sample_steps")},
-        "stem": stem,
-        "dataset": dataset,
-        "samples": sample_plan,
-        "outputs": grants,
-        "result_url": s3.presign_put_unsized(result_key, content_type="application/json", expires_in=ttl),
-        "callback": webhook,
-        "script": JOB_SCRIPT,
-    }
-    s3.put_text(manifest_key, json.dumps(manifest).encode(), "application/json")
+        dataset = []
+        for node_id in dataset_nodes:
+            node = catalog.node(node_id)
+            if not node.get("blob_key"):
+                raise ValidationError(f"dataset node {node_id} has no bytes behind it")
+            dataset.append({
+                "name": node.get("name") or f"{node_id}.png",
+                "url": s3.presign(node["blob_key"], expires_in=ttl),
+                "caption": _caption(knobs["trigger"], node),
+            })
 
-    catalog.update_project_entity(
-        catalog.ENTITY_RUN, record,
-        {"payload": {**(record.get("payload") or {}),
-                     # `samples` stays on the run: the manifest that also
-                     # carries it is deleted at close, and which photo a
-                     # sample re-rendered is read after that.
-                     "training": {"stem": stem, "outputs": outputs, "character": character["id"],
-                                  "pod": manifest["pod"], "dataset": len(dataset),
-                                  "samples": sample_plan}}},
-    )
+        outputs: dict[str, str] = {}
+        grants: dict[str, str] = {}
+        owner = catalog.blob_owner_for(models["node_id"])
+        for name in expected_files(stem, knobs["steps"], knobs["save_every"]):
+            node = catalog.create_node(models["node_id"], name, catalog.KIND_FILE, owner=owner)
+            made_nodes.append(node["node_id"])
+            outputs[name] = node["node_id"]
+            grants[name] = s3.presign_put_unsized(
+                node["blob_key"], content_type="application/octet-stream", expires_in=ttl)
+        samples = expected_samples(stem, knobs["steps"], knobs["save_every"], knobs["sample_prompts"])
+        if samples:
+            # The folder is made only when there is something to put in it.
+            folder = _folder_made(models["node_id"], SAMPLES_FOLDER, made_folders)
+            for name in samples:
+                node = catalog.create_node(folder["node_id"], name, catalog.KIND_FILE, owner=owner)
+                made_nodes.append(node["node_id"])
+                outputs[name] = node["node_id"]
+                # The grant signs the content type, so the uploader must PUT
+                # `image/jpeg` — it reads the type off the extension.
+                grants[name] = s3.presign_put_unsized(
+                    node["blob_key"], content_type=SAMPLE_CONTENT_TYPE, expires_in=ttl)
+
+        result_key = RESULT_KEY.format(run=run_id)
+        manifest_url = s3.presign(manifest_key, expires_in=ttl)
+
+        # The pod first, so the manifest can carry what only the pod knows — its
+        # id and its hourly rate — and the pod waits for the manifest to appear.
+        pod = runpod_pods.create_pod(
+            name=f"studio-train-{run_id[4:12]}",
+            gpu=knobs["gpu"], cloud=knobs["cloud"],
+            env={"STUDIO_JOB_URL": manifest_url},
+            start_cmd=["bash", "-lc", BOOT],
+        )
+        created_at = datetime.now(timezone.utc).isoformat()
+        sample_plan = sample_records(knobs["sample_prompts"], [d["name"] for d in dataset], knobs["base"])
+        manifest = {
+            "run": run_id,
+            "pod": {"id": pod["id"], "rate": pod.get("costPerHr"), "created_at": created_at},
+            "trainer": entry.get("model"),
+            **{k: knobs[k] for k in ("trigger", "steps", "save_every", "rank", "lr",
+                                     "resolution", "base", "max_hours",
+                                     "sample_prompts", "sample_seed", "sample_steps")},
+            "stem": stem,
+            "dataset": dataset,
+            "samples": sample_plan,
+            "outputs": grants,
+            "result_url": s3.presign_put_unsized(result_key, content_type="application/json", expires_in=ttl),
+            "callback": webhook,
+            "script": JOB_SCRIPT,
+        }
+        s3.put_text(manifest_key, json.dumps(manifest).encode(), "application/json")
+        written = True
+
+        catalog.update_project_entity(
+            catalog.ENTITY_RUN, record,
+            {"payload": {**(record.get("payload") or {}),
+                         # `samples` stays on the run: the manifest that also
+                         # carries it is deleted at close, and which photo a
+                         # sample re-rendered is read after that.
+                         "training": {"stem": stem, "outputs": outputs, "character": character["id"],
+                                      "pod": manifest["pod"], "dataset": len(dataset),
+                                      "samples": sample_plan}}},
+        )
+    except Exception:
+        _abandon(run_id, pod, manifest_key if written else None, made_nodes, made_folders)
+        raise
     logger.info("Rented pod %s for training run %s (%d images, %d steps)",
                 pod["id"], run_id, len(dataset), knobs["steps"])
     return {"id": pod["id"], "status": "IN_QUEUE", "costPerHr": pod.get("costPerHr")}
+
+
+def _folder_made(parent_id: str, name: str, made_folders: list[str]) -> dict:
+    """`layout.folder_under`, noting whether this call made the folder.
+
+    A `models/` that already holds a character's weights is never dropped
+    on a failed rent; one made a moment ago for this run is, so a failure
+    leaves the character's tree exactly as it found it. Deepest first in
+    `made_folders`, so `samples/` goes before `models/`.
+    """
+    try:
+        return catalog.node(catalog.child_by_name(parent_id, name)["node_id"])
+    except NotFoundError:
+        folder = layout.folder_under(parent_id, name)
+        made_folders.insert(0, folder["node_id"])
+        return folder
+
+
+def _abandon(run_id: str, pod: dict | None, manifest_key: str | None,
+             made_nodes: list[str], made_folders: list[str]) -> None:
+    """Take back what a failed `dispatch` had reached. **The pod first**: it
+    is the one thing here that bills. Every step is best-effort and logged,
+    because the exception that got us here is the one worth raising."""
+    if pod and pod.get("id"):
+        try:
+            runpod_pods.terminate(pod["id"])
+        except Exception as exc:  # noqa: BLE001 — the rent failed after the pod; terminate by hand
+            logger.error("Could not terminate pod %s after a failed dispatch of run %s: %s "
+                         "— terminate it by hand", pod["id"], run_id, exc)
+    if manifest_key:
+        try:
+            s3.delete([manifest_key])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not delete the manifest for %s: %s", run_id, exc)
+    for node_id in made_nodes:
+        _drop(node_id)
+    for node_id in made_folders:
+        _drop(node_id)
+    logger.warning("Dispatch of training run %s failed; dropped %d output nodes it had made",
+                   run_id, len(made_nodes))
 
 
 def report(record: dict) -> dict:

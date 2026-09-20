@@ -1281,6 +1281,24 @@ def update_run(run_id: str):
     ), 200
 
 
+def _dispatch_error(provider: str, exc: Exception) -> str:
+    """What a run's `error` says about a dispatch that raised.
+
+    One sentence a person can act on, under 2000 characters like every other
+    `error` the row carries. A provider that answered gets its status and
+    its own words (`detail`, which each client reads off the problem
+    document); one that answered nothing gets the transport's; anything
+    else — a validation error raised inside a training dispatch — is its
+    own message.
+    """
+    if isinstance(exc, UpstreamError):
+        if exc.status is not None:
+            return (f"{provider} refused the submission ({exc.status}): "
+                    f"{exc.detail or exc}")[:2000]
+        return f"{provider} did not take the submission: {exc}"[:2000]
+    return str(exc)[:2000] or exc.__class__.__name__
+
+
 @bp.post("/runs/<run_id>/submit")
 def submit_run(run_id: str):
     """Send a draft to the provider. **The route that spends money.**
@@ -1302,12 +1320,23 @@ def submit_run(run_id: str):
     3. **Move to `pending`, then call the provider.** A process that dies in
        between leaves a run that reads as "went out and never answered" rather
        than as a draft.
-    4. **A refusal closes the run `failed`; a silence does not.** The provider
-       answering 4xx — `402 insufficient balance` was the one that showed the
-       gap — means nothing was queued, so the run is closed with its words in
-       `error` and the SPA has something to read instead of a spinner. A
-       timeout or 5xx keeps today's `pending`, because it cannot say whether
-       the job went in.
+    4. **A dispatch that raises gives the run back as a draft, whatever
+       raised.** The provider's words go in `error` — the SPA shows them on
+       the run, the CLI prints them — and the plan, payload and sends are
+       untouched, so the same run is submittable again once the cause is
+       dealt with. Every provider alike, and every failure alike: a `402`
+       refusal, a `500` from Runpod's pod API, a timeout, a validation error
+       raised inside a training dispatch. Two rules preceded this one and
+       both left runs a person could not move. Closing a refusal `failed`
+       made a `402 insufficient balance` a dead run to re-plan from scratch;
+       keeping a silence `pending` — on the reasoning that a lost reply might
+       be a live job — wedged a training run at `pending` over a `500 This
+       machine does not have the resources` with no prediction id, which
+       `reconcile` refuses, so the only exit was `runs delete`. A pending run
+       with nothing behind it has no button, and a draft with the reason on
+       it does. The one cost accepted is that a reply lost after the provider
+       took the job can be sent twice; the error on the draft is what a
+       person reads before sending again.
 
     **There is no approval check.** Hard rule #2 — nothing runs unless a person
     tells it to — is kept by whoever calls this: the CLI on an explicit
@@ -1336,47 +1365,43 @@ def submit_run(run_id: str):
     # run that wedges at `pending` still says which provider to ask — and so
     # closing it later never depends on the registry still carrying the model.
     provider = registry.provider_of(entry)
+    # `error: None` clears what a failed dispatch wrote the last time this
+    # draft was sent; the row REMOVEs the attribute rather than nulling it.
     record = catalog.update_project_entity(
         KIND,
         record,
         {"status": "pending", "submitted": catalog.now(), "counted": True,
-         "provider": provider},
+         "provider": provider, "error": None},
         {"status": "pending"},
         bump_count=bump_count,
     )
 
     try:
         created = generate.dispatch(record, entry, payload, bindings)
-    except UpstreamError as refusal:
-        # **Only a refusal closes the run; a silence leaves it.** A 4xx means
-        # the provider read the request and turned it down — out of funds, a
-        # bad key, a payload it will not take — so nothing is in flight and
-        # `failed` is the truth. A timeout or a 5xx cannot say whether a job
-        # was queued, so the run stays `pending` with no prediction id, which
-        # is the state `dispatch` documents. Re-raised either way: the caller
-        # still gets the 502 and the provider's words.
-        if not refusal.refused:
-            raise
+        if not created.get("id"):
+            # The provider answered and named no prediction. Nothing is in
+            # flight; the draft is handed back like any other failed dispatch.
+            raise UpstreamError(f"{provider} answered the submission with no prediction id")
+    except Exception as exc:
+        # **Back to `draft`, with the reason on it.** See point 4 above. The
+        # provider's side effects are already undone by the time this runs —
+        # `training.dispatch` takes back its nodes, manifest and pod before
+        # re-raising; a hosted provider has none before `create_prediction`.
+        # `counted` stays: the project counted this run when it left the
+        # draft states, and the next submit does not count it again.
+        message = _dispatch_error(provider, exc)
         catalog.update_project_entity(
             KIND, record,
-            {"status": "failed", "completed": catalog.now(),
-             "error": f"{provider} refused the submission "
-                      f"({refusal.status}): {refusal.detail}"},
-            {"status": "failed"},
+            {"status": "draft", "submitted": None, "error": message},
+            {"status": "draft"},
         )
+        logger.warning("Run %s is a draft again: %s", record["id"], message)
+        if isinstance(exc, UpstreamError):
+            # The caller reads the same sentence the row carries, not a URL
+            # and a blob; the original is chained for the log.
+            raise UpstreamError(message, status=exc.status, detail=exc.detail) from exc
         raise
-    prediction_id = created.get("id")
-    if not prediction_id:
-        # The provider answered and named no prediction. Nothing is in flight, so
-        # unlike a transport failure this one is knowable and is recorded as the
-        # failure it is.
-        record = catalog.update_project_entity(
-            KIND, record,
-            {"status": "failed", "completed": catalog.now(),
-             "error": "the provider returned no prediction id"},
-            {"status": "failed"},
-        )
-        raise UpstreamError("the provider returned no prediction id")
+    prediction_id = created["id"]
 
     record = catalog.update_project_entity(
         KIND, record, {"status": "running", "prediction_id": prediction_id},

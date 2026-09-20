@@ -97,7 +97,11 @@ def _request(method: str, url: str, *, body: dict | None = None) -> dict | None:
         if exc.code == 404:
             raise PodGone(f"{method} {url} -> 404: {detail}") from exc
         logger.warning("%s %s -> %s: %s", method, url, exc.code, detail)
-        raise RunpodPodError(f"{method} {url} -> {exc.code}: {detail}") from exc
+        # `status` and `detail` travel with it, as on the endpoint client, so
+        # a run's `error` can say `create pod: This machine does not have the
+        # resources to deploy your pod` rather than a URL and a blob.
+        raise RunpodPodError(f"{method} {url} -> {exc.code}: {detail}",
+                             status=exc.code, detail=runpod._detail(detail)) from exc
     except OSError as exc:
         logger.warning("%s %s failed: %s", method, url, exc)
         raise RunpodPodError(f"{method} {url} failed: {exc}") from exc
