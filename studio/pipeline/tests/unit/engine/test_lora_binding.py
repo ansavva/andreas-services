@@ -20,6 +20,10 @@ LORA = {
     "prompt": {"max_chars": None},
 }
 PLAIN = {**LORA, "key": "a-plain-model", "loras": None}
+# A one-stage model: one list, bound with --lora-key.
+SINGLE = {**LORA, "key": "a-single-lora-model", "model": "fal/x",
+          "images": {**LORA["images"], "start": "image_url"},
+          "loras": {"lora": "loras", "accepts_ext": [".safetensors"], "scale_param": "lora_scale"}}
 
 
 def args(**over):
@@ -27,7 +31,7 @@ def args(**over):
                 aspect_ratio=None, key=(), character=(), ref_run=(), slots=None,
                 pick=None, pick_tag=None, image_run=None, input_=None,
                 start_run=None, start_key=None, end_run=None, end_key=None,
-                clip_run=None, clip_key=None, lora_high_key=(), lora_low_key=(),
+                clip_run=None, clip_key=None, lora_key=(), lora_high_key=(), lora_low_key=(),
                 project={"id": "proj-1", "name": "p"})
     return SimpleNamespace(**{**base, **over})
 
@@ -64,3 +68,21 @@ def test_a_model_with_no_lora_input_says_so(named):
     with pytest.raises(SUB.SubmitError) as caught:
         SUB.gather(PLAIN, args(start_key="node-still", lora_high_key=("node-high",)))
     assert "takes no LoRA" in str(caught.value)
+
+
+def test_a_one_stage_model_binds_one_list_with_lora_key(named):
+    bound = SUB.gather(SINGLE, args(start_key="node-still", lora_key=("node-high",)))
+    assert bound == {"image_url": "node-still", "loras": ["node-high"]}
+    roles = {send["field"]: send["role"] for send in SUB.sends_for(SINGLE, bound)}
+    assert roles == {"image_url": "start", "loras": "lora"}
+
+
+def test_the_wrong_slots_flag_names_the_right_one(named):
+    """`--lora-high-key` on a one-stage model, or `--lora-key` on Wan 2.2: the
+    refusal says which flag the model does take."""
+    with pytest.raises(SUB.SubmitError) as caught:
+        SUB.gather(SINGLE, args(start_key="node-still", lora_high_key=("node-high",)))
+    assert "--lora-high-key" in str(caught.value) and "it takes --lora-key" in str(caught.value)
+    with pytest.raises(SUB.SubmitError) as caught:
+        SUB.gather(LORA, args(start_key="node-still", lora_key=("node-high",)))
+    assert "it takes --lora-high-key, --lora-low-key" in str(caught.value)

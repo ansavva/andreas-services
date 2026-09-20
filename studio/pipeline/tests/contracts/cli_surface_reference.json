@@ -915,6 +915,7 @@
           "kling",
           "kling-v3-motion-control",
           "krea-2-large",
+          "ltx-2.3-i2v-lora",
           "nano-banana-2",
           "nano-banana-pro",
           "seedance",
@@ -3448,6 +3449,21 @@
           "--lora-high-key"
         ],
         "help": "Node id (or name path) of a .safetensors LoRA for the high-noise stage (video, LoRA models). Repeatable.",
+        "hidden": false,
+        "multiple": true,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "lora_key": {
+        "choices": null,
+        "default": null,
+        "dest": "lora_key",
+        "flag": false,
+        "flags": [
+          "--lora-key"
+        ],
+        "help": "Node id (or name path) of a .safetensors LoRA for a one-stage model (video, LoRA models). Repeatable.",
         "hidden": false,
         "multiple": true,
         "nargs": 1,

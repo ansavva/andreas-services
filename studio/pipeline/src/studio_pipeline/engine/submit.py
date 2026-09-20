@@ -93,6 +93,15 @@ KIND = {
 }
 
 
+#: The LoRA slots the CLI can bind, in flag order. A slot is what a person
+#: binds to; the entry's `loras` block maps it to the provider's field.
+LORA_SLOTS = ("lora", "high", "low")
+
+
+def _lora_flag(slot: str) -> str:
+    return "--lora-key" if slot == "lora" else f"--lora-{slot}-key"
+
+
 class SubmitError(Exception):
     """Anything that should stop the run before it bills."""
 
@@ -260,11 +269,17 @@ def gather(entry: dict, args) -> dict:
             )
 
     # --- the LoRAs (a model that loads weights beside its own) --------------
+    # Three slots a person can bind: `high` and `low` for Wan 2.2's two
+    # experts (`--lora-high-key` / `--lora-low-key`), `lora` for a one-stage
+    # model whose entry names a single list (`--lora-key`). Which a model has
+    # is the entry's `loras` block; the flag for a slot the model lacks says
+    # which ones it does have.
     loras = REG.lora_fields(entry)
-    asked = {slot: tuple(getattr(args, f"lora_{slot}_key", None) or ()) for slot in ("high", "low")}
+    asked = {slot: tuple(getattr(args, _lora_flag(slot)[2:].replace("-", "_"), None) or ())
+             for slot in LORA_SLOTS}
     if any(asked.values()) and not loras:
         raise SubmitError(
-            f"{entry['key']} takes no LoRA — --lora-high-key/--lora-low-key do not apply to it."
+            f"{entry['key']} takes no LoRA — --lora-key/--lora-high-key/--lora-low-key do not apply to it."
         )
     for slot, keys in asked.items():
         if not keys:
@@ -272,8 +287,8 @@ def gather(entry: dict, args) -> dict:
         lora_field = loras.get(slot)
         if not lora_field:
             raise SubmitError(
-                f"{entry['key']} has no {slot}-noise LoRA input; it takes "
-                f"{', '.join(sorted(loras))}."
+                f"{entry['key']} has no {_lora_flag(slot)} input; it takes "
+                f"{', '.join(_lora_flag(s) for s in sorted(loras))}."
             )
         nodes = [as_node(k) for k in keys]
         # Its own format rule, like the clip's: a weights file is on neither

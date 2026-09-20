@@ -145,7 +145,7 @@ export function OutputTile({
         data-output-file=""
       >
         <Text variant="caption" weight="medium">
-          {/_high_noise/.test(asset.name ?? "") ? "LoRA · high noise" : /_low_noise/.test(asset.name ?? "") ? "LoRA · low noise" : "File"}
+          {/_high_noise/.test(asset.name ?? "") ? "LoRA · high noise" : /_low_noise/.test(asset.name ?? "") ? "LoRA · low noise" : /\.safetensors$/.test(asset.name ?? "") ? "LoRA" : "File"}
         </Text>
         <Text variant="caption" family="mono" tone="muted" className="w-full truncate text-[11px]">
           {assetLabel(asset.name)}
