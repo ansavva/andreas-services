@@ -70,8 +70,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       adopt(await signInNative());
     },
     async logout() {
-      adopt(null);
+      // Navigate away FIRST. Adopting "signed out" before `signOut` mounted
+      // `SignInRedirect`, whose authorize navigation raced the /logout one and
+      // won — and with Cognito's session cookie still alive, authorize answers
+      // silently, so sign-out signed the user straight back in. Measured with
+      // Google sign-in, where no password retype masks it. On web `signOut`
+      // has replaced the document by the time it resolves, so nothing is
+      // adopted here at all; the next load reads the cleared token store.
       await signOut();
+      if (Platform.OS !== 'web') adopt(null);
     },
     accessToken: currentAccessToken,
     adopt,

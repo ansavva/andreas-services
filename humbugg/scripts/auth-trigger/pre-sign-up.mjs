@@ -24,9 +24,13 @@
 // owns alice@example.com gets Alice's Humbugg. That is the same trust every
 // email-based password reset already extends, and every provider wired in
 // verifies the address before returning it — Google, Apple and LinkedIn also
-// SAY so in `email_verified`, and an explicit `false` from any of them refuses
-// the link below. Facebook carries no such claim and returns only confirmed
-// addresses.
+// SAY so in `email_verified`, and an explicit `false` from one of THOSE refuses
+// the link below. Only those: Cognito hands every federated user an
+// `email_verified` of `false` as a placeholder when the claim is not mapped,
+// which is what Facebook's looks like — Facebook has no such claim and returns
+// only confirmed addresses. Terraform maps the claim for the three that have it
+// and names them in HUMBUGG_EMAIL_VERIFIED_PROVIDERS; the first live Google
+// sign-in was refused before that distinction existed.
 import { randomBytes } from 'node:crypto';
 
 const EXTERNAL_PROVIDER = 'PreSignUp_ExternalProvider';
@@ -35,11 +39,16 @@ const EXTERNAL_PROVIDER = 'PreSignUp_ExternalProvider';
 // (`Google`, `Facebook`, `SignInWithApple`, `LinkedIn`). Cognito spells a
 // federated username `<provider lowercased>_<id>`, and `AdminLinkProviderForUser`
 // wants the name back in its declared case, so this is the lookup between them.
-function providerNames() {
-  return (process.env.HUMBUGG_IDENTITY_PROVIDERS ?? '')
+function providerNames(variable = 'HUMBUGG_IDENTITY_PROVIDERS') {
+  return (process.env[variable] ?? '')
     .split(',')
     .map((name) => name.trim())
     .filter(Boolean);
+}
+
+/** Providers whose `email_verified` attribute is their own claim, not Cognito's placeholder. */
+function emailVerifiedProviderNames() {
+  return providerNames('HUMBUGG_EMAIL_VERIFIED_PROVIDERS');
 }
 
 /**
@@ -111,13 +120,15 @@ export function createHandler(cognito) {
       // every send, so an identity without one has nothing to become.
       throw new Error('Your account with that provider has no email address. Sign in another way.');
     }
-    if (attribute(attributes, 'email_verified') === 'false') {
-      throw new Error('That provider has not verified your email address. Sign in another way.');
-    }
-
     const federated = parseFederatedUsername(event.userName);
     if (!federated) {
       throw new Error(`Unrecognised federated username "${event.userName}"`);
+    }
+    if (
+      emailVerifiedProviderNames().includes(federated.providerName) &&
+      attribute(attributes, 'email_verified') === 'false'
+    ) {
+      throw new Error('That provider has not verified your email address. Sign in another way.');
     }
 
     const email = normaliseEmail(rawEmail);

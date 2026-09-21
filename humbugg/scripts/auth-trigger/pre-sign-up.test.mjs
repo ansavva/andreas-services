@@ -43,6 +43,7 @@ const names = (calls) => calls.map((c) => c.name);
 
 test.beforeEach(() => {
   process.env.HUMBUGG_IDENTITY_PROVIDERS = PROVIDERS.join(',');
+  process.env.HUMBUGG_EMAIL_VERIFIED_PROVIDERS = 'Google,SignInWithApple,LinkedIn';
 });
 
 test('parses a federated username back to the declared provider name', () => {
@@ -133,6 +134,14 @@ test('refuses an identity without an email, or with one the provider says is unv
   await assert.rejects(handler(externalEvent('google_1', {})), /no email address/);
   await assert.rejects(handler(externalEvent('google_1', { email: 'a@b.c', email_verified: 'false' })), /not verified/);
   assert.deepEqual(cognito.calls, []);
+});
+
+test("Cognito's placeholder email_verified=false on a provider with no claim is not a refusal", async () => {
+  // Facebook maps no email_verified, so Cognito hands the trigger `false` for
+  // every Facebook user; that is Cognito talking, not Facebook.
+  const cognito = fakeCognito();
+  await createHandler(cognito)(externalEvent('facebook_7', { email: 'a@b.c', email_verified: 'false' }));
+  assert.deepEqual(names(cognito.calls), ['listUsers', 'adminCreateUser', 'adminSetUserPassword', 'adminLinkProviderForUser']);
 });
 
 test('refuses a username from a provider the pool does not declare', async () => {

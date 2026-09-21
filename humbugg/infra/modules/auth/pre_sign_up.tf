@@ -86,7 +86,8 @@ resource "aws_lambda_function" "pre_sign_up" {
 
   environment {
     variables = {
-      HUMBUGG_IDENTITY_PROVIDERS = join(",", local.identity_provider_names)
+      HUMBUGG_IDENTITY_PROVIDERS       = join(",", local.identity_provider_names)
+      HUMBUGG_EMAIL_VERIFIED_PROVIDERS = join(",", local.email_verified_provider_names)
     }
   }
 

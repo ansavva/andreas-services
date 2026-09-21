@@ -15,11 +15,16 @@
 # and that exact URL must be registered on the provider's side by hand —
 # `docs/auth-social-login.md` lists where, per provider and per stack.
 #
-# `email_verified` is deliberately NOT mapped from any provider. The pre-sign-up
-# trigger (`pre_sign_up.tf`) sets it on the native user it links onto, and a
-# mapped attribute is rewritten from the provider on every sign-in — one
-# provider returning `false` would un-verify an address the pool had already
-# verified itself. The trigger reads the provider's claim once, at link time.
+# `email_verified` IS mapped from the providers that emit the claim — Google,
+# Apple, LinkedIn — and not from Facebook, which has none. Measured, not
+# assumed: an unmapped `email_verified` reaches the pre-sign-up trigger as
+# Cognito's own placeholder `false` for every federated user, indistinguishable
+# from a provider saying so, and the first live Google sign-in was refused on
+# it. Mapped, the trigger sees the provider's real claim and refuses only an
+# explicit `false` from a provider that carries one (`pre_sign_up.tf` names
+# those in its environment). The cost accepted: a mapped attribute is
+# rewritten from the provider on every sign-in, so a provider that later says
+# `false` un-verifies the address — which is the truthful state.
 
 locals {
   google_enabled   = var.google_client_id != ""
@@ -34,6 +39,13 @@ locals {
     local.google_enabled ? "Google" : "",
     local.apple_enabled ? "SignInWithApple" : "",
     local.facebook_enabled ? "Facebook" : "",
+    local.linkedin_enabled ? "LinkedIn" : "",
+  ])
+
+  # The subset whose `email_verified` below is the provider's own claim.
+  email_verified_provider_names = compact([
+    local.google_enabled ? "Google" : "",
+    local.apple_enabled ? "SignInWithApple" : "",
     local.linkedin_enabled ? "LinkedIn" : "",
   ])
 }
@@ -52,10 +64,11 @@ resource "aws_cognito_identity_provider" "google" {
   }
 
   attribute_mapping = {
-    username    = "sub"
-    email       = "email"
-    given_name  = "given_name"
-    family_name = "family_name"
+    username       = "sub"
+    email          = "email"
+    email_verified = "email_verified"
+    given_name     = "given_name"
+    family_name    = "family_name"
   }
 
   # Cognito fills in the OAuth endpoints for a Google provider and reports them
@@ -132,10 +145,11 @@ resource "aws_cognito_identity_provider" "apple" {
   }
 
   attribute_mapping = {
-    username    = "sub"
-    email       = "email"
-    given_name  = "firstName"
-    family_name = "lastName"
+    username       = "sub"
+    email          = "email"
+    email_verified = "email_verified"
+    given_name     = "firstName"
+    family_name    = "lastName"
   }
 
   lifecycle {
@@ -174,10 +188,11 @@ resource "aws_cognito_identity_provider" "linkedin" {
   }
 
   attribute_mapping = {
-    username    = "sub"
-    email       = "email"
-    given_name  = "given_name"
-    family_name = "family_name"
+    username       = "sub"
+    email          = "email"
+    email_verified = "email_verified"
+    given_name     = "given_name"
+    family_name    = "family_name"
   }
 
   lifecycle {
