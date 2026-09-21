@@ -810,6 +810,51 @@ def test_a_submitted_runs_plan_cannot_be_rewritten(empty_api):
     assert resp.status_code == 409
 
 
+def test_a_drafts_model_can_be_changed_and_moves_the_fingerprint(empty_api):
+    """**A draft is editable in full, and the model is part of the payload.**
+
+    The create bar offers the model chip on a draft it has loaded back, so the
+    switch has to land somewhere: `PATCH /runs/<id>` with `model` and `engine`,
+    gated exactly as `/plan` and `/sends` are. The fingerprint moves — the same
+    plan on a different model is a different submission, which
+    `test_fingerprints` holds up from the other side — and the listing row's
+    `model` follows, so `?model=` still finds the draft.
+    """
+    project = _project(empty_api)
+    run = _create(empty_api, project, plan={"params": {}, "prompt": "a wave"})
+
+    resp = empty_api.patch(
+        f"/api/runs/{run['id']}",
+        json={"model": "openai/gpt-image-2", "engine": "gpt-image-2"},
+    )
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    body = resp.get_json()
+    assert body["model"] == "openai/gpt-image-2"
+    assert body["engine"] == "gpt-image-2"
+    assert body["status"] == "draft"
+    assert body["fingerprint"] != run["fingerprint"]
+
+    found = empty_api.get(
+        f"/api/runs?project={project['id']}&fingerprint={body['fingerprint']}&include=drafts"
+    ).get_json()
+    assert [entry["id"] for entry in found["runs"]] == [run["id"]]
+    assert found["runs"][0]["model"] == "openai/gpt-image-2"
+
+
+def test_a_submitted_runs_model_cannot_be_changed(empty_api):
+    """The same 409 as the plan's: what was sent went to the model the record names."""
+    project = _project(empty_api)
+    run = _submitted(empty_api, project)
+
+    resp = empty_api.patch(f"/api/runs/{run['id']}", json={"model": "openai/gpt-image-2"})
+    assert resp.status_code == 409
+
+    resp = empty_api.patch(
+        f"/api/runs/{run['id']}", json={"model": "openai/gpt-image-2", "status": "failed"},
+    )
+    assert resp.status_code == 400
+
+
 def test_drafts_are_hidden_from_a_listing_and_askable_for(empty_api):
     """A grid mixing intentions with submissions is a grid nobody can read.
 

@@ -120,6 +120,7 @@ function Probe() {
           attachments: held.length,
         },
         attachments: held.map((a) => `${a.role}:${a.ref.node}`),
+        editing: state.editing?.run ?? null,
       })}
     </output>
   );
@@ -528,6 +529,46 @@ describe("the actions", () => {
       kind: "image",
       attachments: 1,
     });
+  });
+
+  it("Edit on a draft edits it in place: the row is marked, and Delete on it lets the edit go", async () => {
+    await draw([row({ status: "draft", outputs: [], thumb: null, submitted: null, completed: null, cost: null })]);
+    const article = await screen.findByRole("article");
+    expect(article.hasAttribute("data-editing")).toBe(false);
+
+    fireEvent.click(within(article).getByRole("button", { name: "Edit" }));
+    // The bar is on THIS run, not a copy, and the row says so.
+    expect(bar().editing).toBe("run-1");
+    expect(article.hasAttribute("data-editing")).toBe(true);
+    expect(within(article).getByText("editing")).toBeTruthy();
+
+    // Deleted from its own menu: the bar stops writing to a run that is gone.
+    openRowMenu(article);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Confirm — delete this run/ }));
+    await waitFor(() => expect(deleteRun).toHaveBeenCalledWith("run-1"));
+    await waitFor(() => expect(bar().editing).toBeNull());
+    // The words stay for a new run.
+    expect(bar().seed.prompt).toBe("a portrait, 85mm");
+  });
+
+  it("Edit is refused on a training run — the sheet has no training mode", async () => {
+    await draw([row({ kind: "training", status: "draft", outputs: [], thumb: null, submitted: null, completed: null, cost: null })]);
+    const article = await screen.findByRole("article");
+    const edit = within(article).getByRole("button", { name: "Edit" });
+    expect((edit as HTMLButtonElement).disabled).toBe(true);
+    expect(edit.getAttribute("title")).toMatch(/CLI/);
+    fireEvent.click(edit);
+    expect(bar().editing).toBeNull();
+    expect(bar().kind).toBe("image");
+  });
+
+  it("Edit on a submitted run loads a copy — nothing is marked", async () => {
+    await draw([row()]);
+    const article = await screen.findByRole("article");
+    fireEvent.click(within(article).getByRole("button", { name: "Edit" }));
+    expect(bar().editing).toBeNull();
+    expect(article.hasAttribute("data-editing")).toBe(false);
   });
 
   it("Use as reference attaches the output; a frame switches to video with it in that slot", async () => {

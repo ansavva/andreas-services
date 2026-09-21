@@ -31,6 +31,10 @@ vi.mock("../../apis/studio", () => ({
   createRun: vi.fn(),
   submitRun: vi.fn(),
   patchRunPlan: vi.fn(),
+  patchRunSends: vi.fn(),
+  setRunCharacters: vi.fn(),
+  setRunLocations: vi.fn(),
+  setRunModel: vi.fn(),
   deleteRun: vi.fn(),
   getRuns: vi.fn(),
   // The settings rows and the picker, when they open.
@@ -57,7 +61,11 @@ import {
   getRuns,
   getTemplates,
   patchRunPlan,
+  patchRunSends,
   setModelDefaults,
+  setRunCharacters,
+  setRunLocations,
+  setRunModel,
   submitRun,
 } from "../../apis/studio";
 import { CreateBar } from "./CreateBar";
@@ -159,6 +167,11 @@ beforeEach(() => {
     status: "pending",
   } as never);
   vi.mocked(getRuns).mockResolvedValue({ runs: [], cursor: null });
+  vi.mocked(patchRunPlan).mockResolvedValue({ ...created(), fingerprint: "f-plan" } as never);
+  vi.mocked(patchRunSends).mockResolvedValue({ ...created(), fingerprint: "f-sends" } as never);
+  vi.mocked(setRunCharacters).mockResolvedValue(created() as never);
+  vi.mocked(setRunLocations).mockResolvedValue(created() as never);
+  vi.mocked(setRunModel).mockResolvedValue({ ...created(), fingerprint: "f-model" } as never);
 });
 
 async function open(path = `/p/${PROJECT}`) {
@@ -335,6 +348,171 @@ it("sends a JSON prompt as words, and a cited one as a template", async () => {
   expect(vi.mocked(patchRunPlan).mock.calls[0]![1]).toMatchObject({
     template: "A portrait. @block.scale",
   });
+});
+
+/** A draft's row, loaded the way Edit on it does — as itself, not as a copy. */
+function editDraft(prompt: string, over: Partial<{ model: string }> = {}) {
+  api.loadRun({
+    project: PROJECT,
+    kind: "image",
+    model: over.model ?? "vendor/still-model",
+    prompt,
+    params: { resolution: "1K" },
+    editing: {
+      run: "run-draft",
+      project: PROJECT,
+      kind: "image",
+      model: "vendor/still-model",
+      plan: { version: 1, origin: "backfilled", prompt, params: { resolution: "1K" }, note: "keep me" },
+    },
+  });
+}
+
+it("Edit on a draft writes the draft in place and Send submits THAT run — no second draft", async () => {
+  /**
+   * A draft has not gone out, so it is still the thing being decided about.
+   * Edit used to load a copy, and the send made a run beside the draft it
+   * was opened from — the row a person had just edited never changed, and
+   * the feed gained a twin. Editing writes back through the three routes the
+   * API offers a draft, then submits the same id.
+   */
+  await open();
+  editDraft("A portrait.");
+  await waitFor(() => expect(editor().textContent).toContain("A portrait."));
+  expect(screen.getByText("Editing draft")).toBeTruthy();
+
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(submitRun).toHaveBeenCalledWith("run-draft"));
+
+  expect(createRun).not.toHaveBeenCalled();
+  // The model did not move, so it is not written.
+  expect(setRunModel).not.toHaveBeenCalled();
+  expect(setRunCharacters).toHaveBeenCalledWith("run-draft", []);
+  expect(setRunLocations).toHaveBeenCalledWith("run-draft", []);
+  // The plan as loaded survives a save: `origin` and `note` are carried,
+  // the prompt and params are what the sheet holds.
+  expect(vi.mocked(patchRunPlan).mock.calls[0]).toEqual([
+    "run-draft",
+    {
+      version: 1,
+      origin: "backfilled",
+      note: "keep me",
+      prompt: "A portrait.",
+      params: { resolution: "1K" },
+    },
+  ]);
+  expect(patchRunSends).toHaveBeenCalledWith("run-draft", []);
+  // The duplicate question reads the fingerprint the LAST write answered.
+  expect(getRuns).toHaveBeenCalledWith({ project: PROJECT, fingerprint: "f-sends", include: "drafts" });
+  const order = [
+    vi.mocked(setRunCharacters).mock.invocationCallOrder[0]!,
+    vi.mocked(patchRunPlan).mock.invocationCallOrder[0]!,
+    vi.mocked(patchRunSends).mock.invocationCallOrder[0]!,
+    vi.mocked(submitRun).mock.invocationCallOrder[0]!,
+  ];
+  expect([...order].sort((a, b) => a - b)).toEqual(order);
+
+  // Sent: the sheet is making new runs again.
+  expect(await screen.findByText("Sent")).toBeTruthy();
+  await waitFor(() => expect(screen.queryByText("Editing draft")).toBeNull());
+});
+
+it("Save keeps the draft a draft, and writes the model only when it moved", async () => {
+  vi.mocked(getModels).mockResolvedValue({
+    "still-model": STILL,
+    "other-still": { ...STILL, key: "other-still", model: "vendor/other-still", skill: "studio-media-other" },
+    "motion-model": MOTION,
+  });
+  await open();
+  editDraft("A portrait.");
+  await waitFor(() => expect(editor().textContent).toContain("A portrait."));
+
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(patchRunSends).toHaveBeenCalledWith("run-draft", []));
+  expect(submitRun).not.toHaveBeenCalled();
+  expect(createRun).not.toHaveBeenCalled();
+  expect(setRunModel).not.toHaveBeenCalled();
+  expect(await screen.findByText("Saved")).toBeTruthy();
+  // Still editing: a save is a checkpoint, not a way out.
+  expect(screen.getByText("Editing draft")).toBeTruthy();
+  expect(editor().textContent).toContain("A portrait.");
+
+  // Switching the model in the sheet writes it — drafts only, the API's rule.
+  editDraft("A portrait.", { model: "vendor/other-still" });
+  await waitFor(() => expect(screen.getByText(/other-still/)).toBeTruthy());
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() =>
+    expect(setRunModel).toHaveBeenCalledWith("run-draft", "vendor/other-still", "studio-media-other"),
+  );
+  expect(submitRun).not.toHaveBeenCalled();
+});
+
+it("a draft that is gone by the time Save or Send reaches it lets the edit go and says so", async () => {
+  const { ApiError } = await import("../../apis/client");
+  await open();
+  editDraft("A portrait.");
+  await waitFor(() => expect(editor().textContent).toContain("A portrait."));
+
+  vi.mocked(setRunCharacters).mockRejectedValueOnce(
+    new ApiError("No such object: run-draft", 404, "not_found"),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText("Could not save the draft")).toBeTruthy();
+  expect(screen.getByText(/That draft no longer exists/)).toBeTruthy();
+  // Not editing any more; the words stay; the next Send makes a new run.
+  expect(screen.queryByText("Editing draft")).toBeNull();
+  expect(editor().textContent).toContain("A portrait.");
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(submitRun).toHaveBeenCalledWith("run-0001"));
+  expect(createRun).toHaveBeenCalledTimes(1);
+});
+
+it("× on the strip leaves the draft alone; the next Send makes a new run", async () => {
+  await open();
+  editDraft("A portrait.");
+  await waitFor(() => expect(editor().textContent).toContain("A portrait."));
+
+  fireEvent.click(screen.getByRole("button", { name: "Stop editing this draft" }));
+  expect(screen.queryByText("Editing draft")).toBeNull();
+  // The words stay — what changes is where they go.
+  expect(editor().textContent).toContain("A portrait.");
+
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(submitRun).toHaveBeenCalledWith("run-0001"));
+  expect(createRun).toHaveBeenCalledTimes(1);
+  expect(patchRunPlan).not.toHaveBeenCalled();
+});
+
+it("a kind switch drops the edit — the other kind's tiles are not the draft's pictures", async () => {
+  await open();
+  editDraft("A portrait.");
+  await waitFor(() => expect(screen.getByText("Editing draft")).toBeTruthy());
+
+  fireEvent.click(screen.getByRole("button", { name: "Video" }));
+  expect(screen.queryByText("Editing draft")).toBeNull();
+});
+
+it("Save on a new run keeps it as a draft: created, never submitted, and the sheet empties", async () => {
+  await open();
+  fill("A portrait.");
+  await waitFor(() => expect(editor().textContent).toContain("A portrait."));
+
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(createRun).toHaveBeenCalled());
+  expect(vi.mocked(createRun).mock.calls[0]![0]).toMatchObject({
+    project: PROJECT,
+    kind: "image",
+    model: "vendor/still-model",
+    plan: { prompt: "A portrait.", params: { resolution: "2K" } },
+    sends: [],
+  });
+  expect(await screen.findByText("Saved as a draft")).toBeTruthy();
+  expect(submitRun).not.toHaveBeenCalled();
+  // No duplicate question: nothing is being spent.
+  expect(getRuns).not.toHaveBeenCalled();
+  // The draft is a row now; the sheet is clear for the next one.
+  await waitFor(() => expect(editor().textContent).toBe(""));
+  expect(screen.queryByText("Editing draft")).toBeNull();
 });
 
 it("holds a draft whose payload already went out here, and Send anyway submits it", async () => {

@@ -26,7 +26,11 @@ import {
   getRuns,
   getTemplates,
   patchRunPlan,
+  patchRunSends,
   setModelDefaults,
+  setRunCharacters,
+  setRunLocations,
+  setRunModel,
   submitRun,
   type ModelDefaults,
 } from "../../apis/studio";
@@ -40,6 +44,7 @@ import { FINE, useMediaQuery } from "../../hooks/useMediaQuery";
 import { useResource } from "../../hooks/useResource";
 import { useScrolledPast } from "../../hooks/useScrolledPast";
 import type { CreatedRun, RunSummary } from "../../types";
+import { ApiError } from "../../apis/client";
 import { citesTemplate } from "../../utils/citations";
 import { formatDate } from "../../utils/format";
 import {
@@ -101,9 +106,16 @@ const CHARACTER_FIELDS = [
  * Discard deletes it.
  */
 interface Held {
-  draft: CreatedRun;
+  draft: Draft;
   twin: RunSummary;
 }
+
+/**
+ * The run a send goes on to submit: one just created, or the draft the bar
+ * was editing once its edits are written. `fingerprint` is whatever the API
+ * answered last — the duplicate question is asked over it.
+ */
+type Draft = Pick<CreatedRun, "id" | "fingerprint">;
 
 const GLYPH = "size-4 fill-none stroke-current stroke-[1.5]";
 
@@ -194,7 +206,9 @@ export function CreateBar() {
   const [sheetView, setSheetView] = useState<"settings" | "models" | "projects" | "templates">("settings");
   const sheetRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  /** Which press `busy` belongs to — the Save button says "Saving…" only for its own. */
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<{ title: string; message: string } | null>(null);
   const [held, setHeld] = useState<Held | null>(null);
 
   const attachments = bar.attachments[bar.kind];
@@ -361,6 +375,154 @@ export function CreateBar() {
    * A twin that was actually sent holds the draft and asks; a draft or a
    * discard is not a twin, because nothing was spent on it.
    */
+  /**
+   * Write what the bar holds back onto the draft it is editing.
+   *
+   * **In place, and only what the routes take.** A draft is one run whose
+   * plan may still change, and the API offers that as three writes — the
+   * model (`PATCH /runs/<id>`, drafts only), the plan (`/plan`) and the
+   * ordered images (`/sends`) — each replacing its half whole. The cast and
+   * the location go first because `/plan` fills a template from the run's
+   * characters as they stand; the sends go last because the fingerprint the
+   * duplicate question reads is the one the last write answered. The model
+   * is written only when it moved: it is the one write of the four that is
+   * refused outright once the run has gone out, and a save that did not
+   * touch it should not be the thing that finds that out.
+   */
+  const writeEdits = useCallback(async (): Promise<Draft> => {
+    const editing = bar.editing!;
+    const entryNow = entry!;
+    if (entryNow.model !== editing.model) {
+      await setRunModel(editing.run, entryNow.model, entryNow.skill);
+    }
+    await setRunCharacters(editing.run, cast);
+    await setRunLocations(editing.run, shotIn);
+    const held = editing.plan;
+    await patchRunPlan(editing.run, {
+      ...(held ?? {}),
+      version: held?.version ?? 1,
+      origin: held?.origin ?? "authored",
+      prompt,
+      params,
+      ...(citesTemplate(prompt) ? { template: prompt } : {}),
+    });
+    const written = await patchRunSends(editing.run, sendsOf(attachments, entryNow));
+    return { id: editing.run, fingerprint: written.fingerprint ?? "" };
+  }, [attachments, bar.editing, cast, entry, params, prompt, shotIn]);
+
+  /**
+   * A write to a draft that is not there any more — deleted from its row in
+   * another tab, discarded from the CLI, or its project gone. The edit is
+   * let go, so the next press makes a new run from what the sheet holds,
+   * and the message says so rather than "no such object".
+   */
+  const vanished = useCallback(
+    (err: unknown): boolean => {
+      if (!(err instanceof ApiError && err.status === 404)) return false;
+      bar.stopEditing();
+      void queryClient.invalidateQueries({ queryKey: ["runs"] });
+      return true;
+    },
+    [bar, queryClient],
+  );
+  const GONE = "That draft no longer exists. What the panel holds will be sent as a new run.";
+
+  /**
+   * A new draft from what the sheet holds. **Created whole**: `POST /api/runs`
+   * takes the plan and the sends together, so what the fingerprint hashes is
+   * what was in the panel. A prompt that cites a block or a character goes
+   * through `PATCH /plan` too, because that is the route that expands a
+   * template into the prompt the model sees — creation stores the plan as
+   * given. "Cites anything" is `citesTemplate`, not a brace: `studio prompt`
+   * writes a prompt as serialised JSON, and that is words, not a template.
+   */
+  const createDraft = useCallback(async (): Promise<Draft> => {
+    const entryNow = entry!;
+    const created = await createRun({
+      project: target!,
+      // On a scene page the draft is the scene's from the start.
+      ...(bar.scene ? { scene: bar.scene } : {}),
+      kind: entryNow.kind,
+      // The Replicate `owner/name`, not the registry key — `POST /api/runs`
+      // records the model the provider is called by.
+      model: entryNow.model,
+      engine: entryNow.skill,
+      ...(cast.length ? { characters: cast } : {}),
+      ...(shotIn.length ? { locations: shotIn } : {}),
+      plan: { version: 1, origin: "authored", prompt, params },
+      sends: sendsOf(attachments, entryNow),
+    });
+    if (!citesTemplate(prompt)) return created;
+    const expanded = await patchRunPlan(created.id, {
+      version: 1,
+      origin: "authored",
+      template: prompt,
+      prompt,
+      params,
+    });
+    return { id: created.id, fingerprint: expanded.fingerprint ?? created.fingerprint };
+  }, [attachments, bar.scene, cast, entry, params, prompt, shotIn, target]);
+
+  /**
+   * Save without sending. Nothing bills.
+   *
+   * On a draft being edited: the writes land on it and the sheet keeps
+   * editing it — a save is a checkpoint, not a way out; × on the strip is
+   * that. On a new run: a draft is created and the sheet empties, the same
+   * as after a send — the draft is a row in the feed now, and Edit on that
+   * row is how it comes back. A draft costs a row and no bytes, so there is
+   * no reason a person should have to send something to keep it.
+   */
+  const save = useCallback(async () => {
+    if (!entry || !target || prompt === "" || busy || anyPending(attachments)) return;
+    setBusy(true);
+    setSaving(true);
+    setFailure(null);
+    try {
+      if (bar.editing) {
+        const { run, project: within } = bar.editing;
+        await writeEdits();
+        toast.add({ intent: "success", title: "Saved", description: "The draft was updated." });
+        void queryClient.invalidateQueries({ queryKey: ["run", run] });
+        void queryClient.invalidateQueries({ queryKey: ["project", within] });
+      } else {
+        await createDraft();
+        bar.sent();
+        toast.add({
+          intent: "success",
+          title: "Saved as a draft",
+          description: `${entry.key} in ${project.data?.name ?? "the project"}. Nothing was sent.`,
+        });
+        void queryClient.invalidateQueries({ queryKey: ["project", target] });
+        if (bar.scene) void queryClient.invalidateQueries({ queryKey: ["scene", bar.scene] });
+        if (!bar.onProject) navigate(projectPath(target));
+      }
+      void queryClient.invalidateQueries({ queryKey: ["runs"] });
+    } catch (err) {
+      setFailure({
+        title: "Could not save the draft",
+        message: bar.editing && vanished(err) ? GONE : (err as Error).message,
+      });
+    } finally {
+      setBusy(false);
+      setSaving(false);
+    }
+  }, [
+    attachments,
+    bar,
+    busy,
+    createDraft,
+    entry,
+    navigate,
+    project.data?.name,
+    prompt,
+    queryClient,
+    target,
+    toast,
+    vanished,
+    writeEdits,
+  ]);
+
   const send = useCallback(
     async (force = false) => {
       if (!entry || !target || prompt === "" || busy || anyPending(attachments)) return;
@@ -369,34 +531,15 @@ export function CreateBar() {
       try {
         let draft = held?.draft ?? null;
         let fingerprint = draft?.fingerprint ?? null;
+        if (!draft && bar.editing) {
+          // Editing: the draft already exists, so what goes out is that run
+          // with its edits written, not a second one beside it.
+          draft = await writeEdits();
+          fingerprint = draft.fingerprint;
+        }
         if (!draft) {
-          const cited = citesTemplate(prompt);
-          const created = await createRun({
-            project: target,
-            // On a scene page the draft is the scene's from the start.
-            ...(bar.scene ? { scene: bar.scene } : {}),
-            kind: entry.kind,
-            // The Replicate `owner/name`, not the registry key — `POST /api/runs`
-            // records the model the provider is called by.
-            model: entry.model,
-            engine: entry.skill,
-            ...(cast.length ? { characters: cast } : {}),
-            ...(shotIn.length ? { locations: shotIn } : {}),
-            plan: { version: 1, origin: "authored", prompt, params },
-            sends: sendsOf(attachments, entry),
-          });
-          draft = created;
-          fingerprint = created.fingerprint;
-          if (cited) {
-            const expanded = await patchRunPlan(created.id, {
-              version: 1,
-              origin: "authored",
-              template: prompt,
-              prompt,
-              params,
-            });
-            fingerprint = expanded.fingerprint ?? fingerprint;
-          }
+          draft = await createDraft();
+          fingerprint = draft.fingerprint;
         }
         if (!force && fingerprint) {
           const page = await getRuns({
@@ -432,7 +575,12 @@ export function CreateBar() {
         if (bar.scene) void queryClient.invalidateQueries({ queryKey: ["scene", bar.scene] });
         if (!bar.onProject) navigate(projectPath(target));
       } catch (err) {
-        setFailure((err as Error).message);
+        // Only the edited draft can be gone: a run created just above exists.
+        const gone = bar.editing !== null && vanished(err);
+        setFailure({
+          title: "Could not send this run",
+          message: gone ? GONE : (err as Error).message,
+        });
       } finally {
         setBusy(false);
       }
@@ -441,17 +589,17 @@ export function CreateBar() {
       attachments,
       bar,
       busy,
-      cast,
+      createDraft,
       entry,
       held,
       navigate,
-      params,
       project.data?.name,
       prompt,
       queryClient,
-      shotIn,
       target,
       toast,
+      vanished,
+      writeEdits,
     ],
   );
 
@@ -461,12 +609,19 @@ export function CreateBar() {
     try {
       await deleteRun(held.draft.id, "delete");
       setHeld(null);
+      // The draft the bar was editing, when it was: it is gone, so the bar
+      // is making a new run again and the feed no longer lists it.
+      if (bar.editing?.run === held.draft.id) {
+        bar.stopEditing();
+        void queryClient.invalidateQueries({ queryKey: ["runs"] });
+        void queryClient.invalidateQueries({ queryKey: ["project", bar.editing.project] });
+      }
     } catch (err) {
-      setFailure((err as Error).message);
+      setFailure({ title: "Could not discard the draft", message: (err as Error).message });
     } finally {
       setBusy(false);
     }
-  }, [held]);
+  }, [bar, held, queryClient]);
 
   const placeholder = bar.scene
     ? "Describe what to make for this scene…"
@@ -627,8 +782,8 @@ export function CreateBar() {
 
       {failure && (
         <Alert.Root intent="danger">
-          <Alert.Title>Could not send this run</Alert.Title>
-          <Alert.Description>{failure}</Alert.Description>
+          <Alert.Title>{failure.title}</Alert.Title>
+          <Alert.Description>{failure.message}</Alert.Description>
         </Alert.Root>
       )}
 
@@ -679,6 +834,26 @@ export function CreateBar() {
       >
         <div className="flex items-center justify-between gap-2" onPointerDownCapture={leavePrompt}>
           {kindSwitch}
+
+          {/* **Which draft the sheet is editing, and the way out of it.** A
+              draft loaded with Edit is written back in place, so the sheet
+              says so where the eye lands first; × leaves the draft as it is
+              and makes what the sheet holds a new run's. Not drawn for a run
+              loaded as a copy — that IS a new run, and there is nothing to
+              stop. */}
+          {bar.editing && (
+            <span
+              data-editing-draft={bar.editing.run}
+              className="flex min-w-0 items-center gap-1 rounded-pill bg-fill py-0.5 pl-2.5 pr-0.5"
+            >
+              <Text as="span" variant="caption" tone="muted" className="truncate">
+                Editing draft
+              </Text>
+              <IconButton size="sm" label="Stop editing this draft" onClick={bar.stopEditing}>
+                <CloseIcon />
+              </IconButton>
+            </span>
+          )}
 
           {/* **Only over the viewer.** On a page the sheet is part of the
               page and there is nothing to close; on the opened run it was
@@ -950,6 +1125,18 @@ export function CreateBar() {
           </Drawer.Root>
 
           <span className="flex-1" />
+
+          {/* Save: a draft, and nothing sent. Beside Send and quieter than
+              it, because the two differ by exactly the thing Send's shape
+              says — one spends. */}
+          <Button
+            size="sm"
+            intent="ghost"
+            disabled={!canSend}
+            onClick={() => void save()}
+          >
+            {saving ? "Saving…" : "Save"}
+          </Button>
 
           {/* Round, white, an arrow — the one filled control on the sheet.
               The word is for assistive tech; the shape is the word for

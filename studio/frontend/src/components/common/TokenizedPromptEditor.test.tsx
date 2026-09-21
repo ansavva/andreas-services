@@ -60,6 +60,41 @@ it.each([
   expect(changed.mock.calls.at(-1)![0]).toBe(original);
 });
 
+/**
+ * **The bug this pins.** `Pillify` re-registers its transform whenever the
+ * known names change, and Lexical marks the existing nodes dirty in an
+ * update tagged `history-merge`. A value loaded in the same render merged
+ * into that update, inherited the tag, and the change plugin skipped it —
+ * so nothing recorded the new text, and the NEXT value equal to the stale
+ * record was treated as already shown. In the app: Edit on run A, then B,
+ * then A again drew B's prompt over A's plan.
+ */
+it("shows each loaded value even when the known names change with it", async () => {
+  const changed = vi.fn();
+  const { rerender } = render(
+    <TokenizedPromptEditor value="Run A." onValueChange={changed} tokens={TOKENS} ariaLabel="Prompt" />,
+  );
+  const box = () => document.querySelector('[role="textbox"]')!;
+  await waitFor(() => expect(box().textContent).toBe("Run A."));
+
+  // Run B loads with a different cast, so the token list moves with the text.
+  rerender(
+    <TokenizedPromptEditor
+      value="Run B."
+      onValueChange={changed}
+      tokens={[...TOKENS, { name: "character.2.top", kind: "computed" }]}
+      ariaLabel="Prompt"
+    />,
+  );
+  await waitFor(() => expect(box().textContent).toBe("Run B."));
+
+  // Back to A: the box must say A, not keep B.
+  rerender(
+    <TokenizedPromptEditor value="Run A." onValueChange={changed} tokens={TOKENS} ariaLabel="Prompt" />,
+  );
+  await waitFor(() => expect(box().textContent).toBe("Run A."));
+});
+
 it("draws a citation as a pill rather than as characters", async () => {
   show("A portrait. @block.face_only");
   const found = await waitFor(() => {

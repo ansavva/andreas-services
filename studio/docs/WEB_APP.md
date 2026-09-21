@@ -589,11 +589,14 @@ page and a plain textarea over its literal bytes, and never offers fields.
   `plan_digest` on the record. The app claims no authority it does not have —
   the CLI holds the same kind of token — so what hard rule #2 buys here is that
   the payload is on screen before the button is.
-- **Editing a plan is two writes.** `PATCH /api/runs/<id>/plan` and `PATCH
-  /api/runs/<id>/sends` each replace their half whole and move the fingerprint
-  — so an editor sends only the half that moved. Both routes refuse a
-  submitted run, which is why Edit on a finished run loads it into the create
-  bar as a NEW draft rather than being answered with a 409.
+- **Editing a plan is two writes, and a third for the model.** `PATCH
+  /api/runs/<id>/plan` and `PATCH /api/runs/<id>/sends` each replace their
+  half whole and move the fingerprint; `PATCH /api/runs/<id>` with `model`
+  alone moves a draft to another engine. All three refuse a submitted run,
+  which is why **Edit means two things by status**: on a draft the create bar
+  opens that run and writes back to it (`Editing draft`, with `Save` beside
+  `Send`); on a finished run it loads a copy as a NEW draft rather than being
+  answered with a 409. `seedFromRow` decides.
 - **The app can submit.** `POST /api/runs/<id>/submit` is what calls Replicate;
   the SPA has no provider credential and never gains one, because the spending
   sits behind that route.

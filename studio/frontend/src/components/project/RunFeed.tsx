@@ -17,6 +17,7 @@ import {
 } from "@ansavva/design-system";
 
 import { getRuns } from "../../apis/studio";
+import { useIsEditing } from "../../context/CreateBarContext";
 import { useNow } from "../../hooks/useNow";
 import { useRunWatch } from "../../hooks/useRunWatch";
 import { useSearchParamState } from "../../hooks/useSearchParamState";
@@ -525,10 +526,18 @@ function FeedRow({
   const actions = useRunActions(row);
   const [promoting, setPromoting] = useState<RunAsset | null>(null);
   const flying = inFlight(row.status);
+  // **The row the sheet is editing is marked, and stays in the list.** Edit
+  // on a draft opens it in the sheet above, and without a mark on the row
+  // nothing said which one — a person could edit a draft and not see that
+  // the row three down was the one changing. It is not taken out of the
+  // feed while edited: a draft is still a run of the project, the sheet is
+  // writing to it, and a row that vanished on Edit would read as deleted.
+  const editing = useIsEditing(row.id);
 
   return (
     <article
       aria-label={`Run ${relativeTime(row.created, now)}`}
+      data-editing={editing ? "" : undefined}
       // **The outputs column takes the rest of the width; the plan is what is
       // capped.** It used to be the other way round — `minmax(0,48rem)` for the
       // outputs — so a row was 80rem wide however wide the window was, and a
@@ -536,7 +545,11 @@ function FeedRow({
       // of every row. What the cap was protecting against is a clip blown up to
       // half a column; that is the tile grid's job below, and it does it by
       // fitting MORE tiles across rather than bigger ones.
-      className="grid gap-4 border-t border-line pt-4 md:grid-cols-[minmax(0,1fr)_minmax(20rem,32rem)] md:gap-6"
+      className={`grid gap-4 border-t border-line pt-4 md:grid-cols-[minmax(0,1fr)_minmax(20rem,32rem)] md:gap-6 ${
+        editing
+          ? "-mx-3 rounded-lg border-transparent bg-fill/40 px-3 pb-3 ring-1 ring-primary"
+          : ""
+      }`}
     >
       {/* Outputs. One grid for both kinds, so a still and a clip are the same
           width in the same column.
@@ -632,6 +645,11 @@ function FeedRow({
             wraps is the time, never the buttons. */}
         <div className="@container flex flex-wrap items-center gap-1.5">
           <StatusBadge status={row.status} />
+          {editing && (
+            <Badge intent="neutral" className="font-mono text-primary ring-1 ring-primary">
+              editing
+            </Badge>
+          )}
           <Badge intent="neutral" className="font-mono">
             {row.kind}
           </Badge>

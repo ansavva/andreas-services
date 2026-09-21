@@ -216,7 +216,7 @@ Additive. Every existing route kept its shape.
 | `POST /api/runs` | **Creates `draft`.** Body takes `plan` and `sends`; `bindings` is still accepted and read as sends with the role left null |
 | `PATCH /api/runs/<id>/plan` | `{plan}` — a draft's authored fields. Moves the fingerprint. Refused once submitted |
 | `PATCH /api/runs/<id>/sends` | `{sends}` — replace the ordered images. Same rule. Every node is existence- and library-checked, and hard rule #3's URL refusal applies |
-| `PATCH /api/runs/<id>` | Leaving the unsubmitted states counts the run and stamps `submitted`; no approval is checked |
+| `PATCH /api/runs/<id>` | Leaving the unsubmitted states counts the run and stamps `submitted`; no approval is checked. With `model` (and `engine`) alone in the body: a draft's model, refused once submitted, and the fingerprint moves |
 | `POST /api/runs/<id>/submit` | **Sends a `draft`.** The route that spends money, and calling it is the decision — see below |
 | `POST /api/runs/<id>/reconcile` | Ask the provider what happened and close the run on the answer |
 | `GET /api/runs/<id>` | Gains `plan`, `fingerprint` and `sends` (expanded, with role and source) |
@@ -451,6 +451,31 @@ button on an unsubmitted run. That editor is deleted (2026-09-04): the create
 bar at the top of every screen is where a plan is written now, and Edit on a
 feed row loads a run back into it.** What follows is kept as the record of
 what the editor decided, because the bar inherits every one of those rules.
+
+**Save is beside Send on every run, not only an edited draft (2026-09-21).**
+On a new run it creates the draft and empties the sheet — the draft is a row
+now, and Edit on the row is how it comes back; on an edited draft it writes
+the edits and keeps editing. Nothing is sent either way, and no duplicate
+question is asked, because nothing is spent.
+
+**Edit means two things, and the row's status decides which (2026-09-21).**
+A draft has not gone out, so Edit on one opens *that* run in the bar — the
+sheet says `Editing draft`, `Save` writes the plan, the images, the cast and
+the model back through the routes above and leaves it a draft, and `Send`
+writes them and submits the same id. The row a person edited is the row that
+changes; no twin appears beside it. A submitted run's plan is what was sent
+and the API refuses to rewrite it, so Edit on one loads a *copy* and the
+send makes a new draft — the behaviour every Edit had until then, which had
+left a draft the one run in studio the app could read and not change (the CLI
+could, with `runs edit`). `seedFromRow` decides by status, once, where it
+knows it; the bar never asks. **The row being edited is marked** — a ring
+and an `editing` badge — and stays in the feed: it is still a run of the
+project and the sheet is writing to it; a row that vanished on Edit would
+read as deleted. The edit is let go by × on the strip, by a send, by a kind
+switch (the other kind's tiles are not the draft's pictures), by leaving the
+draft's project, by the row's own Delete, and by a Save or Send that finds
+the draft gone (a 404 — deleted elsewhere), which says so and leaves the
+words for a new run.
 
 - **A mode, not an always-editable form.** This page is read far more often than
   it is written, and the plan is the thing a person is about to send — a prompt

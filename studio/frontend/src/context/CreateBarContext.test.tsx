@@ -1,5 +1,5 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useNavigate } from "react-router-dom";
 
 import { TestProviders } from "../test-providers";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -37,12 +37,14 @@ const FRAME: AttachRef = {
 let api: CreateBarApi;
 /** The state half — what the bar itself reads, and what puts it away. */
 let own: ReturnType<typeof useCreateBarState>;
+let go: ReturnType<typeof useNavigate>;
 
 /** The provider's state, as JSON, and the api handed out for the test to drive. */
 function Probe() {
   api = useCreateBar();
   const bar = useCreateBarState();
   own = bar;
+  go = useNavigate();
   return (
     <pre data-testid="state">
       {JSON.stringify({
@@ -54,6 +56,7 @@ function Probe() {
         project: bar.project,
         target: bar.target,
         onProject: bar.onProject,
+        editing: bar.editing,
         role: bar.role,
         focus: bar.focus,
         shown: bar.shown,
@@ -161,6 +164,65 @@ it("move puts one attachment at another's index, within the current kind", () =>
     "node-3",
     "node-2",
   ]);
+});
+
+it("a seed naming a draft edits it; a kind switch, sent, stopEditing and leaving its project let go", () => {
+  mount("/p/proj-1");
+  const editing = { run: "run-d", project: "proj-1", kind: "image" as const, model: "m", plan: null };
+  act(() => api.loadRun({ project: "proj-1", kind: "image", prompt: "p", editing }));
+  expect(state().editing).toEqual(editing);
+
+  // The other kind's tiles are not the draft's pictures.
+  act(() => api.setKind("video"));
+  expect(state().editing).toBeNull();
+
+  act(() => api.loadRun({ project: "proj-1", kind: "image", prompt: "p", editing }));
+  act(() => own.stopEditing());
+  expect(state().editing).toBeNull();
+  // The words stay; what changes is where the next send goes.
+  expect(state().prompt).toBe("p");
+
+  act(() => api.loadRun({ project: "proj-1", kind: "image", prompt: "p", editing }));
+  act(() => own.sent());
+  expect(state().editing).toBeNull();
+
+  // A seed with no draft named is a copy: nothing to write back to.
+  act(() => api.loadRun({ project: "proj-1", kind: "image", prompt: "p" }));
+  expect(state().editing).toBeNull();
+});
+
+it("leaving the draft's project for another lets the edit go", () => {
+  const editing = { run: "run-d", project: "proj-1", kind: "image" as const, model: "m", plan: null };
+  mount("/p/proj-1");
+  act(() => api.loadRun({ project: "proj-1", kind: "image", prompt: "p", editing }));
+  expect(state().editing).toEqual(editing);
+
+  // Within the project — the opened run, say — the edit holds.
+  act(() => go("/p/proj-1/r/run-d"));
+  expect(state().editing).toEqual(editing);
+
+  // Another project: the route's project wins and the edit is dropped
+  // rather than sent to a run the page no longer shows.
+  act(() => go("/p/proj-2"));
+  expect(state().target).toBe("proj-2");
+  expect(state().editing).toBeNull();
+  expect(state().prompt).toBe("p");
+});
+
+it("a training seed is refused — the sheet cannot draw or write one", () => {
+  mount("/p/proj-1");
+  act(() => api.loadRun({ project: "proj-1", kind: "image", prompt: "kept" }));
+  act(() =>
+    api.loadRun({
+      project: "proj-1",
+      kind: "training",
+      prompt: "",
+      editing: { run: "run-t", project: "proj-1", kind: "training", model: "m", plan: null },
+    }),
+  );
+  expect(state().kind).toBe("image");
+  expect(state().prompt).toBe("kept");
+  expect(state().editing).toBeNull();
 });
 
 it("setKind switches and drops the highlighted role", () => {

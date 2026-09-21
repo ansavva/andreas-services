@@ -15,6 +15,13 @@ import type { RunAsset, RunFeedRow, RunSend } from "../../types";
  * binds from the CLI (`--lora-high-key`) — so an edit of a LoRA run reloads
  * its frame, prompt and params and not the adapters; the run page still
  * shows them, and `lora_scale` rides along in the params.
+ *
+ * **Whether the seed EDITS the row or COPIES it is decided here, by status.**
+ * A run that has not gone out is still a draft: the bar opens that run and
+ * writes back to it. One that has is what was sent, and the API refuses to
+ * rewrite it, so the bar gets a copy and makes a new draft. `discarded` is
+ * unsubmitted too — a save turns it back into a `draft`, which is the API's
+ * rule — so it edits in place as well.
  */
 export function seedFromRow(row: RunFeedRow): CreateSeed {
   return {
@@ -28,7 +35,23 @@ export function seedFromRow(row: RunFeedRow): CreateSeed {
         ? []
         : [{ ref: refOfSend(send), role: (send.role ?? "reference") as AttachRole }],
     ),
+    ...(isUnsubmitted(row)
+      ? {
+          editing: {
+            run: row.id,
+            project: row.project,
+            kind: row.kind,
+            model: row.model,
+            plan: row.plan,
+          },
+        }
+      : {}),
   };
+}
+
+/** Whether the run can still be rewritten — the API's `UNSUBMITTED_RUN_STATUSES`. */
+export function isUnsubmitted(row: { status: string }): boolean {
+  return row.status === "draft" || row.status === "discarded";
 }
 
 /** The prompt as the bar edits it — prose verbatim, a document serialised. */

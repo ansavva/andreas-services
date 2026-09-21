@@ -1120,6 +1120,19 @@ export function setRunLocations(id: string, locations: string[]) {
   });
 }
 
+/**
+ * Move a draft to another model. **Drafts only** — the route 409s once the run
+ * has been submitted, for the reason `patchRunPlan` gives. The fingerprint
+ * moves with it: the same plan on a different model is a different submission.
+ * `engine` is the registry entry's skill, the other spelling of the same choice.
+ */
+export function setRunModel(id: string, model: string, engine: string | null) {
+  return apiSend<RunRecord>("PATCH", `/api/runs/${encodeURIComponent(id)}`, {
+    model,
+    engine,
+  });
+}
+
 export function deleteRun(id: string, files: "keep" | "delete" = "keep") {
   return apiSend<{ id: string; files: string }>(
     "DELETE",

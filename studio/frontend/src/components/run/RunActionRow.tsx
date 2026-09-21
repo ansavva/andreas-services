@@ -93,6 +93,7 @@ export function RunActionRow({
   const navigate = useNavigate();
   const flying = inFlight(row.status);
   const draft = row.status === "draft";
+  const training = row.kind === "training";
   const link = useCopyToClipboard();
   const [moving, setMoving] = useState(false);
 
@@ -231,7 +232,32 @@ export function RunActionRow({
       {/* The word only where the header is wide enough for it — under 30rem
           the pencil stands alone, so the three controls fit beside the
           badges on one line at 320px. */}
-      <Button intent="ghost" size="sm" aria-label="Edit" onClick={actions.edit} className="">
+      {/* One word, two meanings, told apart by the tooltip: a draft has not
+          gone out and is opened in the sheet as itself; a submitted run is
+          what was sent, so Edit loads a copy and the send makes a new run.
+          `seedFromRow` decides which by the same status.
+
+          **Not on a training run.** The sheet makes image and video runs
+          and nothing else — `ROLES_BY_KIND.training` is empty, there is no
+          Training on the kind switch — so loading one drew an empty panel
+          with the run's dataset nowhere in it, and a Save from there would
+          have written the draft back with no images. A training run is
+          drafted and edited from the CLI, and the button says so. */}
+      <Button
+        intent="ghost"
+        size="sm"
+        aria-label="Edit"
+        disabled={training}
+        title={
+          training
+            ? "A training run is drafted and edited from the CLI (studio runs edit); the create panel makes image and video runs only."
+            : draft
+              ? "Open this draft in the create panel. Save keeps it a draft; Send submits it."
+              : "Load this run's prompt, settings and images into the create panel as a new draft. This run is not changed."
+        }
+        onClick={actions.edit}
+        className=""
+      >
         <PencilIcon className={GLYPH} />
         <span className="hidden @min-[30rem]:inline">Edit</span>
       </Button>
