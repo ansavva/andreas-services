@@ -206,6 +206,8 @@ export function CreateBar() {
   const [sheetView, setSheetView] = useState<"settings" | "models" | "projects" | "templates">("settings");
   const sheetRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
+  /** Which press `busy` belongs to — the Save button says "Saving…" only for its own. */
+  const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<{ title: string; message: string } | null>(null);
   const [held, setHeld] = useState<Held | null>(null);
 
@@ -426,30 +428,100 @@ export function CreateBar() {
   const GONE = "That draft no longer exists. What the panel holds will be sent as a new run.";
 
   /**
-   * Save the draft and leave it a draft. Nothing is sent and nothing bills;
-   * the row in the feed is the row that changes. The bar keeps editing it —
-   * a save is a checkpoint, not a way out; × on the strip is that.
+   * A new draft from what the sheet holds. **Created whole**: `POST /api/runs`
+   * takes the plan and the sends together, so what the fingerprint hashes is
+   * what was in the panel. A prompt that cites a block or a character goes
+   * through `PATCH /plan` too, because that is the route that expands a
+   * template into the prompt the model sees — creation stores the plan as
+   * given. "Cites anything" is `citesTemplate`, not a brace: `studio prompt`
+   * writes a prompt as serialised JSON, and that is words, not a template.
+   */
+  const createDraft = useCallback(async (): Promise<Draft> => {
+    const entryNow = entry!;
+    const created = await createRun({
+      project: target!,
+      // On a scene page the draft is the scene's from the start.
+      ...(bar.scene ? { scene: bar.scene } : {}),
+      kind: entryNow.kind,
+      // The Replicate `owner/name`, not the registry key — `POST /api/runs`
+      // records the model the provider is called by.
+      model: entryNow.model,
+      engine: entryNow.skill,
+      ...(cast.length ? { characters: cast } : {}),
+      ...(shotIn.length ? { locations: shotIn } : {}),
+      plan: { version: 1, origin: "authored", prompt, params },
+      sends: sendsOf(attachments, entryNow),
+    });
+    if (!citesTemplate(prompt)) return created;
+    const expanded = await patchRunPlan(created.id, {
+      version: 1,
+      origin: "authored",
+      template: prompt,
+      prompt,
+      params,
+    });
+    return { id: created.id, fingerprint: expanded.fingerprint ?? created.fingerprint };
+  }, [attachments, bar.scene, cast, entry, params, prompt, shotIn, target]);
+
+  /**
+   * Save without sending. Nothing bills.
+   *
+   * On a draft being edited: the writes land on it and the sheet keeps
+   * editing it — a save is a checkpoint, not a way out; × on the strip is
+   * that. On a new run: a draft is created and the sheet empties, the same
+   * as after a send — the draft is a row in the feed now, and Edit on that
+   * row is how it comes back. A draft costs a row and no bytes, so there is
+   * no reason a person should have to send something to keep it.
    */
   const save = useCallback(async () => {
-    if (!bar.editing || !entry || prompt === "" || busy || anyPending(attachments)) return;
-    const { run, project: within } = bar.editing;
+    if (!entry || !target || prompt === "" || busy || anyPending(attachments)) return;
     setBusy(true);
+    setSaving(true);
     setFailure(null);
     try {
-      await writeEdits();
-      toast.add({ intent: "success", title: "Saved", description: "The draft was updated." });
-      void queryClient.invalidateQueries({ queryKey: ["run", run] });
+      if (bar.editing) {
+        const { run, project: within } = bar.editing;
+        await writeEdits();
+        toast.add({ intent: "success", title: "Saved", description: "The draft was updated." });
+        void queryClient.invalidateQueries({ queryKey: ["run", run] });
+        void queryClient.invalidateQueries({ queryKey: ["project", within] });
+      } else {
+        await createDraft();
+        bar.sent();
+        toast.add({
+          intent: "success",
+          title: "Saved as a draft",
+          description: `${entry.key} in ${project.data?.name ?? "the project"}. Nothing was sent.`,
+        });
+        void queryClient.invalidateQueries({ queryKey: ["project", target] });
+        if (bar.scene) void queryClient.invalidateQueries({ queryKey: ["scene", bar.scene] });
+        if (!bar.onProject) navigate(projectPath(target));
+      }
       void queryClient.invalidateQueries({ queryKey: ["runs"] });
-      void queryClient.invalidateQueries({ queryKey: ["project", within] });
     } catch (err) {
       setFailure({
         title: "Could not save the draft",
-        message: vanished(err) ? GONE : (err as Error).message,
+        message: bar.editing && vanished(err) ? GONE : (err as Error).message,
       });
     } finally {
       setBusy(false);
+      setSaving(false);
     }
-  }, [attachments, bar.editing, busy, entry, prompt, queryClient, toast, vanished, writeEdits]);
+  }, [
+    attachments,
+    bar,
+    busy,
+    createDraft,
+    entry,
+    navigate,
+    project.data?.name,
+    prompt,
+    queryClient,
+    target,
+    toast,
+    vanished,
+    writeEdits,
+  ]);
 
   const send = useCallback(
     async (force = false) => {
@@ -466,33 +538,8 @@ export function CreateBar() {
           fingerprint = draft.fingerprint;
         }
         if (!draft) {
-          const cited = citesTemplate(prompt);
-          const created = await createRun({
-            project: target,
-            // On a scene page the draft is the scene's from the start.
-            ...(bar.scene ? { scene: bar.scene } : {}),
-            kind: entry.kind,
-            // The Replicate `owner/name`, not the registry key — `POST /api/runs`
-            // records the model the provider is called by.
-            model: entry.model,
-            engine: entry.skill,
-            ...(cast.length ? { characters: cast } : {}),
-            ...(shotIn.length ? { locations: shotIn } : {}),
-            plan: { version: 1, origin: "authored", prompt, params },
-            sends: sendsOf(attachments, entry),
-          });
-          draft = created;
-          fingerprint = created.fingerprint;
-          if (cited) {
-            const expanded = await patchRunPlan(created.id, {
-              version: 1,
-              origin: "authored",
-              template: prompt,
-              prompt,
-              params,
-            });
-            fingerprint = expanded.fingerprint ?? fingerprint;
-          }
+          draft = await createDraft();
+          fingerprint = draft.fingerprint;
         }
         if (!force && fingerprint) {
           const page = await getRuns({
@@ -542,15 +589,13 @@ export function CreateBar() {
       attachments,
       bar,
       busy,
-      cast,
+      createDraft,
       entry,
       held,
       navigate,
-      params,
       project.data?.name,
       prompt,
       queryClient,
-      shotIn,
       target,
       toast,
       vanished,
@@ -1081,19 +1126,17 @@ export function CreateBar() {
 
           <span className="flex-1" />
 
-          {/* Save, while editing: the draft as it now reads, still a draft.
-              Beside Send and quieter than it, because the two differ by
-              exactly the thing Send's shape says — one spends. */}
-          {bar.editing && (
-            <Button
-              size="sm"
-              intent="ghost"
-              disabled={!canSend}
-              onClick={() => void save()}
-            >
-              {busy ? "Saving…" : "Save"}
-            </Button>
-          )}
+          {/* Save: a draft, and nothing sent. Beside Send and quieter than
+              it, because the two differ by exactly the thing Send's shape
+              says — one spends. */}
+          <Button
+            size="sm"
+            intent="ghost"
+            disabled={!canSend}
+            onClick={() => void save()}
+          >
+            {saving ? "Saving…" : "Save"}
+          </Button>
 
           {/* Round, white, an arrow — the one filled control on the sheet.
               The word is for assistive tech; the shape is the word for

@@ -452,6 +452,12 @@ bar at the top of every screen is where a plan is written now, and Edit on a
 feed row loads a run back into it.** What follows is kept as the record of
 what the editor decided, because the bar inherits every one of those rules.
 
+**Save is beside Send on every run, not only an edited draft (2026-09-21).**
+On a new run it creates the draft and empties the sheet — the draft is a row
+now, and Edit on the row is how it comes back; on an edited draft it writes
+the edits and keeps editing. Nothing is sent either way, and no duplicate
+question is asked, because nothing is spent.
+
 **Edit means two things, and the row's status decides which (2026-09-21).**
 A draft has not gone out, so Edit on one opens *that* run in the bar — the
 sheet says `Editing draft`, `Save` writes the plan, the images, the cast and

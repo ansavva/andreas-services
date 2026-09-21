@@ -474,7 +474,6 @@ it("× on the strip leaves the draft alone; the next Send makes a new run", asyn
 
   fireEvent.click(screen.getByRole("button", { name: "Stop editing this draft" }));
   expect(screen.queryByText("Editing draft")).toBeNull();
-  expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   // The words stay — what changes is where they go.
   expect(editor().textContent).toContain("A portrait.");
 
@@ -491,7 +490,29 @@ it("a kind switch drops the edit — the other kind's tiles are not the draft's 
 
   fireEvent.click(screen.getByRole("button", { name: "Video" }));
   expect(screen.queryByText("Editing draft")).toBeNull();
-  expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+});
+
+it("Save on a new run keeps it as a draft: created, never submitted, and the sheet empties", async () => {
+  await open();
+  fill("A portrait.");
+  await waitFor(() => expect(editor().textContent).toContain("A portrait."));
+
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(createRun).toHaveBeenCalled());
+  expect(vi.mocked(createRun).mock.calls[0]![0]).toMatchObject({
+    project: PROJECT,
+    kind: "image",
+    model: "vendor/still-model",
+    plan: { prompt: "A portrait.", params: { resolution: "2K" } },
+    sends: [],
+  });
+  expect(await screen.findByText("Saved as a draft")).toBeTruthy();
+  expect(submitRun).not.toHaveBeenCalled();
+  // No duplicate question: nothing is being spent.
+  expect(getRuns).not.toHaveBeenCalled();
+  // The draft is a row now; the sheet is clear for the next one.
+  await waitFor(() => expect(editor().textContent).toBe(""));
+  expect(screen.queryByText("Editing draft")).toBeNull();
 });
 
 it("holds a draft whose payload already went out here, and Send anyway submits it", async () => {
