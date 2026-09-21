@@ -262,6 +262,31 @@ resource "aws_cognito_managed_login_branding" "main" {
     extension  = "ICO"
     bytes      = filebase64("${path.module}/assets/humbugg-favicon.ico")
   }
+
+  # LinkedIn's button icon. Google, Facebook and Apple are native Cognito
+  # types and get their own logos; LinkedIn is a generic OIDC provider and
+  # got Cognito's chain-link glyph until this. `IDP_BUTTON_ICON` is keyed by
+  # the provider's name in `resource_id`, and only exists while the provider
+  # does — an icon for a provider the pool lacks is a rejected record. The
+  # file is LinkedIn's own "in" bug, as its brand guidelines ask a sign-in
+  # button to carry — with its `id`/`data-name` attributes stripped, which
+  # Cognito's SVG sanitizer rejects, and its viewBox padded to a square,
+  # which Cognito requires of an IDP icon (1:1, measured to the pixel). Both
+  # were learned from a failed create. LIGHT and DARK rather than DYNAMIC,
+  # as the favicon.
+  #
+  # An `asset` block is ForceNew, so the apply that adds LinkedIn to prod
+  # replaces the branding record: seconds of "Login pages unavailable".
+  dynamic "asset" {
+    for_each = local.linkedin_enabled ? ["LIGHT", "DARK"] : []
+    content {
+      category    = "IDP_BUTTON_ICON"
+      color_mode  = asset.value
+      extension   = "SVG"
+      resource_id = "LinkedIn"
+      bytes       = filebase64("${path.module}/assets/linkedin-bug.svg")
+    }
+  }
 }
 
 # Where the hosted pages are served from. Exactly one shape at a time: a custom
