@@ -337,14 +337,19 @@ page and a plain textarea over its literal bytes, and never offers fields.
   shell's look is modelled on ElevenLabs (2026-09): 8/12/16px corners,
   surfaces told apart by fill rather than border, the sheet frosted over the
   feed.
-- **The heart is one control reading one cached set, wherever it is drawn.**
-  `FavoriteButton` takes a node id and asks `useFavorites`, which holds every
-  favorited id under one React Query key — so a grid of two hundred tiles is one
-  request between them, and pressing any of them updates all of them. The press
-  is optimistic and rolls back on failure: a heart that waits on a round trip
-  reads as a press that did not register, and the second press people then make
-  undoes the first. `aria-pressed` carries the state and the label never
-  changes, because what the control is *for* does not.
+- **The heart is one menu line and one mark, reading one cached set wherever
+  they are drawn.** `favoriteAction` (`components/common/Favorite.tsx`) is the
+  "Add to favorites" / "Remove from favorites" line on every media menu — a
+  browsed tile's `⋮`, a run output's `⋮`, the opened run's `⋯`, the open
+  file's `⋯` — and `FavoriteMark` is the filled heart a favorited tile
+  carries, a state and not a control. Both ask `useFavorites`, which holds
+  every favorited id under one React Query key — so a grid of two hundred
+  tiles is one request between them, and a press anywhere updates all of
+  them. The press is optimistic and rolls back on failure: a heart that waits
+  on a round trip reads as a press that did not register, and the second
+  press people then make undoes the first. There is no heart *button* left:
+  the last one, on the open file's row, went when that row became Download
+  and a `⋯` — the same shape as the opened run's row (2026-09-21).
 - **The logo is a function, not a file, and the favicon is generated from it.**
   `src/utils/aperture.ts` solves a six-blade iris at any openness;
   `components/common/Aperture.tsx` draws it twice from that one construction —

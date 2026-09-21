@@ -33,6 +33,26 @@ const PANEL_LINE = 36;
 const PANEL_PAD = 16;
 const PANEL_W = 208;
 
+/**
+ * What clips the panel on the horizontal axis: the nearest ancestor that
+ * scrolls or hides its overflow, else `<main>`, else the document.
+ *
+ * `<main>` alone was the answer until 2026-09-21, and it was wrong inside a
+ * scrolling column. The open file's rail is `overflow-y: auto`, which makes
+ * its `overflow-x` `auto` too, and a scroll container cannot scroll to what
+ * lies LEFT of its origin — so a panel that fitted against `<main>` opened
+ * leftward past the rail's edge and lost its first inch. Measured against
+ * the thing that actually cuts it, the same press opens the other way.
+ */
+function clipOf(anchor: HTMLElement): Element {
+  for (let node = anchor.parentElement; node && node !== document.body; node = node.parentElement) {
+    if (node.tagName === "MAIN") return node;
+    const { overflowX, overflowY } = getComputedStyle(node);
+    if (overflowX !== "visible" || overflowY !== "visible") return node;
+  }
+  return document.documentElement;
+}
+
 /** One line of the menu: a glyph, a word, and what pressing it does. */
 export interface MenuAction {
   /** Stable across renders — React's key. */
@@ -202,9 +222,7 @@ export function ActionMenu({
   const place = useCallback(() => {
     const box = anchor.current?.getBoundingClientRect();
     if (!box) return;
-    const bounds = (
-      anchor.current?.closest("main") ?? document.documentElement
-    ).getBoundingClientRect();
+    const bounds = clipOf(anchor.current!).getBoundingClientRect();
     // Leftward by default — nearly every one of these triggers sits at the
     // right edge of the thing it belongs to, so that is the side with room.
     // `align="start"` turns it round for the one that sits at the left.

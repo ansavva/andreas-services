@@ -1,10 +1,10 @@
 import { Checkbox } from "@ansavva/design-system";
 
 import type { FileEntry } from "../../types";
-import { useFavorites } from "../../hooks/useFavorites";
 import { MediaThumb } from "../media/MediaThumb";
 import { ActionMenu, type MenuAction } from "../common/ActionMenu";
-import { CheckIcon, HeartFilledIcon } from "../common/icons";
+import { FavoriteMark } from "../common/Favorite";
+import { CheckIcon } from "../common/icons";
 
 interface Props {
   file: FileEntry;
@@ -61,8 +61,6 @@ export function MediaTile({
   onToggleSelect,
   actions,
 }: Props) {
-  const favorite = useFavorites().isFavorite(file.id);
-
   /**
    * Selection mode still wins over the browser, and only for shift.
    *
@@ -210,15 +208,7 @@ export function MediaTile({
         so it is `aria-hidden` and takes no presses. Bottom left, clear of both
         the checkbox and the menu.
       */}
-      {favorite && (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute bottom-1.5 left-1.5 flex size-5 items-center
-                     justify-center rounded-pill bg-overlay-scrim/70"
-        >
-          <HeartFilledIcon className="size-3 fill-current stroke-none text-danger" />
-        </span>
-      )}
+      <FavoriteMark id={file.id} className="bottom-1.5 left-1.5" />
 
     </div>
   );
