@@ -185,6 +185,65 @@ terraform_shared_init() {
     "-var=aws_region=$AWS_REGION_VALUE"
     "-var=aws_principal_arn=$AWS_PRINCIPAL_ARN"
   )
+  add_social_login_vars
+}
+
+# Social sign-in on the shared pool, from THIS machine's dev.env: a key set
+# there becomes a -var, an unset one leaves the provider off. Read from the
+# file rather than the environment so a stray export from another checkout
+# cannot enable a provider. The Apple key is a multi-line PEM, which an env
+# file cannot hold, so it travels base64. The keys come from the team's
+# password manager; `require_social_keys_for_pool` is what stops a machine
+# without them from stripping providers another machine added.
+SOCIAL_KEY_PAIRS=(
+  HUMBUGG_GOOGLE_CLIENT_ID:google_client_id
+  HUMBUGG_GOOGLE_CLIENT_SECRET:google_client_secret
+  HUMBUGG_FACEBOOK_APP_ID:facebook_app_id
+  HUMBUGG_FACEBOOK_APP_SECRET:facebook_app_secret
+  HUMBUGG_APPLE_SERVICES_ID:apple_services_id
+  HUMBUGG_APPLE_TEAM_ID:apple_team_id
+  HUMBUGG_APPLE_KEY_ID:apple_key_id
+  HUMBUGG_LINKEDIN_CLIENT_ID:linkedin_client_id
+  HUMBUGG_LINKEDIN_CLIENT_SECRET:linkedin_client_secret
+)
+
+add_social_login_vars() {
+  local pair key var value
+  for pair in "${SOCIAL_KEY_PAIRS[@]}"; do
+    key="${pair%%:*}"; var="${pair##*:}"
+    value="$(read_env "$DEV_ENV_FILE" "$key")"
+    [[ -n "$value" ]] && SHARED_TF_VARS+=("-var=$var=$value")
+  done
+  value="$(read_env "$DEV_ENV_FILE" HUMBUGG_APPLE_PRIVATE_KEY_BASE64)"
+  if [[ -n "$value" ]]; then
+    SHARED_TF_VARS+=("-var=apple_private_key=$(printf '%s' "$value" | base64 --decode)")
+  fi
+}
+
+# Every provider the shared pool already has must have its id in this
+# machine's dev.env, or the apply below would remove it — Terraform cannot
+# tell an absent key from an intent to remove. Reads the pool id from the
+# parameter the shared stack publishes; no parameter means no pool yet, and
+# nothing to protect.
+require_social_keys_for_pool() {
+  local pool_id providers name key missing=""
+  pool_id="$(aws_dev ssm get-parameter --name /humbugg/dev/cognito-user-pool-id \
+    --query 'Parameter.Value' --output text 2>/dev/null || true)"
+  [[ -n "$pool_id" && "$pool_id" != "None" ]] || return 0
+  providers="$(aws_dev cognito-idp list-identity-providers --user-pool-id "$pool_id" \
+    --query 'Providers[].ProviderName' --output text 2>/dev/null || true)"
+  for name in $providers; do
+    case "$name" in
+      Google) key=HUMBUGG_GOOGLE_CLIENT_ID ;;
+      Facebook) key=HUMBUGG_FACEBOOK_APP_ID ;;
+      SignInWithApple) key=HUMBUGG_APPLE_SERVICES_ID ;;
+      LinkedIn) key=HUMBUGG_LINKEDIN_CLIENT_ID ;;
+      *) continue ;;
+    esac
+    [[ -n "$(read_env "$DEV_ENV_FILE" "$key")" ]] || missing="$missing $name($key)"
+  done
+  [[ -z "$missing" ]] ||
+    die "The shared dev pool has social providers this machine has no keys for:$missing. Put them in $DEV_ENV_FILE (from the team password manager) and re-run, or pass --skip-shared to leave the pool as it is. To REMOVE a provider on purpose, pass --allow-provider-removal with only the keys you mean to keep."
 }
 
 terraform_shared_output_json() {

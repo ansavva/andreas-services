@@ -92,8 +92,12 @@ console edits. `dev-aws-setup.sh` applies the shared stack (idempotent, locked)
 before the machine's own, and the machine's stack reads the pool's ids from
 `/humbugg/dev/cognito-*` in SSM. Accounts are therefore shared too: a `.test`
 person seeded on one machine exists for all, with whatever password the last
-seed set. Data stays per machine. Social credentials for it live in SSM under
-`/humbugg/dev/social/*`, never in `dev.env` — `docs/auth-social-login.md`.
+seed set. Data stays per machine. Social credentials for it come from the
+applying machine's `dev.env` (from the team password manager); the script
+refuses to apply the shared stack while the pool has a provider this machine
+has no keys for, so a keyless machine cannot strip what another added —
+`--skip-shared` uses the pool untouched, `--allow-provider-removal` is the
+override. `docs/auth-social-login.md`.
 
 **Every local value lives in one file: `~/.config/andreas-services/humbugg/dev.env`.**
 Backend config, both frontends' inlined values, Stripe test keys, the dev test
@@ -166,7 +170,7 @@ All commands run from the repository root:
 |---|---|
 | `scripts/dev-setup.sh` | Idempotently install shared tooling; use `--check` for a read-only prerequisite audit |
 | `humbugg/scripts/dev-setup.sh` | Canonical dependency chain: shared setup → .NET 10 → per-machine AWS setup; accepts `--profile`, `--region`, `--yes`, `--check` |
-| `humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS provision/check command called by canonical setup; accepts `--profile`, `--region`, `--yes`, `--check` |
+| `humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS provision/check command called by canonical setup; applies the shared pool stack then this machine's; accepts `--profile`, `--region`, `--yes`, `--check`, `--skip-shared`, `--allow-provider-removal` |
 | `humbugg/scripts/dev-up.sh` | Preferred full local startup — backend + webhook consumer, both frontends; accepts `--profile`, `--region` |
 | `humbugg/scripts/dev-up-backend.sh` | Backend startup — the API and the Stripe webhook consumer, two services of one Compose project; exports temporary AWS credentials into Docker Compose without writing them to disk |
 | `humbugg/scripts/dev-up-marketing.sh` | Marketing-site-only startup; exports `VITE_*` from `dev.env` and checks installed dependencies first |

@@ -17,11 +17,14 @@
 # no longer deletes users, because they are not one machine's to delete.
 #
 # Applied by `dev-aws-setup.sh` on every machine, every run, before the
-# per-machine stack. Idempotent, so whoever runs it last is irrelevant —
-# EXCEPT that the social credentials must come from somewhere every machine
-# can read, or the second developer's apply would remove the providers the
-# first one added. They come from SSM, `/humbugg/dev/social/*`, put there once
-# by hand; `docs/auth-social-login.md` has the commands.
+# per-machine stack. Idempotent, so whoever runs it last is irrelevant — with
+# one catch. The social credentials come from the applying machine's
+# `dev.env` (a developer gets them from the team's password manager), and
+# Terraform cannot tell "this machine has no Google keys" from "remove
+# Google". So `dev-aws-setup.sh` refuses to apply this stack while the pool
+# holds a provider whose keys the machine lacks; `--skip-shared` uses the
+# pool as it is. Nothing here reads SSM for a secret: SSM is where this
+# stack PUBLISHES the pool's ids, not a place credentials are kept.
 
 locals {
   project     = "humbugg"
@@ -33,30 +36,6 @@ locals {
     ManagedBy   = "Terraform"
     LastApplied = var.aws_principal_arn
   }
-}
-
-# Whatever exists under the path, decrypted; an empty path is an empty map,
-# not an error, which is what lets a stack apply before any credential does.
-data "aws_ssm_parameters_by_path" "social" {
-  path            = "/${local.project}/${local.environment}/social"
-  with_decryption = true
-}
-
-locals {
-  social = zipmap(
-    [for name in data.aws_ssm_parameters_by_path.social.names : basename(name)],
-    data.aws_ssm_parameters_by_path.social.values,
-  )
-  # Every value off that data source is sensitive, secrets and ids alike, and
-  # sensitivity is contagious: the ids decide WHICH providers exist, so the
-  # provider list, the Lambda's environment and this stack's outputs would all
-  # inherit it. The ids are public — they are in every authorize URL — so they
-  # are unwrapped here; the secrets never are.
-  id = { for key in [
-    "google-client-id", "facebook-app-id",
-    "apple-services-id", "apple-team-id", "apple-key-id",
-    "linkedin-client-id",
-  ] : key => nonsensitive(lookup(local.social, key, "")) }
 }
 
 module "auth" {
@@ -75,16 +54,16 @@ module "auth" {
   # user ever loads.
   auth_domain_prefix = "${local.project}-${local.environment}"
 
-  google_client_id       = local.id["google-client-id"]
-  google_client_secret   = lookup(local.social, "google-client-secret", "")
-  facebook_app_id        = local.id["facebook-app-id"]
-  facebook_app_secret    = lookup(local.social, "facebook-app-secret", "")
-  apple_services_id      = local.id["apple-services-id"]
-  apple_team_id          = local.id["apple-team-id"]
-  apple_key_id           = local.id["apple-key-id"]
-  apple_private_key      = lookup(local.social, "apple-private-key", "")
-  linkedin_client_id     = local.id["linkedin-client-id"]
-  linkedin_client_secret = lookup(local.social, "linkedin-client-secret", "")
+  google_client_id       = var.google_client_id
+  google_client_secret   = var.google_client_secret
+  facebook_app_id        = var.facebook_app_id
+  facebook_app_secret    = var.facebook_app_secret
+  apple_services_id      = var.apple_services_id
+  apple_team_id          = var.apple_team_id
+  apple_key_id           = var.apple_key_id
+  apple_private_key      = var.apple_private_key
+  linkedin_client_id     = var.linkedin_client_id
+  linkedin_client_secret = var.linkedin_client_secret
 
   tags = local.common_tags
 }

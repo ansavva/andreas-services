@@ -66,7 +66,7 @@ sign in with any of them.
 
 **Two credentials per provider, one project/app.** Where the console allows several clients under
 one app — Google does — make a `Humbugg prod` and a `Humbugg dev` client, each with only its own
-redirect URI, so the dev secret that sits in SSM as a dev value can never be prod's. Facebook,
+redirect URI, so the dev secret every developer's `dev.env` holds can never be prod's. Facebook,
 LinkedIn and Apple take one list of URIs per app; put both on it.
 
 ### Google
@@ -168,27 +168,24 @@ gh secret set HUMBUGG_GOOGLE_CLIENT_SECRET --env humbugg-production
 gh secret set HUMBUGG_APPLE_PRIVATE_KEY --env humbugg-production < AuthKey_XXXXXXXXXX.p8
 ```
 
-### Dev — SSM, `/humbugg/dev/social/*`
+### Dev — `~/.config/andreas-services/humbugg/dev.env`
 
-Not `dev.env`: every machine applies the shared stack on every `dev-aws-setup.sh` run, so the values
-have to sit somewhere every machine reads, or the second developer's apply would remove the
-providers the first one added. The stack reads whatever exists under the path; a missing key is
-that provider off. Same names as the GitHub ones, kebab-case, ids `String` and secrets
-`SecureString`:
+Uncomment and fill the keys in the *Social sign-in* block (`dev.env.sample` shows them; the Apple
+key travels base64 on one line because an env file cannot hold a PEM), then re-run
+`./humbugg/scripts/dev-aws-setup.sh`. The values come from the team password manager. The pool is
+shared, so the run applies them for every machine at once, and the button is on the dev Managed
+Login page for all of them.
 
-```bash
-aws ssm put-parameter --name /humbugg/dev/social/google-client-id --type String --value 'PASTE_DEV_CLIENT_ID'
-```
+**The guard.** Every machine applies the shared stack on every run, from its own `dev.env`, and
+Terraform cannot tell "this machine has no Google keys" from "remove Google". So the script refuses
+to apply the shared stack while the pool holds a provider the machine has no id for, naming the key.
+Three ways on: put the keys in (the normal one); `--skip-shared` to use the pool exactly as it is;
+`--allow-provider-removal` to apply with only the providers this machine names — the one way to take
+a provider off the pool. All three were exercised against the live pool when this landed.
 
-```bash
-aws ssm put-parameter --name /humbugg/dev/social/google-client-secret --type SecureString --value 'PASTE_DEV_CLIENT_SECRET'
-```
-
-The full set: `google-client-id`, `google-client-secret`, `facebook-app-id`, `facebook-app-secret`,
-`apple-services-id`, `apple-team-id`, `apple-key-id`, `apple-private-key` (the `.p8` contents —
-`--value file://AuthKey_XXXXXXXXXX.p8`), `linkedin-client-id`, `linkedin-client-secret`. Add
-`--overwrite` to change one. Then `./humbugg/scripts/dev-aws-setup.sh`; it reports the providers the
-pool now has, and the button is on the dev Managed Login page for every machine at once.
+Not SSM and not GitHub, deliberately: GitHub secrets are readable only inside an Actions run, and the
+shared stack is applied from laptops; SSM would be a third place to hand-manage the same secret.
+`dev.env` is the one file a machine already has, and the password manager is where it comes from.
 
 ## Verifying
 
@@ -224,5 +221,5 @@ empty account — as they would anywhere; the fix is to sign in the old way.
 | Providers, the client's list, the trigger, its grant | `infra/modules/auth/identity_providers.tf`, `pre_sign_up.tf` |
 | The trigger and its tests | `scripts/auth-trigger/pre-sign-up.mjs`, `pre-sign-up.test.mjs` |
 | Prod values | `.github/workflows/humbugg-prod.yaml` (`TF_VAR_*`), `infra/envs/prod/variables.tf` |
-| Dev values | SSM `/humbugg/dev/social/*` → `infra/envs/dev-shared/main.tf` |
+| Dev values | `dev.env` → `scripts/dev-aws-common.sh` `add_social_login_vars` → `infra/envs/dev-shared` |
 | Disclosure | `marketing/src/pages/PrivacyPage.tsx` §2; `docs/gdpr-compliance.md` §7 says why the providers are controllers, not sub-processors |
