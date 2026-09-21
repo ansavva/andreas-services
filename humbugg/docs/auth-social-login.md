@@ -131,7 +131,16 @@ Values: `apple_services_id` = `com.humbugg.auth`, `apple_team_id`, `apple_key_id
    Save; note the **App ID** and **App Secret** (Show).
 4. **Switch the app to Live** (toggle at the top). Until it is Live only app admins and testers can
    sign in. `public_profile` and `email` are default permissions and need **no App Review**.
-   Business verification is not required for these two.
+   **Business verification IS required** — this doc first said it was not, and the Live toggle
+   refused on 2026-09-21 until the *Andreas Services* business portfolio is verified. That is
+   Meta's document flow (business registration or similar, plus a phone/domain check), reviewed in
+   days rather than minutes, run from business.facebook.com → Security Centre → *Start
+   verification*. The dev test can proceed in Development mode meanwhile — an app admin can sign in
+   to a Development-mode app — so the credentials are still worth putting in `dev.env` now.
+
+**State on 2026-09-21:** a Humbugg app already existed on the developer account and was linked to
+the new *Andreas Services* portfolio; paused at verification. Facebook Login use case, redirect
+URIs and Basic settings still to do.
 
 ### LinkedIn
 
