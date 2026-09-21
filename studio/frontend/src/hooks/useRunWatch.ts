@@ -68,12 +68,21 @@ export function useRunWatch(feedKey: QueryKey, rows: RunFeedRow[]) {
 
   useEffect(() => {
     if (!landed) return;
-    // Only the status moving is worth a rewrite — see `patchFeedRows`.
+    // Only the status moving is worth a rewrite — see `patchFeedRows`. And
+    // only FORWARD: `["run", <id>]` is shared with the opened run, which
+    // cached the record while it was still a draft. Pressing Run re-read the
+    // feed, the row came back `running`, this hook mounted the query and, the
+    // record being inside `staleTime`, read the draft off the cache — and
+    // wrote it over the row. The row went back to `draft`, the watch dropped
+    // it, and the run stayed a draft on screen until a reload. A record that
+    // is not in flight cannot move an in-flight row anywhere but landed.
     patchFeedRows(
       client,
       { queryKey: feedKey, exact: true },
       records,
-      (row, record) => record.status !== row.status,
+      (row, record) =>
+        record.status !== row.status &&
+        (inFlight(record.status) || isTerminal(record.status)),
     );
     // `records` is derived from `landed`; listing it would fire every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
