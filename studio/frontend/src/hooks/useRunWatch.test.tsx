@@ -136,3 +136,32 @@ it("patches the landed run into the cached page, keeping the cast's names", asyn
   // of a tile whose picture has not changed.
   expect(held.pages[0]!.runs[0]).toBe(rows[0]);
 });
+
+/**
+ * The bug this guards: the run was opened as a draft, so `["run", <id>]` holds
+ * a draft. Run is pressed, the feed is re-read and the row comes back
+ * `running` — and the watch, mounting on the shared key inside `staleTime`,
+ * read the cached draft and wrote it over the row. The row went back to
+ * `draft` on screen until a reload.
+ */
+it("never writes a cached draft over a row that has been sent", async () => {
+  getRun.mockResolvedValue(record("run-b", "running"));
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+  });
+  client.setQueryData(["run", "run-b"], record("run-b", "draft"));
+  const rows = [row("run-b", "running")];
+  client.setQueryData(KEY, pages(rows));
+
+  render(
+    <QueryClientProvider client={client}>
+      <Probe rows={rows} />
+    </QueryClientProvider>,
+  );
+
+  // Inside `staleTime`, so nothing is re-read; the stale draft is all it has.
+  await act(async () => {});
+  const held = client.getQueryData(KEY) as ReturnType<typeof pages>;
+  expect(held.pages[0]!.runs[0]!.status).toBe("running");
+  expect(held.pages[0]!.runs[0]).toBe(rows[0]);
+});

@@ -106,7 +106,12 @@ export function RunActionRow({
         description: (err as Error).message,
       });
     }
-    await client.invalidateQueries({ queryKey: ["runs"] });
+    // The record too: the opened run cached it as a draft, and a stale draft
+    // on the shared key is what `useRunWatch` would otherwise read first.
+    await Promise.all([
+      client.invalidateQueries({ queryKey: ["run", row.id] }),
+      client.invalidateQueries({ queryKey: ["runs"] }),
+    ]);
   }, [client, row.id, toast]);
 
   const menu: MenuAction[] = [

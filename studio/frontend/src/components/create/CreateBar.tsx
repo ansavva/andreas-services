@@ -424,6 +424,9 @@ export function CreateBar() {
           description: `${entry.key} in ${project.data?.name ?? "the project"}.`,
         });
         // Every feed and listing keyed under `runs`, and the project's counts.
+        // The draft's own record too — an edited draft was opened, so it is
+        // cached as a draft, and `useRunWatch` reads that key.
+        void queryClient.invalidateQueries({ queryKey: ["run", draft.id] });
         void queryClient.invalidateQueries({ queryKey: ["runs"] });
         void queryClient.invalidateQueries({ queryKey: ["project", target] });
         if (bar.scene) void queryClient.invalidateQueries({ queryKey: ["scene", bar.scene] });
