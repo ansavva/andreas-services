@@ -32,6 +32,7 @@ import { FrameMenu } from "../components/viewer/FrameMenu";
 import { ObjectControls, ObjectDetails } from "../components/viewer/ObjectAside";
 import { OwnerLink } from "../components/viewer/OwnerLink";
 import { ViewerFrame } from "../components/viewer/ViewerFrame";
+import { ViewerRail } from "../components/viewer/ViewerRail";
 import { useCreateBar, type AttachRole } from "../context/CreateBarContext";
 import { useFrameGrab } from "../hooks/useFrameGrab";
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
@@ -618,10 +619,7 @@ export function ObjectPage() {
 
       {/* The rail: where the file sits, what can be done to it, and what it
           says about itself. */}
-      <aside
-        aria-label="File"
-        className="flex w-full shrink-0 flex-col gap-4 border-t border-line bg-bg p-5 md:w-[360px] md:overflow-y-auto md:border-l md:border-t-0"
-      >
+      <ViewerRail aria-label="File" className="gap-4">
         {/*
           Crumbs and nothing else. What a bar can say that the column cannot
           is where the page sits — and with no crumbs (a cold `/o/<id>` link)
@@ -648,7 +646,7 @@ export function ObjectPage() {
           // already says it.
           aside={source === null ? <OwnerLink nodeId={current.id} /> : undefined}
         />
-      </aside>
+      </ViewerRail>
 
       {/* The neighbours, last in the flex — a row along the foot below `md`,
           a column down the right edge above it. See `RunStrip`. */}
