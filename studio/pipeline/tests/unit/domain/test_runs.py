@@ -486,6 +486,58 @@ def test_runs_delete_reports_a_run_that_is_not_there(library):
     assert "run-00000000" in result.output
 
 
+def test_runs_move_resolves_latest_and_carries_the_folder_to_the_destination(library):
+    """The id comes back, for the reason `runs delete` gives; the folder is
+    under the destination's `runs/`; the output node is untouched."""
+    made = E.create_project("porch-final")
+
+    result = CliRunner().invoke(
+        cli.main, ["runs", "move", "porch-teaser/latest", "--to", "porch-final"])
+
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert library.run in result.output
+    record = library.fake.runs[library.run]
+    assert record["project"] == made["id"]
+    runs_folder = library.fake._child(made["root"], "runs")
+    assert library.fake.nodes[record["folder"]]["parent_id"] == runs_folder["id"]
+    assert library.run_output in library.fake.nodes
+    assert [r["id"] for r in E.query_runs(project=made["id"])["runs"]] == [library.run]
+    assert E.query_runs(project=library.project)["runs"] == []
+
+
+def test_runs_move_takes_the_run_out_of_its_scene(library):
+    """A scene belongs to a project; the moved run leaves it and its cut."""
+    made = E.create_project("porch-final")
+    scene = E.create_scene(project=library.project, name="opening")
+    clip = E.create_run(project=library.project, kind="video", engine="kling",
+                        model="kwaivgi/kling-v3-omni-video", input={},
+                        scene=scene["id"])
+    E.patch_run(clip["id"], status="succeeded")
+    library.fake._r_scene_runs("PATCH", {"runs": [clip["id"]]}, {}, scene["id"])
+
+    result = CliRunner().invoke(cli.main, ["runs", "move", clip["id"], "--to", made["id"]])
+
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert f"left scene {scene['id']}" in result.output
+    assert library.fake.runs[clip["id"]]["scene"] is None
+    assert library.fake.scenes[scene["id"]]["runs"] == []
+
+
+def test_runs_move_to_its_own_project_says_so(library):
+    result = CliRunner().invoke(
+        cli.main, ["runs", "move", library.run, "--to", library.project])
+    assert result.exit_code == 0, result.output
+    assert "already in" in result.output
+
+
+def test_runs_move_refuses_a_project_that_is_not_there(library):
+    result = CliRunner().invoke(
+        cli.main, ["runs", "move", library.run, "--to", "no-such-project"])
+    assert result.exit_code != 0
+    assert "no-such-project" in result.output
+    assert library.fake.runs[library.run]["project"] == library.project
+
+
 # ── an unregistered model, for evaluating one before onboarding it ──────────
 
 def test_a_registry_typo_still_fails_rather_than_reaching_a_provider(library):

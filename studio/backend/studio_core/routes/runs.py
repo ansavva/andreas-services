@@ -1203,7 +1203,8 @@ def update_sends(run_id: str):
 
 @bp.patch("/runs/<run_id>")
 def update_run(run_id: str):
-    """Move a run forward: submitted, succeeded, failed, cancelled.
+    """Move a run forward: submitted, succeeded, failed, cancelled. Or, with
+    `project` alone in the body, move it to another project.
 
     **The transition out of the unsubmitted set is where a run is counted, and
     it is here rather than in the CLI on purpose.** The API is the only thing
@@ -1222,6 +1223,20 @@ def update_run(run_id: str):
     body = support.body()
     held = support.memberships()
     record = _run(run_id, held)
+
+    # **Which project this run is in — settable after creation, alone.** A
+    # move re-keys the listing row, re-parents the folder and moves a count,
+    # which is a different transaction from the field writes below; and it
+    # takes the run out of its scene, so a `scene` in the same body would be
+    # naming one in the project just left. One change per request, then.
+    if "project" in body:
+        if len(body) > 1:
+            raise ValidationError("project cannot be combined with other changes")
+        if not isinstance(body["project"], str) or not body["project"]:
+            raise ValidationError("project must be a project id")
+        destination = project_routes.project_at(body["project"], held)
+        parent = project_routes.folder_for(destination, layout.RUN_PARENT)
+        return jsonify(catalog.move_run(record, destination, parent["node_id"])), 200
 
     assignments = {}
     listing = {}

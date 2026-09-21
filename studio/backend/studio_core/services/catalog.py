@@ -2925,6 +2925,103 @@ def update_project_entity(
     return {**record, **assignments}
 
 
+def move_run(record: dict, project: dict, parent_id: str) -> dict:
+    """Carry a run into another project. Zero objects move.
+
+    **What a run's project is, spelled out, because every piece has to move:**
+    `project` on the envelope; the listing row, which lives under the OLD
+    project's partition and is what draws its grid; the run's folder, under
+    the old project's `runs/`; and one of each project's counters, if the run
+    was ever counted. All but the folder land in one transaction. The folder
+    goes second, through `move_node`, for the reason `delete_entity` gives:
+    what survives an interruption is a run whose folder still sits under the
+    old project — visible and movable by hand — rather than a folder claiming
+    a project its record disagrees with.
+
+    **The run leaves its scene.** A scene belongs to a project and a cut
+    naming a run in another project is a stitch nobody asked for, so the
+    attribute, its listing projection, its edge and — if the scene's cut named
+    it — the cut entry and the cut's edge all go in the same transaction. The
+    scene itself stays where it was; moving one is a decision on the scene.
+
+    Refuses to cross libraries, as `move_node` does and for the same reason:
+    a move that changed `lib` would change who can reach the run, and no
+    membership check on a move asks about that.
+    """
+    if project["id"] == record["project"]:
+        return {**record, "moved": False}
+    if project.get("lib") != record["lib"]:
+        raise ValidationError("a run cannot be moved into another library")
+
+    now = _now()
+    listing = _listing_row(ENTITY_RUN, record)
+    listing.pop("scene", None)
+    steps: list[tuple[dict, Exception | None]] = [
+        (
+            _update({"pk": {"S": _entity_pk(ENTITY_RUN, record["id"])}, "sk": {"S": META}},
+                    {"project": project["id"], "scene": None, "updated": now}),
+            NotFoundError(record["id"]),
+        ),
+        (_delete(_entity_pk(ENTITY_PROJECT, record["project"]),
+                 _listing_sk(ENTITY_RUN, record["created"], record["id"])), None),
+        (_put(_entity_pk(ENTITY_PROJECT, project["id"]),
+              _listing_sk(ENTITY_RUN, record["created"], record["id"]), listing), None),
+        *edge_steps(ENTITY_RUN, record["id"], record["lib"], [],
+                    links(record["id"], ENTITY_SCENE), now),
+    ]
+    scene_id = record.get("scene")
+    if scene_id:
+        scene = entity(ENTITY_SCENE, scene_id)
+        cut = scene.get("runs") or []
+        if record["id"] in cut:
+            steps.append((
+                _update({"pk": {"S": _entity_pk(ENTITY_SCENE, scene_id)}, "sk": {"S": META}},
+                        {"runs": [r for r in cut if r != record["id"]], "updated": now}),
+                NotFoundError(scene_id),
+            ))
+            steps.append((_delete(_entity_pk(ENTITY_SCENE, scene_id), edge_sk(record["id"])), None))
+    # Counted on the way out of `draft`, once — so a draft moves no number, and a
+    # submitted run moves exactly one from each card.
+    if record.get("counted"):
+        steps.append((_bump_counts(record["project"], COUNT_FIELD[ENTITY_RUN], -1),
+                      NotFoundError(record["project"])))
+        steps.append((_bump_counts(project["id"], COUNT_FIELD[ENTITY_RUN], 1),
+                      NotFoundError(project["id"])))
+
+    _write(steps)
+    move_node(record["folder"], parent_id)
+
+    logger.info("Moved run %s from project %s to %s", record["id"], record["project"],
+                project["id"])
+    return {**record, "project": project["id"], "scene": None, "updated": now,
+            "moved": True}
+
+
+def _listing_row(kind: str, record: dict) -> dict:
+    """One entity's listing row, as stored — the projection and nothing else.
+
+    Read rather than rebuilt from the envelope: which fields the row carries is
+    decided by the writers (`create_project_entity`, `update_project_entity`),
+    and a second spelling of that list here would be the one that drifts.
+    """
+    try:
+        response = dynamodb.client().get_item(
+            TableName=config.catalog_table(),
+            Key={"pk": {"S": _entity_pk(ENTITY_PROJECT, record["project"])},
+                 "sk": {"S": _listing_sk(kind, record["created"], record["id"])}},
+        )
+    except ClientError as exc:
+        logger.warning("GetItem failed for %s's listing row: %s", record["id"], exc)
+        raise UpstreamError("Could not read the catalog") from exc
+    item = response.get("Item")
+    if not item:
+        raise NotFoundError(record["id"])
+    row = _attributes(item)
+    row.pop("pk", None)
+    row.pop("sk", None)
+    return row
+
+
 def runs_using(subject_id: str) -> list[dict]:
     """Every run that used one character or one location, as envelopes.
 

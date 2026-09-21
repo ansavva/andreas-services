@@ -1447,6 +1447,23 @@ class FakeApi:
         if method == "GET":
             return self._run_view(record)
         if method == "PATCH":
+            if "project" in body:
+                # A move: alone in the body, as the real route insists, and
+                # answered with `moved` so a caller can tell a no-op apart.
+                if len(body) > 1:
+                    raise FakeError(400, "project cannot be combined with other changes")
+                project = self._entity(self.projects, body["project"], "project")
+                if project["id"] == record["project"]:
+                    return {**self._run_view(record), "moved": False}
+                runs_folder = self._folder_under(project["root"], "runs")
+                self._r_node("PATCH", {"parent": runs_folder["id"]}, {}, record["folder"])
+                scene_id = record.get("scene")
+                if scene_id and scene_id in self.scenes:
+                    scene = self.scenes[scene_id]
+                    scene["runs"] = [r for r in scene.get("runs") or [] if r != run_id]
+                record["project"] = project["id"]
+                record["scene"] = None
+                return {**self._run_view(record), "moved": True}
             # **No gate on leaving `draft`.** There is no approve step: the
             # real route counts the run on the way out and writes the status,
             # and `engine/submit.py` writes `running` or `succeeded` directly.
