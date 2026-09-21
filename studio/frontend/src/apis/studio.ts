@@ -1209,6 +1209,19 @@ export function reconcileRun(id: string) {
  * Refused outright once the run has been submitted: a plan edited afterwards
  * would sit beside `request.json` describing something that was never sent.
  */
+/**
+ * Carry a run into another project. `project` goes alone in the body — the
+ * route refuses it beside any other change — and answers the record with
+ * `moved: false` when the run was already there.
+ */
+export function moveRun(id: string, project: string) {
+  return apiSend<RunRecord & { moved: boolean }>(
+    "PATCH",
+    `/api/runs/${encodeURIComponent(id)}`,
+    { project },
+  );
+}
+
 export function patchRunPlan(id: string, plan: RunPlan) {
   return apiSend<RunRecord>(
     "PATCH",
