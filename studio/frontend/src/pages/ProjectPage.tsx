@@ -205,6 +205,7 @@ export function ProjectPage() {
           <RunFeed
             projectId={record.id}
             characters={record.characters}
+            locations={record.locations ?? []}
             heroes={heroes}
             onOpen={openRun}
           />

@@ -4,20 +4,20 @@ import type { ReactNode } from "react";
 import { EmptyState } from "../common/EmptyState";
 import { SectionHeading } from "../common/SectionHeading";
 import { SectionLoading } from "../common/SectionLoading";
-import { getCharacters, getProjects } from "../../apis/studio";
+import { getCharacters, getLocations, getProjects } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import { ENTITY_GRID } from "../../utils/grid";
-import { characterPath, projectPath } from "../../utils/location";
+import { characterPath, locationPath, projectPath } from "../../utils/location";
 import { EntityCard } from "./EntityCard";
 import { LoadError } from "../common/LoadError";
 import { CreateEntityDialog } from "./CreateEntityDialog";
 
 /**
- * The two entity lists, as sections that can be rendered anywhere.
+ * The three entity lists, as sections that can be rendered anywhere.
  *
- * They were open-coded in `HomePage` and are shared now because there are three
- * callers: home, which shows both, and the two index pages the header links to,
- * which show one each. Lifting them is what makes `/characters` a real screen
+ * They were open-coded in `HomePage` and are shared now because there are four
+ * callers: home, which shows all of them, and the three index pages the sidebar
+ * links to, which show one each. Lifting them is what makes `/characters` a real screen
  * rather than a second, subtly different copy of a list home already had.
  *
  * Each section owns its own fetch. That looks wasteful on home — two requests
@@ -36,7 +36,13 @@ import { CreateEntityDialog } from "./CreateEntityDialog";
  * page's own `PageBar primary` — and passing it a second time here would draw
  * "New project" twice, a handspan apart.
  */
-function Empty({ kind, hasPrimary }: { kind: "character" | "project"; hasPrimary: boolean }) {
+function Empty({
+  kind,
+  hasPrimary,
+}: {
+  kind: "character" | "location" | "project";
+  hasPrimary: boolean;
+}) {
   return (
     <EmptyState
       title={`No ${kind}s yet.`}
@@ -114,6 +120,38 @@ export function CharactersSection({ hasPrimary = false, heading }: SectionProps)
             hero={character.hero}
             counts={`${character.counts.default} sent · ${character.counts.files} files`}
             to={characterPath(character.id)}
+          />
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+export function LocationsSection({ hasPrimary = false, heading }: SectionProps) {
+  const { data, loading, error, reload } = useResource(
+    ["locations"],
+    useCallback(() => getLocations(), []),
+  );
+
+  return (
+    <Section
+      title="Locations"
+      count={data?.length}
+      loading={loading}
+      error={error}
+      errorTitle="Could not load locations"
+      onRetry={reload}
+      empty={<Empty kind="location" hasPrimary={hasPrimary} />}
+      heading={heading}
+    >
+      <div className={ENTITY_GRID}>
+        {(data ?? []).map((location) => (
+          <EntityCard
+            key={location.id}
+            name={location.name}
+            hero={location.hero}
+            counts={`${location.counts.default} sent · ${location.counts.files} files`}
+            to={locationPath(location.id)}
           />
         ))}
       </div>

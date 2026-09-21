@@ -7,6 +7,8 @@ import { SIGNUP_PATH, SignUpPage } from "./pages/SignUpPage";
 import { BrowsePage } from "./pages/BrowsePage";
 import { CharacterPage } from "./pages/CharacterPage";
 import { CharactersPage } from "./pages/CharactersPage";
+import { LocationPage } from "./pages/LocationPage";
+import { LocationsPage } from "./pages/LocationsPage";
 import { FavoritesPage } from "./pages/FavoritesPage";
 import { HomePage } from "./pages/HomePage";
 import { MoviePage } from "./pages/MoviePage";
@@ -28,8 +30,10 @@ import { ObjectPage } from "./pages/ObjectPage";
  * ```
  * /                       home — favorites, characters and projects
  * /favorites              every image and video this person picked out
- * /characters /projects   one list each, which the header links to
+ * /characters /locations /projects
+ *                         one list each, which the header links to
  * /c/<char_id>            character: profile, references, its folders, files
+ * /l/<loc_id>             location: the same page with a room's bible
  * /p/<proj_id>            project: the runs feed, scenes, movies, files, settings
  * /p/<proj_id>/r/<run_id> one run, opened in a lightbox over that same feed
  * /s/<scene_id>           scene
@@ -73,6 +77,7 @@ export function StudioRoutes() {
         <Route path="/favorites" element={<FavoritesPage />} />
 
         <Route path="/characters" element={<CharactersPage />} />
+        <Route path="/locations" element={<LocationsPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
         {/*
           The reference spec belongs to the LIBRARY, not to a character: one
@@ -82,6 +87,7 @@ export function StudioRoutes() {
         <Route path="/templates" element={<TemplatesPage />} />
 
         <Route path="/c/:characterId" element={<CharacterPage />} />
+        <Route path="/l/:locationId" element={<LocationPage />} />
         <Route path="/p/:projectId" element={<ProjectPage />} />
         {/* The opened run is the project page with `runId` set: `ProjectPage`
             draws `RunLightbox` over its feed, so closing the run is the feed

@@ -215,8 +215,8 @@ def build_payload(entry: dict, args) -> dict:
     imgs = entry.get("images") or {}
     for f in (imgs.get("refs"), imgs.get("start"), imgs.get("end")):
         if f and f in payload:
-            die(f"pass images via --character/--ref-run/--key (and --start-run "
-                f"for a first frame), not in the payload as `{f}`.")
+            die(f"pass images via --character/--location/--ref-run/--key (and "
+                f"--start-run for a first frame), not in the payload as `{f}`.")
     clip = REG.clip_field(entry)
     if clip and clip in payload:
         die(f"pass the clip via --clip-run/--clip-key, not in the payload as `{clip}`.")
@@ -302,6 +302,9 @@ def _refuse_a_duplicate(record: dict, args) -> None:
 @click.option("--end-run", help="An earlier run's output as the last frame (video).")
 @click.option("--extra", help="JSON object of model-specific inputs.")
 @click.option("--image-run", help="An earlier run's output as the image being edited.")
+@click.option("--location", multiple=True, help=("A location supplying the setting: its `default` images join "
+              "the reference list after the characters'. Repeatable."))
+@click.option("--location-tag", help="Comma-separated tags narrowing every --location's images (e.g. wide).")
 @click.option("--input", "input_", type=int, multiple=True, help="Image number from the PROJECT's input pool. Repeatable.")
 @click.option("--input-file", help="JSON: the Replicate `input` object WITHOUT image fields.")
 @click.option("--interval", type=int, help="Poll interval seconds.")
@@ -380,8 +383,8 @@ def cmd_run(**options):
 
     if not bindings:
         if d["require_images"] and not args.no_refs:
-            die("no image inputs. Pass --character / --ref-run / --image-run / --key, "
-                "or --no-refs for a deliberate text-only generation.")
+            die("no image inputs. Pass --character / --location / --ref-run / "
+                "--image-run / --key, or --no-refs for a deliberate text-only generation.")
         if not d["require_images"]:
             print("warning: no images bound — a character video from a bare text "
                   "prompt will not stay on-model.", file=sys.stderr)

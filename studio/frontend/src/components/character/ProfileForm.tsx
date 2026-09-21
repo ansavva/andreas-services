@@ -22,6 +22,7 @@ import type {
   ProfileValue,
 } from "../../types";
 import { humaniseKey } from "../../utils/format";
+import { CHARACTER_SCHEMA, SUMMARY_KEY, type ProfileSchema } from "./profileSchemas";
 import { AutoTextarea } from "../common/AutoTextarea";
 import { FormBar } from "../common/FormBar";
 import { ChevronDownIcon, CloseIcon, PlusIcon } from "../common/icons";
@@ -50,6 +51,12 @@ interface Props {
    * carry no hint.
    */
   template?: ProfileTemplate | null;
+  /**
+   * Which bible this is — a character's or a location's. Decides the section
+   * hints, the grouping, and the noun in every sentence. Defaults to the
+   * character's, which is what every caller was before locations existed.
+   */
+  schema?: ProfileSchema;
 }
 
 /**
@@ -80,68 +87,10 @@ const RECORD = " record";
  * regenerate it with. `GET /api/characters/<id>/textblock` returns the stored
  * paragraph, or the five sections as raw material when none is written yet.
  */
-const SUMMARY_KEY = "text_identity_block";
+// The sections, their hints and their groups live in `profileSchemas.ts` —
+// one schema per subject kind, and this form is built from whichever it is
+// handed. See there for why a section is a heading and a hint and nothing below.
 
-/** What the summary restates — the marker below watches these and nothing else. */
-const SUMMARISED = ["identity", "face", "body", "wardrobe", "consistency"] as const;
-
-/**
- * What each section is for, in one line — **and nothing below section level**.
- *
- * The form renders every field the same way, which made a nine-character
- * `rendering.default_style` that every turnaround depends on look exactly
- * as important as three thousand characters of `face` prose that no code reads
- * at all. Both are worth having; they are not the same kind of thing, and the
- * screen said nothing about which was which.
- *
- * **Section level is deliberate, and it is the compromise this file already
- * argues for elsewhere.** Naming individual fields here would make the frontend
- * a second copy of a schema the pipeline owns — a field somebody adds would need
- * a deploy to appear, and a list of "fields a shoot reads" would drift silently
- * the first time `engine/turnaround.py` changed. A sentence about what a section is
- * for changes about as often as the section does.
- *
- * A key that is not here still renders, in the order the record gave it, marked
- * off-schema. That is what `corpus` was for months: a legacy key from the
- * pre-catalog migration, sitting in the form as an equal, refused by the API on
- * every save, and looking like part of the product.
- */
-const SECTIONS: ReadonlyArray<{ key: string; hint: string }> = [
-  {
-    key: "identity",
-    hint: "The card: age, build, height read, signature features. A turnaround states apparent age and height read in the prompt, because a reference set spanning years will not agree on either.",
-  },
-  {
-    key: "face",
-    hint: "Structure, skin, eyes, hair, facial hair. No code reads this — it is what a prompt gets written from, and what a finished render is read back against.",
-  },
-  {
-    key: "body",
-    hint: "Proportions. A turnaround states them in the prompt so the angle image's own build does not decide the figure's — a face angle takes what shows above a mid-chest crop, a body angle takes all of it.",
-  },
-  {
-    key: "wardrobe",
-    hint: "What the character usually wears. A turnaround takes the first tops entry for its plain-top angle; the rest is prompt material.",
-  },
-  {
-    key: "rendering",
-    hint: "The medium the character exists in — a per-render choice rather than part of who they are, which is why it is not folded into the face and body prose. A shoot reads default_style; framing and backgrounds are prompt material, like face and voice.",
-  },
-  {
-    key: "consistency",
-    hint: "must / never / drift_modes — the checklist a render is verified against, each drift paired with the fix to write into the next prompt. A shoot puts must in the prompt itself.",
-  },
-  {
-    key: "voice",
-    hint: "Language, accent, manner, delivery. Read when a prompt carries a spoken line — Seedance generates the audio in character.",
-  },
-  {
-    key: SUMMARY_KEY,
-    hint: "A 50-70 word paragraph for engines that carry no reference images, where the character has to survive as prose. It restates the appearance sections; nothing here can write it, because studio's API calls no model.",
-  },
-];
-
-const SECTION_HINTS = new Map(SECTIONS.map((section) => [section.key, section.hint]));
 
 /**
  * The template's hint for a path, if it has one.
@@ -186,37 +135,6 @@ const FIELD_KINDS: ReadonlyArray<{ value: string; label: string; initial: Profil
   { value: "group", label: "Group of fields", initial: {} },
 ];
 
-/**
- * The sections in groups, because eight peers is a list and not a shape.
- *
- * Every top-level key was drawn identically and in whatever order DynamoDB
- * serialised the map in, so reading the screen meant holding eight unrelated
- * headings in your head and working out which mattered. They are not eight
- * unrelated things: four say what the character IS, three say how to render one
- * and how to check the result, and the last is a restatement of the first four.
- *
- * The group is presentation and only presentation — nothing about the stored
- * shape changes, and a key the API adds tomorrow lands in `OTHER` rather than
- * disappearing.
- */
-const GROUPS: ReadonlyArray<{ label: string; blurb: string; keys: readonly string[] }> = [
-  {
-    label: "Appearance",
-    blurb: "Who the character is. Style-agnostic on purpose — how to render them is the next group.",
-    keys: ["identity", "face", "body", "wardrobe"],
-  },
-  {
-    label: "Direction",
-    blurb: "How to render, and how to tell whether the render is right.",
-    keys: ["rendering", "consistency", "voice"],
-  },
-  {
-    label: "Summary",
-    blurb: "The appearance sections compressed into one pasteable paragraph.",
-    keys: [SUMMARY_KEY],
-  },
-];
-
 /** The group a key nobody planned for falls into, so it is never silently dropped. */
 const OTHER = {
   label: "Not in the schema",
@@ -235,13 +153,14 @@ const OTHER = {
  * written before a section existed should read as a shorter form, not a form
  * with a hole in it.
  */
-function groupSections(keys: readonly string[]) {
-  const groups = GROUPS.map((group) => ({
+function groupSections(schema: ProfileSchema, keys: readonly string[]) {
+  const groups = schema.groups.map((group) => ({
     ...group,
     keys: group.keys.filter((key) => keys.includes(key)),
   })).filter((group) => group.keys.length > 0);
 
-  const stray = keys.filter((key) => !SECTION_HINTS.has(key));
+  const known = new Set(schema.sections.map((section) => section.key));
+  const stray = keys.filter((key) => !known.has(key));
   return stray.length > 0 ? [...groups, { ...OTHER, keys: stray }] : groups;
 }
 
@@ -310,6 +229,7 @@ export function ProfileForm({
   conflict = null,
   onReload,
   template = null,
+  schema = CHARACTER_SCHEMA,
 }: Props) {
   const [identityDraft, setIdentityDraft] = useState<CharacterIdentity>(identity);
   const [profileDraft, setProfileDraft] = useState<CharacterProfile>(profile);
@@ -336,13 +256,20 @@ export function ProfileForm({
    * session has to be drawn — or stop being drawn — before it is saved, so
    * the walk is over what is being edited. The order is still the manifest's.
    */
-  const groups = useMemo(() => groupSections(Object.keys(profileDraft)), [profileDraft]);
+  const groups = useMemo(
+    () => groupSections(schema, Object.keys(profileDraft)),
+    [profileDraft, schema],
+  );
+  const sectionHints = useMemo(
+    () => new Map(schema.sections.map((section) => [section.key, section.hint])),
+    [schema],
+  );
   const keys = useMemo(() => groups.flatMap((group) => group.keys), [groups]);
 
   /** The schema's sections the draft does not hold — what "Add section" offers. */
   const missing = useMemo(
-    () => SECTIONS.map((section) => section.key).filter((key) => !(key in profileDraft)),
-    [profileDraft],
+    () => schema.sections.map((section) => section.key).filter((key) => !(key in profileDraft)),
+    [profileDraft, schema],
   );
 
   /**
@@ -358,10 +285,10 @@ export function ProfileForm({
    */
   const summaryStale = useMemo(
     () =>
-      SUMMARISED.some(
+      schema.summarised.some(
         (key) => JSON.stringify(profileDraft[key]) !== JSON.stringify(profile[key]),
       ),
-    [profile, profileDraft],
+    [profile, profileDraft, schema],
   );
 
   const identityDirty = useMemo(
@@ -491,7 +418,7 @@ export function ProfileForm({
           {onReload && (
             <div className="pt-2">
               <Button size="sm" onClick={onReload}>
-                Re-read the character
+                Re-read the {schema.noun}
               </Button>
             </div>
           )}
@@ -561,7 +488,7 @@ export function ProfileForm({
             onOpenChange={(next) => setOpenAt(RECORD, next)}
             innerRef={(node) => sectionRefs.current.set(RECORD, node)}
           >
-            <RecordFields value={identityDraft} onChange={setIdentityDraft} />
+            <RecordFields value={identityDraft} onChange={setIdentityDraft} hint={schema.nameHint} />
           </ProfileSection>
 
           {groups.map((group) => (
@@ -582,10 +509,11 @@ export function ProfileForm({
                   key={key}
                   id={key}
                   title={humaniseKey(key)}
-                  hint={SECTION_HINTS.get(key)}
+                  hint={sectionHints.get(key)}
                   // Only the summary carries one, and only while the sections it
                   // restates are dirty in this session.
                   stale={key === SUMMARY_KEY && summaryStale}
+                  noun={schema.noun}
                   dirty={dirtySections.has(key)}
                   open={open.has(key)}
                   onOpenChange={(next) => setOpenAt(key, next)}
@@ -620,7 +548,7 @@ export function ProfileForm({
               before a section existed, or one whose section was taken off, is
               added back from the template — its fields, not an empty group. */}
           {missing.length > 0 && (
-            <AddSection missing={missing} onAdd={addSection} />
+            <AddSection missing={missing} onAdd={addSection} noun={schema.noun} />
           )}
 
           {/*
@@ -664,6 +592,7 @@ function ProfileSection({
   title,
   hint,
   stale = false,
+  noun = "character",
   dirty,
   open,
   onOpenChange,
@@ -676,6 +605,8 @@ function ProfileSection({
   hint?: string;
   /** The summary's own flag: what it restates has moved since it was written. */
   stale?: boolean;
+  /** The CLI command group the stale note names — `studio <noun> textblock`. */
+  noun?: string;
   dirty: boolean;
   open: boolean;
   onOpenChange: (next: boolean) => void;
@@ -756,7 +687,7 @@ function ProfileSection({
                   Reread it — this paragraph is what a start-frame engine is given,
                   and nothing updates it on its own. It is written by hand, so there
                   is no regenerate: edit it here, or run{" "}
-                  <code>studio character textblock</code> for the raw material.
+                  <code>studio {noun} textblock</code> for the raw material.
                 </Alert.Description>
               </Alert.Root>
             )}
@@ -835,9 +766,11 @@ function Chevron({ open }: { open: boolean }) {
 function RecordFields({
   value,
   onChange,
+  hint,
 }: {
   value: CharacterIdentity;
   onChange: (next: CharacterIdentity) => void;
+  hint: string;
 }) {
   return (
     <>
@@ -849,7 +782,7 @@ function RecordFields({
       <Field.Root name="name">
         <Field.Label>Name</Field.Label>
         <Input value={value.name} onValueChange={(name) => onChange({ ...value, name })} />
-        <Field.Description>What this character is called. Renaming copies no objects.</Field.Description>
+        <Field.Description>{hint}</Field.Description>
       </Field.Root>
     </>
   );
@@ -1191,13 +1124,21 @@ function AddField({
  * of them. Nothing off-schema can be added here — the API refuses a section
  * it does not name, so offering one would be offering a save that fails.
  */
-function AddSection({ missing, onAdd }: { missing: readonly string[]; onAdd: (key: string) => void }) {
+function AddSection({
+  missing,
+  onAdd,
+  noun,
+}: {
+  missing: readonly string[];
+  onAdd: (key: string) => void;
+  noun: string;
+}) {
   return (
     <Card.Root className="gap-3">
       <div className="flex flex-col gap-1">
         <Text variant="title">Add a section</Text>
         <Text variant="caption" tone="muted">
-          Sections the schema names and this character does not have yet. Each comes with its
+          Sections the schema names and this {noun} does not have yet. Each comes with its
           fields.
         </Text>
       </div>

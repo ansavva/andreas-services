@@ -1,84 +1,42 @@
 """`studio character` — manage on-model characters in the media library.
 
-A character is a **row with a UUID**, not a folder with a document in it. That
-one sentence is the whole of what changed, and the docstring this replaces is
-worth quoting because every line of it is now false:
+A character is a **row with a UUID**, not a folder with a document in it:
 
-    characters/<name>/profile.yaml   the bible (SOURCE OF TRUTH), including the
-                                     DESCRIBED index of the reference library
-
-The bible is a validated `profile` map on the record; the described index is one
-`REF#` row per image; and `characters/<slug>/…` is not an address at all — a
-bucket listing carried every character's name, production ones included, which
-was hard rule #1 broken in the one place nobody looked.
-
-    the record   id, name, rev, root, hero,
-                 default_set, profile          — one row, queryable
-    the rows     one REF# per reference: group, order, description, tags,
-                 naming a NODE ID
+    the record   id, name, rev, root, hero, profile   — one row, queryable
     the tree     a folder node the record names as `root`, empty until
                  something is filed into reference/  corpus/  seed/  archive/
 
 **Those four names are a convention, not a schema, and not even a starting
-layout any more.** A character is created holding nothing — the record holds
-one node id and no map of blessed folder names — and a pool appears the first
-time something is filed into it, the way `pool_folder` resolves-or-creates by
-name. A person may rename `reference/`, delete `archive/` or add their own —
-and nothing breaks, because an image is a reference when a row says so rather
-than because of where it sits.
+layout.** A character is created holding nothing, and a pool appears the first
+time something is filed into it. An image is identity because it carries the
+`default` tag, wherever it sits — see `refs.py`.
 
-WHAT A SLUG IS NOW
-------------------
-A mutable label, unique in the library, that a person types. It is not the
-primary key and it is not in any S3 key. So `character rename` is ONE `PATCH`:
-no object is copied, no record is rewritten, and every reference, run binding
-and `default_set` entry survives untouched because all three name node ids.
-`rename.py` — a per-basename sweep across four pools plus a rewrite pass over
-every run document — is deleted, and `domain/rewrite.py` with it.
-
-THE REFERENCE LIBRARY IS INDEXED, NOT SENT WHOLE
-------------------------------------------------
-The engines cap reference images hard (Kling 7, Seedance 9, Nano Banana 14) and
-send them in full, while a character holds far more. So each reference carries a
-description and tags, `default_set` names the handful sent when nobody picks, and
-selection is by node (`--pick`), by tag (`--tag`), or by that default. An
-over-cap selection is REFUSED rather than truncated — by the API, so the CLI and
-the web app cannot disagree about which images a generation saw.
-
-Slot N is position N in the RESOLVED SELECTION. It never was a file number and
-now it cannot be mistaken for one, because filenames carry nothing.
-
-Requires a studio login (`studio login`). Not an AWS one — the CLI holds no
-cloud credentials and knows no bucket name.
+The commands are `domain/subjects.py`'s, bound to the character subject; a
+location gets the same twelve under `studio location`. Requires a studio login
+(`studio login`). Not an AWS one — the CLI holds no cloud credentials and
+knows no bucket name.
 
 Subcommands:
-  list                          Every character, with reference and file counts.
+  list                          Every character, with sent and file counts.
   show   <name>                 The record: id, rev, counts, the folders it has.
-  create <name> [--from-profile FILE] [--display-name …]
-                                The record, its slug claim, its root and four
-                                pool folders, in one transaction.
+  create <name> [--from-profile FILE]
+                                The record, its index row and its root, in one
+                                transaction.
   edit   <name>                 Round-trip the bible through
                                 local/characters/<name>.yaml.
   set-profile <name> [FILE]     Replace the bible (FILE omitted: the local copy).
   rename <old> <new>            One PATCH. Nothing moves.
+  delete <name>                 Remove the record; keeps the folder by default.
   textblock <name>              A pasteable identity paragraph.
-  add-refs <name> [FILES…] [--from-run RUNREF] --to GROUP
-                                Attach image(s) as references (hard rule #2b).
-  refs   <name> [--group G]     The described index.
+  images <name> [--tag T]       Every image under it, and how each is tagged.
   selection <name> [--pick|--tag|--limit|--slots|--presign]
                                 What a model would actually be shown.
-  set-ref-desc / describe-refs  Describe one reference, or a batch atomically.
-  order  <name> --group G NODE… Order references explicitly.
-  regroup <name> NODE… --to G   Move references between groups. No object moves.
-  detach <name> NODE…           Stop treating image(s) as identity.
-  default-set <name> NODE…      What gets sent when nobody picks.
   add-to <name> POOL FILES…     Add to a pool — any folder but reference/.
   pool   <name> POOL            List one the character has.
 
 Examples:
   studio character create <name> --from-profile /tmp/<name>.yaml
-  studio character add-refs <name> --to face --from-run <project>/latest#1
-  studio character refs <name>
+  studio character images <name>
   studio character selection <name> --tag face --limit 7 --presign
   studio character rename <name> <new-name>
 """
@@ -94,16 +52,9 @@ def main():
     pass
 
 
-# Registered here rather than declared with `@main.command` in each module.
-# The group has to exist before a decorator can attach to it, so a module that
-# decorated would have to import this one — and this one imports all of them.
-# Assembling the tree in one place is what keeps the package acyclic, and it is
-# also the only list of the whole command surface.
-#
-# `rename` moved into `profile.py` when `rename.py` was deleted: a rename is a
-# field on the record, so it belongs beside the other record commands. `regroup`
-# moved IN from `curate`, for the opposite reason — it writes no object, so it
-# was never a curation of anything on disk.
+# Assembled here rather than declared with `@main.command` in each module, so
+# this is the one list of the whole command surface. Each module exports its
+# share of the commands `subjects.commands` built for the character subject.
 for _command in (
     profile.cmd_list,
     profile.cmd_show,

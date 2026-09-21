@@ -174,10 +174,11 @@ REEL_ATTRIBUTE = "reel"
 # and it still has to be in the reel the moment they do.
 REEL_KINDS = frozenset({"image", "video"})
 
-# The five entity kinds. Ids are `<prefix>-<uuid4>`; the prefix is for a human
+# The six entity kinds. Ids are `<prefix>-<uuid4>`; the prefix is for a human
 # reading a log, and the one thing in this service that reads it back is
 # `entity_kind` — see there for why that one exception has to exist.
 ENTITY_CHARACTER = "character"
+ENTITY_LOCATION = "location"
 ENTITY_PROJECT = "project"
 ENTITY_RUN = "run"
 ENTITY_SCENE = "scene"
@@ -189,6 +190,7 @@ ENTITY_MOVIE = "movie"
 # than three that have to agree.
 ENTITY_KEYS = {
     ENTITY_CHARACTER: ("char", "CHAR#"),
+    ENTITY_LOCATION: ("loc", "LOC#"),
     ENTITY_PROJECT: ("proj", "PROJ#"),
     ENTITY_RUN: ("run", "RUN#"),
     ENTITY_SCENE: ("scene", "SCENE#"),
@@ -196,10 +198,18 @@ ENTITY_KEYS = {
 }
 _KIND_BY_ID_PREFIX = {prefix: kind for kind, (prefix, _) in ENTITY_KEYS.items()}
 
+#: The two kinds that are a SUBJECT of a generation: a record with a bible
+#: (`profile`), a tree of images, and a `default`-tagged selection a model is
+#: shown. A character is who is in the frame; a location is where the frame
+#: is. Same rows, same routes, same selection rule — one string per kind and
+#: a different profile schema is the whole of the difference, which is why
+#: `routes/subjects.py` builds both blueprints from one function.
+SUBJECT_KINDS = (ENTITY_CHARACTER, ENTITY_LOCATION)
+
 #: Which entity kinds a library lists. The sort key is the entity's own pk —
 #: `CHAR#<char_id>` under `LIB#<lib>` — so the index row and the record it points
 #: at are spelled the same way and `_member_sk` is `_entity_pk`.
-LISTED_KINDS = (ENTITY_CHARACTER, ENTITY_PROJECT)
+LISTED_KINDS = (ENTITY_CHARACTER, ENTITY_LOCATION, ENTITY_PROJECT)
 
 # The three kinds a project lists, and the folder each one's tree hangs under.
 # `services.layout` owns the folder *names*; this is only the set.
@@ -1031,9 +1041,11 @@ def _folder_node(node_id: str) -> dict:
 # presigned URL, a copy and a delete all name the recorded string and a second
 # opinion about it is a lost object.
 
-# What a character's and a project's bytes are filed under. Three prefixes in the
-# bucket and nothing else; anything owned by neither is the library's.
-OWNER_PREFIXES = {ENTITY_CHARACTER: "characters", ENTITY_PROJECT: "projects"}
+# What a character's, a location's and a project's bytes are filed under. Four
+# prefixes in the bucket and nothing else; anything owned by none is the
+# library's.
+OWNER_PREFIXES = {ENTITY_CHARACTER: "characters", ENTITY_LOCATION: "locations",
+                  ENTITY_PROJECT: "projects"}
 LIBRARY_PREFIX = "libraries"
 
 # The second segment of every key this API stamps: an entity or library id.
@@ -1042,7 +1054,7 @@ LIBRARY_PREFIX = "libraries"
 # recognised everywhere else here (`startswith("proj-")` in the CLI resolvers,
 # `entity_kind` on the same split). Pinning a uuid length would make this the
 # one place that disagrees about what an id looks like.
-_ID_PREFIXES = ("char-", "proj-", "lib-")
+_ID_PREFIXES = ("char-", "loc-", "proj-", "lib-")
 
 
 def blob_key_for(node_id: str, name: str, owner_kind: str | None, owner_id: str) -> str:
@@ -1165,9 +1177,9 @@ def owner_of(record: dict) -> dict | None:
 def _blob_owner(record: dict) -> tuple[str | None, str]:
     """The kind and id a new node's blob key is stamped from.
 
-    Only a character or a project owns bytes. A run, a scene and a movie all live
-    inside a project and their outputs are the project's — which is what keeps
-    the bucket at three prefixes rather than six.
+    Only a character, a location or a project owns bytes. A run, a scene and a
+    movie all live inside a project and their outputs are the project's — which
+    is what keeps the bucket at four prefixes rather than seven.
     """
     for entity_id in entity_chain(record):
         kind = entity_kind(entity_id)
@@ -2367,14 +2379,25 @@ def _tree_steps(parent: dict, entity_id: str, layout: tuple) -> tuple[dict, list
     return root, steps
 
 
-def create_character(
+def create_character(lib: str, parent_id: str, *, name: str, profile: dict) -> dict:
+    """`create_subject` for a character. Kept so the name a reader expects exists."""
+    return create_subject(ENTITY_CHARACTER, lib, parent_id, name=name, profile=profile)
+
+
+def create_subject(
+    kind: str,
     lib: str,
     parent_id: str,
     *,
     name: str,
     profile: dict,
 ) -> dict:
-    """A character, its library index row and its root folder — one write.
+    """A character or a location, its library index row and its root — one write.
+
+    One function for both because the rows are the same rows: a record under
+    `<KIND>#<id>` / `META`, an index row under `LIB#<lib>`, a root folder named
+    by the id. What differs is the `profile` schema, and that is validated by
+    the route, not here.
 
     **Four items in one `TransactWriteItems`**: the record, the index row, and
     two for the root. Either all of it exists or none of it does, which is the
@@ -2391,16 +2414,18 @@ def create_character(
     folder is named by the id, so both keys are minted UUIDs and the only
     conflict left is one that cannot happen.
     """
+    if kind not in SUBJECT_KINDS:
+        raise ValidationError(f"'{kind}' is not a subject kind")
     parent = _folder_node(parent_id)
     if parent["lib"] != lib:
-        raise ValidationError("a character is created in its own library")
+        raise ValidationError(f"a {kind} is created in its own library")
 
-    char_id = _mint(ENTITY_CHARACTER)
+    entity_id = _mint(kind)
     now = _now()
-    root, tree = _tree_steps(parent, char_id, ())
+    root, tree = _tree_steps(parent, entity_id, ())
 
     record = {
-        "id": char_id,
+        "id": entity_id,
         "lib": lib,
         "name": name,
         "rev": 1,
@@ -2414,16 +2439,16 @@ def create_character(
     _write(
         [
             (
-                _put(_lib_pk(lib), _member_sk(ENTITY_CHARACTER, char_id),
-                     {"entity": char_id, "created": now}),
+                _put(_lib_pk(lib), _member_sk(kind, entity_id),
+                     {"entity": entity_id, "created": now}),
                 None,
             ),
-            (_put(_entity_pk(ENTITY_CHARACTER, char_id), META, record), None),
+            (_put(_entity_pk(kind, entity_id), META, record), None),
             *tree,
         ]
     )
 
-    logger.info("Created character %s in %s", char_id, lib)
+    logger.info("Created %s %s in %s", kind, entity_id, lib)
     return record
 
 
@@ -2435,6 +2460,7 @@ def create_project(
     description: str | None,
     characters: list[str],
     layout: tuple,
+    locations: list[str] = (),
 ) -> dict:
     """A project, its index row, its root, its five subfolders and its involvements.
 
@@ -2442,7 +2468,7 @@ def create_project(
     list on the record, which is what makes the reverse question answerable: read
     forwards it is "who is in this project", and read backwards on `by-sk` it is
     "which projects involve this character" — which a list on the record could
-    not answer.
+    not answer. `locations` are the same rows one prefix over.
     """
     parent = _folder_node(parent_id)
     if parent["lib"] != lib:
@@ -2477,11 +2503,13 @@ def create_project(
             *[
                 (
                     _put(_entity_pk(ENTITY_PROJECT, proj_id),
-                         f"{ENTITY_KEYS[ENTITY_CHARACTER][1]}{char_id}",
+                         f"{ENTITY_KEYS[target_kind][1]}{target_id}",
                          {"lib": lib, "created": now}),
                     None,
                 )
-                for char_id in characters
+                for target_kind, targets in ((ENTITY_CHARACTER, characters),
+                                             (ENTITY_LOCATION, locations))
+                for target_id in targets
             ],
         ]
     )
@@ -2677,6 +2705,11 @@ def set_project_characters(project_id: str, lib: str, characters: list[str]) -> 
     return set_edges(ENTITY_PROJECT, project_id, lib, ENTITY_CHARACTER, characters)
 
 
+def set_project_locations(project_id: str, lib: str, locations: list[str]) -> list[str]:
+    """Replace a project's location links — the same edge, one prefix over."""
+    return set_edges(ENTITY_PROJECT, project_id, lib, ENTITY_LOCATION, locations)
+
+
 # ──────────────────── runs, scenes and movies ────────────────────
 #
 # The three kinds a project holds. All of them are an **envelope**: the fields
@@ -2714,12 +2747,14 @@ def _listing_sk(kind: str, created: str, entity_id: str) -> str:
 def _edge_targets(attributes: dict) -> list[str]:
     """Every entity id an envelope points at, flattened for `edge_steps`.
 
-    `characters`, `scenes` and `runs` are lists of ids and `scene` is one, and
-    each is an edge like any other — "which runs used this character" is the
-    same question as "which projects involve this character", asked one prefix
-    over, and "which runs are in this scene" is the same one again.
+    `characters`, `locations`, `scenes` and `runs` are lists of ids and `scene`
+    is one, and each is an edge like any other — "which runs used this
+    character" is the same question as "which projects involve this character",
+    asked one prefix over, "which runs were shot in this location" one prefix
+    over again, and "which runs are in this scene" the same one once more.
     """
     return [*(attributes.get("characters") or []),
+            *(attributes.get("locations") or []),
             *(attributes.get("scenes") or []),
             *(attributes.get("runs") or []),
             *([attributes["scene"]] if attributes.get("scene") else [])]
@@ -2890,12 +2925,14 @@ def update_project_entity(
     return {**record, **assignments}
 
 
-def runs_for_character(char_id: str) -> list[dict]:
-    """Every run that used one character, as envelopes.
+def runs_using(subject_id: str) -> list[dict]:
+    """Every run that used one character or one location, as envelopes.
 
-    One `by-sk` query for the ids, one batched read for the records.
+    One `by-sk` query for the ids, one batched read for the records. The edge
+    is `RUN#<run>` / `<KIND>#<subject>` either way, so the query does not care
+    which kind it was handed.
     """
-    run_ids = linked(char_id, ENTITY_RUN)
+    run_ids = linked(subject_id, ENTITY_RUN)
     found = entities_by_id(ENTITY_RUN, run_ids)
     return sorted(found.values(), key=lambda record: record.get("created") or "", reverse=True)
 
@@ -2987,6 +3024,7 @@ def source_of(record: dict) -> dict:
     run's `output/` reports the run, not the project the run sits in.
 
         {"kind": "character", "character": …, "group": "face", "order": 3000}
+        {"kind": "location",  "location": …}
         {"kind": "run",       "run": …,       "output": 2}
         {"kind": "input-pool", "project": …,  "position": 4}
         {"kind": "object"}
@@ -3006,6 +3044,8 @@ def source_of(record: dict) -> dict:
         # its own `tags`, which every listing already carries — so saying it
         # here would be a second copy of a fact that has one home.
         return {"kind": "character", "character": owner}
+    if kind == ENTITY_LOCATION:
+        return {"kind": "location", "location": owner}
 
     if kind == ENTITY_RUN:
         source = {"kind": "run", "run": owner}

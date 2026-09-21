@@ -1168,3 +1168,67 @@ def test_a_placeholder_name_is_not_a_name(dev_stack):
     paths = ds.name_paths(library)
 
     assert ds.name_problems(paths, library) == []
+
+
+# ── locations ───────────────────────────────────────────────────────────────
+#
+# A location is the second subject kind: the same record as a character under
+# `LOC#`, a bible of its own, bytes under `locations/`. A fixture may carry one
+# beside a character, and a project may say it is shot there.
+
+
+def _with_a_location():
+    catalog, manifest = _good()
+    catalog["version"] = 3
+    for entity in catalog["entities"]:
+        entity["name"] = entity.pop("display_name", None) or entity.pop("title", None) or entity["slug"]
+        entity.pop("slug", None)
+        entity.pop("references", None)
+        entity.pop("default_set", None)
+    catalog["entities"].append({
+        "kind": "location", "name": "dev-kitchen", "root": "dev-kitchen",
+        "profile": {"space": {"layout": "an L"}},
+    })
+    catalog["entities"][1]["locations"] = ["dev-kitchen"]
+    catalog["nodes"] += [
+        {"path": "dev-kitchen", "kind": "folder",
+         "created_at": "2026-08-19T09:12:44.000004+00:00"},
+        {"path": "dev-kitchen/wide.png", "kind": "file",
+         "source": "v1/media/wide.png", "content_type": "image/png",
+         "tags": ["default", "wide"],
+         "created_at": "2026-08-19T09:12:44.000005+00:00"},
+    ]
+    manifest["objects"]["v1/media/wide.png"] = {"size": 12, "sha256": "cd" * 32}
+    manifest["object_count"] = 2
+    manifest["total_bytes"] = 22
+    return catalog, manifest
+
+
+def test_a_location_loads_under_its_own_prefix_with_its_bytes_and_its_edge():
+    catalog, manifest = _with_a_location()
+    assert ds.problems(catalog, manifest) == []
+
+    items = ds.rows(catalog, manifest, BUCKET, ds.library_id(BUCKET), "sub-owner")
+    root = ds.node_id(BUCKET, "dev-kitchen")
+    loc = CM.entity_id("location", root)
+    assert loc.startswith("loc-")
+
+    record = _find(items, f"LOC#{loc}", "META")
+    assert record["name"] == "dev-kitchen"
+    assert record["profile"] == {"space": {"layout": "an L"}}
+    assert _find(items, f"LIB#{ds.library_id(BUCKET)}", f"LOC#{loc}") is not None
+
+    wide = _find(items, f"NODE#{ds.node_id(BUCKET, 'dev-kitchen/wide.png')}", "META")
+    assert wide["blob_key"].startswith(f"locations/{loc}/")
+
+    project = CM.entity_id("project", ds.node_id(BUCKET, "porch-teaser"))
+    assert _find(items, f"PROJ#{project}", f"LOC#{loc}") is not None
+    character = CM.entity_id("character", ds.node_id(BUCKET, "subject-a"))
+    assert _find(items, f"PROJ#{project}", f"CHAR#{character}") is not None
+
+
+def test_a_project_shot_in_a_location_the_fixture_lacks_is_refused():
+    catalog, manifest = _with_a_location()
+    catalog["entities"][1]["locations"] = ["nowhere"]
+    problems = ds.problems(catalog, manifest)
+    assert any("not a location in this fixture" in each for each in problems), problems

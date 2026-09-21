@@ -22,10 +22,12 @@ import { PromotePanel } from "./PromotePanel";
 export function PromoteDrawer({
   asset,
   runCharacters,
+  runLocations = [],
   onClose,
 }: {
   asset: RunAsset;
   runCharacters: string[];
+  runLocations?: string[];
   onClose: () => void;
 }) {
   const dirty = useRef(false);
@@ -50,6 +52,7 @@ export function PromoteDrawer({
         <PromotePanel
           asset={asset}
           runCharacters={runCharacters}
+          runLocations={runLocations}
           onClose={onClose}
           onDirtyChange={(next) => {
             dirty.current = next;

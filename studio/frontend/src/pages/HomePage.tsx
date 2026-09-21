@@ -1,4 +1,4 @@
-import { CharactersSection, ProjectsSection } from "../components/entity/EntitySections";
+import { CharactersSection, LocationsSection, ProjectsSection } from "../components/entity/EntitySections";
 import { FavoritesSection } from "../components/favorites/FavoritesSection";
 import { PageBar } from "../components/layout/PageBar";
 
@@ -36,6 +36,7 @@ export function HomePage() {
 
       <FavoritesSection variant="preview" />
       <CharactersSection />
+      <LocationsSection />
       <ProjectsSection />
     </>
   );

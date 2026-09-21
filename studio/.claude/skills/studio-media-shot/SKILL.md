@@ -109,6 +109,12 @@ Choose the identity source deliberately:
 - **New scene** (a gym, a poolside, anywhere not already photographed) → the
   **reference subset**, via `--character {name}` (plus `--pick-tag` when the
   default set is not the right one for this shot).
+- **A scene in a housed set** (a room that is a location — see
+  `studio-media-location`) → add `--location {place}` beside the character,
+  narrowed with `--location-tag wide` for the establishing vantage. The set's
+  views then hold the room on-model the way the reference set holds the face,
+  and the prompt names the vantage and the lighting state instead of
+  describing the room again.
 - **Editing an existing frame** → that frame from the **project's input pool**,
   via `--input N`. Do **not** pass `--character` as well; it drags the whole
   identity set into an edit that only needs one image.

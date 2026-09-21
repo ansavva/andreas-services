@@ -111,6 +111,8 @@ export interface FeedFilters {
   /** `image`, `video`, or both when empty — the run's kind, `?kind=` on the route. */
   kind: string;
   character: string;
+  /** Where it was shot — `?location=` on the route, the same query as `character` one prefix over. */
+  location: string;
   model: string;
   since: string;
   q: string;
@@ -135,6 +137,7 @@ export function useFeedFilters() {
   const [status, setStatus] = useSearchParamState("status", "");
   const [kind, setKind] = useSearchParamState("kind", "");
   const [character, setCharacter] = useSearchParamState("character", "");
+  const [location, setLocation] = useSearchParamState("location", "");
   const [model, setModel] = useSearchParamState("model", "");
   const [since, setSince] = useSearchParamState("since", "");
   const [q, setQ] = useSearchParamState("q", "");
@@ -152,7 +155,7 @@ export function useFeedFilters() {
   const clear = useCallback(() => {
     const next = new URLSearchParams(searchParams);
     // `scene` is not cleared: it is where the feed IS, not a filter on it.
-    for (const key of ["status", "kind", "character", "model", "since", "q"])
+    for (const key of ["status", "kind", "character", "location", "model", "since", "q"])
       next.delete(key);
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
@@ -162,12 +165,13 @@ export function useFeedFilters() {
       status,
       kind,
       character,
+      location,
       model: model.trim(),
       since,
       q: q.trim(),
       scene,
     }),
-    [character, kind, model, q, scene, since, status],
+    [character, kind, location, model, q, scene, since, status],
   );
 
   return {
@@ -175,12 +179,13 @@ export function useFeedFilters() {
     setStatus,
     setKind,
     setCharacter,
+    setLocation,
     setModel,
     setSince,
     setQ,
     setScene,
     clear,
-    activeCount: [status, kind, character, model.trim(), since].filter(Boolean)
+    activeCount: [status, kind, character, location, model.trim(), since].filter(Boolean)
       .length,
   };
 }
@@ -217,6 +222,7 @@ export function useRunFeed(projectId: string, filters: FeedFilters) {
         ...(filters.kind ? { kind: filters.kind } : {}),
         ...(filters.model ? { model: filters.model } : {}),
         ...(filters.character ? { character: filters.character } : {}),
+        ...(filters.location ? { location: filters.location } : {}),
         ...(filters.since ? { since: filters.since } : {}),
         ...(filters.q ? { q: filters.q } : {}),
         ...(filters.scene ? { scene: filters.scene } : {}),
@@ -240,6 +246,8 @@ interface Props {
   projectId: string;
   /** The project's characters, so the filter offers names rather than ids. */
   characters: Array<{ id: string; name: string }>;
+  /** Where the project is shot, for the same reason. Absent on an older capture. */
+  locations?: Array<{ id: string; name: string }>;
   /** Every character's card image by id, for the cast chips. */
   heroes: Record<string, HeroImage | null>;
   /** Open a run — the row's press, and a tile's. */
@@ -258,7 +266,7 @@ interface Props {
  * A run in flight draws full-size shimmering tiles with the aperture spinner
  * and the seconds since it went out, and the feed polls until it lands.
  */
-export function RunFeed({ projectId, characters, heroes, onOpen }: Props) {
+export function RunFeed({ projectId, characters, locations = [], heroes, onOpen }: Props) {
   const filters = useFeedFilters();
   const feed = useRunFeed(projectId, filters.applied);
   const [model, setModel] = useState(filters.applied.model);
@@ -352,6 +360,27 @@ export function RunFeed({ projectId, characters, heroes, onOpen }: Props) {
               />
             </Field.Root>
           </div>
+
+          {/* Only when the project is shot somewhere: a filter with one
+              option — "Any location" — is a control that does nothing. */}
+          {locations.length > 0 && (
+            <div className="min-w-48">
+              <Field.Root name="location">
+                <Field.Label>Location</Field.Label>
+                <Select
+                  options={[
+                    { value: "", label: "Any location" },
+                    ...locations.map((each) => ({
+                      value: each.id,
+                      label: each.name,
+                    })),
+                  ]}
+                  value={filters.applied.location}
+                  onValueChange={filters.setLocation}
+                />
+              </Field.Root>
+            </div>
+          )}
 
           <div className="min-w-56 flex-1">
             <Field.Root name="model">
@@ -645,6 +674,7 @@ function FeedRow({
         <PromoteDrawer
           asset={promoting}
           runCharacters={row.characters}
+          runLocations={row.locations ?? []}
           onClose={() => setPromoting(null)}
         />
       )}

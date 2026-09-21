@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 vi.mock("../../apis/studio", () => ({
   getCharacters: vi.fn().mockResolvedValue([]),
+  getLocations: vi.fn().mockResolvedValue([]),
   getProjects: vi.fn().mockResolvedValue([]),
   // The account menu reads this. See `AccountMenu.test.tsx`.
   getAccount: vi.fn().mockResolvedValue({ name: null, avatar_url: null, updated_at: null }),
@@ -56,7 +57,7 @@ it("holds the search and no create bar — that is a sheet at the foot of the co
   const header = screen.getByRole("banner");
   expect(header.querySelector("[data-create-bar]")).toBeNull();
   expect(
-    within(header).getAllByRole("combobox", { name: "Find a character or project" }).length,
+    within(header).getAllByRole("combobox", { name: "Find a character, location or project" }).length,
   ).toBeGreaterThan(0);
 });
 
@@ -73,7 +74,7 @@ it("Search opens a drawer holding the same combobox, autofocused", () => {
 
   const dialog = screen.getByRole("dialog", { name: "Search" });
   const combobox = within(dialog).getByRole("combobox", {
-    name: "Find a character or project",
+    name: "Find a character, location or project",
   });
   expect(document.activeElement).toBe(combobox);
 });

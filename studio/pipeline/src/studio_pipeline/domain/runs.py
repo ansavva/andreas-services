@@ -200,7 +200,7 @@ def record_request(
     input: dict, bindings: dict | None = None, prompt_source: dict | None = None,
     characters: list[str] | None = None, plan: dict | None = None,
     sends: list[dict] | None = None, name: str | None = None,
-    scene: str | None = None,
+    scene: str | None = None, locations: list[str] | None = None,
 ) -> dict:
     """Create the run as a DRAFT. **Called before the submission.**
 
@@ -209,7 +209,7 @@ def record_request(
     record, and a store that recorded nothing until success would lose exactly
     the runs worth investigating.
 
-    `project` and each entry in `characters` are ids. Resolving a slug is the
+    `project` and each entry in `characters` and `locations` are ids. Resolving a slug is the
     caller's job, done once, because a caller that has resolved a project
     usually needs the record for something else too.
 
@@ -226,8 +226,8 @@ def record_request(
         return entities.create_run(
             project=project, kind=kind, engine=engine, model=model,
             input=input, bindings=clean, plan=plan, sends=sends,
-            characters=characters or [], prompt=prompt_source, name=name,
-            scene=scene)
+            characters=characters or [], locations=locations or [],
+            prompt=prompt_source, name=name, scene=scene)
     except api.ApiError as exc:
         raise RunError(str(exc)) from exc
 
@@ -361,6 +361,17 @@ def _character_address(character: str | None) -> str | None:
         raise RunError(str(exc)) from exc
 
 
+def _location_address(location: str | None) -> str | None:
+    """The same, for a location."""
+    if not location or location.startswith("loc-"):
+        return location
+    try:
+        return P.by_name(entities.list_subjects(entities.LOCATIONS), location,
+                         "location")["id"]
+    except P.PathError as exc:
+        raise RunError(str(exc)) from exc
+
+
 def resolve_output_nodes(ref: str, default_project: str | None = None,
                          kinds: set[str] | None = None) -> list[str]:
     """The NODE IDS of a runref's output — what chaining consumes.
@@ -469,12 +480,13 @@ def _row(record: dict) -> str:
 @click.argument("project", required=True)
 @click.option("--character", help="Only runs that used this character.")
 @click.option("--json", "json_", is_flag=True)
+@click.option("--location", help="Only runs shot in this location.")
 @click.option("--model", help="Only runs on this model (e.g. google/nano-banana-pro).")
 @click.option("--scene", help="Only runs made for this scene: <name>, latest, or scene-<uuid>.")
 @click.option("--since", help="Only runs created at or after this ISO timestamp.")
 @click.option("--status", help="pending | running | succeeded | failed | cancelled.")
 @reports(RunError, api.ApiError)
-def do_list(project, character, json_, model, scene, since, status):
+def do_list(project, character, json_, location, model, scene, since, status):
     """A project's runs, newest first. Every filter is one query, not a walk."""
     project_id = _address(project)
     if scene:
@@ -484,6 +496,7 @@ def do_list(project, character, json_, model, scene, since, status):
     found = list_runs(
         project_id,
         character=_character_address(character),
+        location=_location_address(location),
         model=model, status=status, since=since, scene=scene or None)
     if json_:
         # The projection carries no `project`; the query did, so each row can
@@ -500,25 +513,32 @@ def do_list(project, character, json_, model, scene, since, status):
 
 
 @main.command("find")
-@click.option("--character", required=True)
+@click.option("--character", help="Every run that used this character.")
 @click.option("--json", "json_", is_flag=True)
+@click.option("--location", help="Every run shot in this location.")
 @click.option("--project", multiple=True, help="Limit to these projects. Repeatable.")
 @reports(RunError, api.ApiError)
-def do_find(character, json_, project):
-    """Every run that used a character, across every project.
+def do_find(character, json_, location, project):
+    """Every run that used a character, or was shot in a location, across every project.
 
-    **One API query.** `--project` is a filter applied to that query.
+    **One API query.** `--project` is a filter applied to that query. One of
+    `--character` and `--location`, not both: each is its own `by-sk` query,
+    and the intersection is `runs list <project> --character … --location …`.
     """
-    address = _character_address(character)
-    if project:
-        hits = [r for p in project for r in find_runs(character=address,
-                                                      project=_address(p))]
+    if bool(character) == bool(location):
+        raise RunError("pass exactly one of --character or --location")
+    if character:
+        subject, filters = character, {"character": _character_address(character)}
     else:
-        hits = find_runs(character=address)
+        subject, filters = location, {"location": _location_address(location)}
+    if project:
+        hits = [r for p in project for r in find_runs(**filters, project=_address(p))]
+    else:
+        hits = find_runs(**filters)
     if json_:
         print(json.dumps(hits, indent=2))
     else:
-        print("\n".join(_row(r) for r in hits) or f"(no runs recorded {character})")
+        print("\n".join(_row(r) for r in hits) or f"(no runs recorded {subject})")
 
 
 @main.command("show")

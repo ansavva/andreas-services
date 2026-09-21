@@ -313,6 +313,12 @@ def gather(entry: dict, args) -> dict:
     for character in (args.character or []):
         nodes += REFS.character_ref_nodes(character, slots, pick, tags,
                                           cap=cap, cap_name=entry["key"])
+    # Where the frame is, after who is in it: a location's views join the same
+    # reference list, so the prompt cites them by the slot they land in.
+    location_tags = ([t.strip() for t in args.location_tag.split(",")]
+                     if getattr(args, "location_tag", None) else None)
+    for location in (getattr(args, "location", None) or []):
+        nodes += REFS.location_ref_nodes(location, location_tags, cap=cap)
     for ref in getattr(args, "ref_run", None) or []:
         nodes += R.resolve_output_nodes(ref, project["id"], kinds=exts)
     # `input_`, because `input` shadows the builtin and Click was given the safe
@@ -732,6 +738,7 @@ def draft(entry: dict, payload: dict, bindings: dict, args) -> dict:
     # still OF that character — and `runs find --character` is how that
     # association is read back. Hence the explicit override.
     characters = list(getattr(args, "record_characters", None) or args.character or [])
+    locations = list(getattr(args, "location", None) or [])
     try:
         return R.record_request(
             project["id"], kind=kind, engine=entry["skill"],
@@ -740,6 +747,7 @@ def draft(entry: dict, payload: dict, bindings: dict, args) -> dict:
             plan=plan_of(entry, payload),
             sends=sends_for(entry, bindings),
             characters=REFS.character_ids(characters),
+            locations=REFS.location_ids(locations),
             prompt_source=prompt_source,
             # The scene this run is made for, resolved by the caller. A run
             # belongs to at most one, and the row is where that lives.
@@ -756,7 +764,7 @@ def draft(entry: dict, payload: dict, bindings: dict, args) -> dict:
     except R.RunError as e:
         raise SubmitError(f"refusing to record an invalid request: {e}")
     except REFS.RefError as e:
-        raise SubmitError(f"refusing to record a run against an unknown character: {e}")
+        raise SubmitError(f"refusing to record a run against an unknown subject: {e}")
 
 
 def execute(entry: dict, payload: dict, bindings: dict, args,

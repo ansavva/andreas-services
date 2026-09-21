@@ -208,6 +208,7 @@ class FakeApi:
         self.lib = "lib-" + str(uuid.uuid4())
         self.nodes: dict[str, dict] = {}
         self.characters: dict[str, dict] = {}
+        self.locations: dict[str, dict] = {}
         self.projects: dict[str, dict] = {}
         self.runs: dict[str, dict] = {}
         self.scenes: dict[str, dict] = {}
@@ -288,6 +289,7 @@ class FakeApi:
             entity = node.get("entity")
             if entity:
                 for kind, table in (("character", self.characters),
+                                    ("location", self.locations),
                                     ("project", self.projects)):
                     if entity in table:
                         return {"kind": kind, "id": entity,
@@ -300,7 +302,7 @@ class FakeApi:
         if owner is None:
             prefix = f"libraries/{self.lib}"
         else:
-            prefix = f"{'characters' if owner['kind'] == 'character' else 'projects'}/{owner['id']}"
+            prefix = f"{owner['kind']}s/{owner['id']}"
         return f"{prefix}/{node['id']}{_ext(node['name'])}"
 
     #: The one listing. `GET /api/tree` and `GET /api/reel` were folded into it
@@ -442,7 +444,7 @@ class FakeApi:
         node = self.nodes.get(node_id)
         if node is None:
             return 0
-        for entity_table in (self.characters, self.projects):
+        for entity_table in (self.characters, self.locations, self.projects):
             for entity in entity_table.values():
                 if entity.get("root") == node_id:
                     raise FakeError(
@@ -563,15 +565,15 @@ class FakeApi:
             (r"/api/nodes/([^/]+)/text", self._r_text),
             (r"/api/nodes/([^/]+)/owner", self._r_node_owner),
             (r"/api/nodes/([^/]+)", self._r_node),
-            (r"/api/characters", self._r_characters),
-            (r"/api/characters/([^/]+)/selection", self._r_selection),
-            (r"/api/characters/([^/]+)/textblock", self._r_textblock),
-            (r"/api/characters/([^/]+)/profile", self._r_profile),
-            (r"/api/characters/([^/]+)/runs", self._r_character_runs),
-            (r"/api/characters/([^/]+)/projects", self._r_character_projects),
-            (r"/api/characters/([^/]+)", self._r_character),
+            (r"/api/(characters|locations)", self._r_subjects),
+            (r"/api/(characters|locations)/([^/]+)/selection", self._r_selection),
+            (r"/api/(characters|locations)/([^/]+)/textblock", self._r_textblock),
+            (r"/api/(characters|locations)/([^/]+)/profile", self._r_profile),
+            (r"/api/(characters|locations)/([^/]+)/runs", self._r_subject_runs),
+            (r"/api/(characters|locations)/([^/]+)/projects", self._r_subject_projects),
+            (r"/api/(characters|locations)/([^/]+)", self._r_subject),
             (r"/api/projects", self._r_projects),
-            (r"/api/projects/([^/]+)/characters", self._r_project_characters),
+            (r"/api/projects/([^/]+)/(characters|locations)", self._r_project_subjects),
             (r"/api/projects/([^/]+)/inputs", self._r_project_inputs),
             (r"/api/projects/([^/]+)/runs", self._r_project_runs),
             (r"/api/projects/([^/]+)/scenes", self._r_project_scenes),
@@ -857,7 +859,33 @@ class FakeApi:
     def _r_node_owner(self, method, body, params, node_id):
         return self._owner(node_id) or {}
 
-    # ── characters ──────────────────────────────────────────────────────────
+    # ── subjects: characters and locations ──────────────────────────────────
+    #
+    # One set of handlers for both, keyed by the URL segment — as the service
+    # builds both blueprints from one function. What differs is the table, the
+    # id prefix and the bible's sections.
+
+    #: What `clean_profile` accepts per kind, mirrored from `routes/characters.py`
+    #: and `routes/locations.py`. Validated here for the same reason the PUT
+    #: refusal is: a fake looser than the service cannot fail the way the
+    #: service does.
+    SUBJECTS = {
+        "characters": ("character", "char-",
+                       ("identity", "face", "body", "wardrobe", "voice",
+                        "rendering", "consistency", "text_identity_block"),
+                       ("identity", "face", "body", "wardrobe", "consistency")),
+        "locations": ("location", "loc-",
+                      ("identity", "space", "dressing", "lighting", "palette",
+                       "rendering", "consistency", "text_identity_block"),
+                      ("identity", "space", "dressing", "lighting", "palette",
+                       "consistency")),
+    }
+
+    def _table(self, segment: str) -> dict:
+        return self.characters if segment == "characters" else self.locations
+
+    def _subject(self, segment: str, ref: str) -> dict:
+        return self._entity(self._table(segment), ref, self.SUBJECTS[segment][0])
 
     def _char_view(self, record: dict) -> dict:
         files = [n for n in self.nodes.values()
@@ -868,15 +896,17 @@ class FakeApi:
                                  if "default" in (n.get("tags") or []))}
         return {**{k: v for k, v in record.items() if k != "_"}, "counts": counts}
 
-    def _r_characters(self, method, body, params):
+    def _r_subjects(self, method, body, params, segment):
+        kind, prefix, _sections, _bearing = self.SUBJECTS[segment]
+        table = self._table(segment)
         if method == "GET":
             query = params.get("q")
-            return [self._char_view(c) for c in self.characters.values()
+            return [self._char_view(c) for c in table.values()
                     if not query or query in (c.get("name") or "").lower()]
         if method != "POST":
             raise FakeError(405, method)
         name = body["name"]
-        char_id = "char-" + str(uuid.uuid4())
+        char_id = prefix + str(uuid.uuid4())
         # **The root folder is named by the ID**, as the service names it. It took
         # the slug once; a folder name is unique among its siblings, so naming it
         # by a free-text label would refuse the second character called `Anna`.
@@ -889,12 +919,13 @@ class FakeApi:
                   "schema_version": 2, "rev": 1,
                   "created": _now(), "updated": _now(),
                   "root": root["id"], "hero": None,
-                  "profile": self._clean_profile(body.get("profile"))}
-        self.characters[char_id] = record
+                  "profile": self._clean_profile(segment, body.get("profile"))}
+        table[char_id] = record
         return self._char_view(record)
 
-    def _r_character(self, method, body, params, ref):
-        record = self._entity(self.characters, ref, "character")
+    def _r_subject(self, method, body, params, segment, ref):
+        table = self._table(segment)
+        record = self._subject(segment, ref)
         if method == "GET":
             return self._char_view(record)
         if method == "PATCH":
@@ -905,31 +936,23 @@ class FakeApi:
             return self._char_view(record)
         if method == "DELETE":
             if params.get("files") == "delete":
-                self.characters.pop(record["id"])
+                table.pop(record["id"])
                 self._delete_node(record["root"])
             else:
-                self.characters.pop(record["id"])
+                table.pop(record["id"])
                 self.nodes[record["root"]].pop("entity", None)
             return {"deleted": record["id"]}
         raise FakeError(405, method)
 
-    #: What `clean_profile` accepts, mirrored from `backend/studio_core/routes/
-    #: characters.py`. Validated here for the same reason the PUT refusal is: a
-    #: fake looser than the service cannot fail the way the service does, and
-    #: `schema_version` rode back out in the `edit` round trip for exactly as
-    #: long as the verb kept the request from ever being read.
-    PROFILE_SECTIONS = ("identity", "face", "body", "wardrobe", "voice",
-                        "rendering", "consistency", "text_identity_block")
-
-    def _clean_profile(self, raw):
+    def _clean_profile(self, segment, raw):
         if raw is None:
             return {}
-        unknown = sorted(set(raw) - set(self.PROFILE_SECTIONS))
+        unknown = sorted(set(raw) - set(self.SUBJECTS[segment][2]))
         if unknown:
             raise FakeError(400, f"profile has no section called {unknown[0]!r}")
         return raw
 
-    def _r_profile(self, method, body, params, ref):
+    def _r_profile(self, method, body, params, segment, ref):
         """Replace or merge, told apart by the body's key — never by the verb.
 
         **This used to accept `PUT` for the replace**, which is how the adapter
@@ -938,7 +961,7 @@ class FakeApi:
         API it stands in for cannot fail the one way that matters, so the two
         refusals below are the point of this handler rather than trimmings.
         """
-        record = self._entity(self.characters, ref, "character")
+        record = self._subject(segment, ref)
         if method != "PATCH":
             raise FakeError(405, method)
         replacing, merging = "profile" in body, "patch" in body
@@ -947,9 +970,9 @@ class FakeApi:
         if not replacing and not merging:
             raise FakeError(400, "send profile to replace, or patch to merge")
         self._bump(record, body.get("rev"))
-        record["profile"] = (self._clean_profile(body["profile"]) if replacing
+        record["profile"] = (self._clean_profile(segment, body["profile"]) if replacing
                              else {**record["profile"],
-                                   **self._clean_profile(body["patch"])})
+                                   **self._clean_profile(segment, body["patch"])})
         return self._char_view(record)
 
     def _ref_file(self, entry: dict) -> dict:
@@ -1015,14 +1038,14 @@ class FakeApi:
                 "description": node.get("description"),
                 "url": f"memory://{node.get('blob_key')}"}
 
-    def _r_selection(self, method, body, params, ref):
+    def _r_selection(self, method, body, params, segment, ref):
         """Two sources: `pick` names images, anything else is tags, none is `default`.
 
         The refusal is the interesting half: over-cap comes back 409 with the
         candidates in the body rather than truncated, because which images a
         generation saw must not be decided by whatever a listing returned.
         """
-        record = self._entity(self.characters, ref, "character")
+        record = self._subject(segment, ref)
         pick = [p for p in (params.get("pick") or "").split(",") if p]
         tags = [t for t in (params.get("tag") or "").split(",") if t]
 
@@ -1063,8 +1086,8 @@ class FakeApi:
             "source": source,
         }
 
-    def _r_textblock(self, method, body, params, ref):
-        record = self._entity(self.characters, ref, "character")
+    def _r_textblock(self, method, body, params, segment, ref):
+        record = self._subject(segment, ref)
         profile = record.get("profile") or {}
         # `<>` is the blank template's unfilled block, and the route empties it
         # before answering so that a caller never has to know the placeholder.
@@ -1073,20 +1096,19 @@ class FakeApi:
             authored = ""
         return {"id": record["id"], "text": authored,
                 "raw": {} if authored else
-                       {k: profile[k] for k in
-                        ("identity", "face", "body", "wardrobe", "consistency")
+                       {k: profile[k] for k in self.SUBJECTS[segment][3]
                         if profile.get(k)}}
 
-    def _r_character_runs(self, method, body, params, ref):
-        record = self._entity(self.characters, ref, "character")
+    def _r_subject_runs(self, method, body, params, segment, ref):
+        record = self._subject(segment, ref)
         return {"runs": [self._run_row(r) for r in self._sorted_runs()
-                         if record["id"] in (r.get("characters") or [])],
+                         if record["id"] in (r.get(segment) or [])],
                 "cursor": None}
 
-    def _r_character_projects(self, method, body, params, ref):
-        record = self._entity(self.characters, ref, "character")
+    def _r_subject_projects(self, method, body, params, segment, ref):
+        record = self._subject(segment, ref)
         return [self._project_view(p) for p in self.projects.values()
-                if record["id"] in (p.get("characters") or [])]
+                if record["id"] in (p.get(segment) or [])]
 
     # ── projects ────────────────────────────────────────────────────────────
 
@@ -1108,6 +1130,11 @@ class FakeApi:
                      "name": self.characters[c]["name"]}
                     for c in record.get("characters") or []
                     if c in self.characters
+                ],
+                "locations": [
+                    {"id": c, "name": self.locations[c]["name"]}
+                    for c in record.get("locations") or []
+                    if c in self.locations
                 ]}
 
     def _r_projects(self, method, body, params):
@@ -1123,7 +1150,8 @@ class FakeApi:
         record = {"id": proj_id, "lib": self.lib, "name": name, "rev": 1,
                   "description": body.get("description") or "",
                   "created": _now(), "updated": _now(), "root": root["id"],
-                  "hero": None, "characters": list(body.get("characters") or [])}
+                  "hero": None, "characters": list(body.get("characters") or []),
+                  "locations": list(body.get("locations") or [])}
         self.projects[proj_id] = record
         return self._project_view(record)
 
@@ -1163,12 +1191,13 @@ class FakeApi:
             return {"deleted": record["id"], "id": record["id"], "removed": removed}
         raise FakeError(405, method)
 
-    def _r_project_characters(self, method, body, params, ref):
+    def _r_project_subjects(self, method, body, params, ref, segment):
         record = self._entity(self.projects, ref, "project")
-        unknown = [c for c in body["characters"] if c not in self.characters]
+        kind = self.SUBJECTS[segment][0]
+        unknown = [c for c in body[segment] if c not in self._table(segment)]
         if unknown:
-            raise FakeError(404, f"no such character(s): {', '.join(unknown)}")
-        record["characters"] = list(body["characters"])
+            raise FakeError(404, f"no such {kind}(s): {', '.join(unknown)}")
+        record[segment] = list(body[segment])
         return self._project_view(record)
 
     def _r_project_inputs(self, method, body, params, ref):
@@ -1246,6 +1275,7 @@ class FakeApi:
                 # Always present, `None` included — the real route says a run
                 # with no scene has `scene: null` rather than no key.
                 "scene": record.get("scene"),
+                "locations": list(record.get("locations") or []),
                 "outputs": [{"node": n, "name": self.nodes.get(n, {}).get("name"),
                              "size": self.nodes.get(n, {}).get("size"),
                              "url": f"memory://{self.nodes.get(n, {}).get('blob_key')}"}
@@ -1324,6 +1354,10 @@ class FakeApi:
                 char = self._entity(self.characters, params["character"], "character")
                 found = [r for r in found
                          if char["id"] in (r.get("characters") or [])]
+            if params.get("location"):
+                place = self._entity(self.locations, params["location"], "location")
+                found = [r for r in found
+                         if place["id"] in (r.get("locations") or [])]
             for field in ("model", "status", "fingerprint", "scene"):
                 if params.get(field):
                     found = [r for r in found if r.get(field) == params[field]]
@@ -1382,6 +1416,7 @@ class FakeApi:
                   "prediction_id": None, "created": _now(), "submitted": None,
                   "completed": None,
                   "characters": list(body.get("characters") or []),
+                  "locations": list(body.get("locations") or []),
                   "scene": scene,
                   "folder": folder["id"], "outputs": [],
                   "cost": None, "error": None, "payload": payload,
@@ -1428,7 +1463,7 @@ class FakeApi:
                     record["counted"] = True
                     record["submitted"] = record.get("submitted") or _now()
             for field in ("status", "prediction_id", "error", "cost", "completed",
-                          "submitted", "outputs"):
+                          "submitted", "outputs", "characters", "locations"):
                 if field in body:
                     record[field] = body[field]
             if "scene" in body:

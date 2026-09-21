@@ -3,9 +3,9 @@ import { useNavigate } from "react-router-dom";
 
 import { Combobox, type ComboboxOption } from "@ansavva/design-system";
 
-import { getCharacters, getProjects } from "../../apis/studio";
+import { getCharacters, getLocations, getProjects } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
-import { characterPath, projectPath } from "../../utils/location";
+import { characterPath, locationPath, projectPath } from "../../utils/location";
 
 /**
  * Jump to a character or a project by name.
@@ -48,6 +48,7 @@ export function HeaderSearch({
   const [value, setValue] = useState("");
 
   const characters = useResource(["characters"], useCallback(() => getCharacters(), []));
+  const locations = useResource(["locations"], useCallback(() => getLocations(), []));
   const projects = useResource(["projects"], useCallback(() => getProjects(), []));
 
   /**
@@ -64,12 +65,16 @@ export function HeaderSearch({
         value: characterPath(each.id),
         label: each.name,
       })),
+      ...(locations.data ?? []).map((each) => ({
+        value: locationPath(each.id),
+        label: each.name,
+      })),
       ...(projects.data ?? []).map((each) => ({
         value: projectPath(each.id),
         label: each.name,
       })),
     ],
-    [characters.data, projects.data],
+    [characters.data, locations.data, projects.data],
   );
 
   return (
@@ -77,8 +82,8 @@ export function HeaderSearch({
       <Combobox
         options={options}
         value={value}
-        placeholder="Find a character or project…"
-        aria-label="Find a character or project"
+        placeholder="Find a character, location or project…"
+        aria-label="Find a character, location or project"
         autoFocus={autoFocus}
         onValueChange={(next: string) => {
           setValue("");

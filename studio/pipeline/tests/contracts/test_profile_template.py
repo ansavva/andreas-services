@@ -12,12 +12,20 @@ list of maps is compared by its first entry, which is the one the json keeps.
 
 import json
 
+import pytest
 import yaml
 
 from studio_pipeline import STUDIO_DIR
 
-YAML = STUDIO_DIR / "pipeline" / "src" / "studio_pipeline" / "domain" / "templates" / "profile.yaml"
-JSON = STUDIO_DIR / "backend" / "studio_core" / "profile_template.json"
+TEMPLATES = STUDIO_DIR / "pipeline" / "src" / "studio_pipeline" / "domain" / "templates"
+BACKEND = STUDIO_DIR / "backend" / "studio_core"
+
+#: One pair per subject kind. A location's bible is seeded the same two ways a
+#: character's is, so the same contract holds it.
+PAIRS = {
+    "character": (TEMPLATES / "profile.yaml", BACKEND / "profile_template.json"),
+    "location": (TEMPLATES / "location.yaml", BACKEND / "location_template.json"),
+}
 
 
 def _shape(value):
@@ -29,17 +37,21 @@ def _shape(value):
     return None
 
 
-def test_the_api_blank_bible_has_the_yaml_template_keys():
-    authored = yaml.safe_load(YAML.read_text(encoding="utf-8"))
+@pytest.mark.parametrize("kind", sorted(PAIRS))
+def test_the_api_blank_bible_has_the_yaml_template_keys(kind):
+    yaml_path, json_path = PAIRS[kind]
+    authored = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
     authored.pop("name")  # promoted to the record; not part of `profile`
-    seeded = json.loads(JSON.read_text(encoding="utf-8"))["profile"]
+    seeded = json.loads(json_path.read_text(encoding="utf-8"))["profile"]
     assert _shape(seeded) == _shape(authored)
 
 
-def test_every_leaf_the_yaml_explains_has_a_hint():
+@pytest.mark.parametrize("kind", sorted(PAIRS))
+def test_every_leaf_the_yaml_explains_has_a_hint(kind):
     """A `<placeholder>` in the yaml is a hint in the json, keyed without indexes."""
-    hints = json.loads(JSON.read_text(encoding="utf-8"))["hints"]
-    authored = yaml.safe_load(YAML.read_text(encoding="utf-8"))
+    yaml_path, json_path = PAIRS[kind]
+    hints = json.loads(json_path.read_text(encoding="utf-8"))["hints"]
+    authored = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
 
     def walk(value, path):
         if isinstance(value, dict):

@@ -10,13 +10,13 @@ import {
   buttonClass,
 } from "@ansavva/design-system";
 
-import { createCharacter, createProject } from "../../apis/studio";
-import { characterPath, projectPath } from "../../utils/location";
+import { createCharacter, createLocation, createProject } from "../../apis/studio";
+import { characterPath, locationPath, projectPath } from "../../utils/location";
 import { cancelClass } from "../common/cancelClass";
 import { PlusIcon } from "../common/icons";
 
 interface Props {
-  kind: "character" | "project";
+  kind: "character" | "location" | "project";
 }
 
 /**
@@ -49,7 +49,9 @@ export function CreateEntityDialog({ kind }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isCharacter = kind === "character";
+  // A character and a location are both SUBJECTS: named, no description, the
+  // bible filled in on their own page. A project is the odd one out.
+  const isCharacter = kind !== "project";
   const trimmed = name.trim();
 
   function reset() {
@@ -65,9 +67,12 @@ export function CreateEntityDialog({ kind }: Props) {
     setBusy(true);
     setError(null);
     try {
-      if (isCharacter) {
+      if (kind === "character") {
         const record = await createCharacter({ name: trimmed });
         navigate(characterPath(record.id));
+      } else if (kind === "location") {
+        const record = await createLocation({ name: trimmed });
+        navigate(locationPath(record.id));
       } else {
         const record = await createProject({
           ...(trimmed ? { name: trimmed } : {}),
@@ -112,7 +117,13 @@ export function CreateEntityDialog({ kind }: Props) {
           <Input
             value={name}
             onValueChange={setName}
-            placeholder={isCharacter ? "How they are written about" : "What this is called"}
+            placeholder={
+              kind === "character"
+                ? "How they are written about"
+                : kind === "location"
+                  ? "What the place is called"
+                  : "What this is called"
+            }
             autoFocus
           />
           {!isCharacter && (

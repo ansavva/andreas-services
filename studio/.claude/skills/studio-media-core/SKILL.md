@@ -77,7 +77,9 @@ never imply a yes to where it lands.
 
 Image inputs: `--character <name>` (repeatable — one piece of work can involve
 several) · `--pick` / `--pick-tag` / `--slots` to choose from that character's
-reference index · `--ref-run` · `--image-run` · `--input N` (the **project's**
+reference index · `--location <place>` (repeatable; its `default` views land
+after the characters') · `--location-tag` to narrow every location to a
+vantage · `--ref-run` · `--image-run` · `--input N` (the **project's**
 working pool) · `--key`. Video first/last frame: `--start-run` / `--start-key` /
 `--end-run` / `--end-key`, which error clearly when aimed at a model that has no
 such field.

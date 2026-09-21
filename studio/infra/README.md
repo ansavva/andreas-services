@@ -183,6 +183,7 @@ prefixes, and a key is three segments:
 ```
 s3://studio-prod-media-us-east-1/
   characters/<char id>/<node id>.<ext>    bytes owned by a character
+  locations/<loc id>/<node id>.<ext>      bytes owned by a location
   projects/<proj id>/<node id>.<ext>      bytes owned by a project
                                           (runs, scenes, movies, inputs)
   libraries/<lib id>/<node id>.<ext>      owned by neither: the angle images,

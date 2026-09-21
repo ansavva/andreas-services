@@ -15,8 +15,8 @@ import uuid
 #: derived from one is unique across buckets without naming a bucket here.
 NAMESPACE = uuid.NAMESPACE_URL
 
-KIND_PREFIX = {"character": "char", "project": "proj", "run": "run",
-               "scene": "scene", "movie": "movie"}
+KIND_PREFIX = {"character": "char", "location": "loc", "project": "proj",
+               "run": "run", "scene": "scene", "movie": "movie"}
 
 # The `pk` partition each entity kind gets.
 

@@ -57,7 +57,7 @@ beforeEach(() => {
 });
 
 describe("the sections", () => {
-  it("lists the six destinations, in the mockup's order", () => {
+  it("lists the seven destinations, in the mockup's order", () => {
     open();
     const nav = screen.getByRole("navigation", { name: "Sections" });
     const labels = within(nav)
@@ -69,6 +69,7 @@ describe("the sections", () => {
       // that is about the person rather than about the library.
       "Favorites",
       "Characters",
+      "Locations",
       "Projects",
       "Files",
       "Templates",
@@ -80,6 +81,8 @@ describe("the sections", () => {
     ["/favorites", "Favorites"],
     ["/characters", "Characters"],
     ["/c/char-1", "Characters"],
+    ["/locations", "Locations"],
+    ["/l/loc-1", "Locations"],
     ["/projects", "Projects"],
     ["/p/proj-1", "Projects"],
     ["/p/proj-1/r/run-1", "Projects"],

@@ -75,7 +75,21 @@ conditional on anything any more.
 
 ## The data model
 
-One table (D1), all five entity types (D3).
+One table (D1), all six entity types (D3).
+
+**A character and a location are the two SUBJECT kinds** (added 2026-09-20).
+A location is the same record as a character — a name, a `rev`, a `root`, a
+`hero`, a validated `profile` map, and images under the root whose `default`
+tag says which ones a generation is shown — with a bible of what is fixed
+(`space`), what could move (`dressing`), where the light comes from
+(`lighting`), `palette`, `rendering` with named camera `vantages`, and
+`consistency`; no `face`, no `wardrobe`, no `voice`. Group tags are the
+vantages: `wide`, `reverse`, `detail`. Every row shape, edge and route below
+that names a character has a location twin one prefix over — `LOC#` for
+`CHAR#`, `/api/locations` for `/api/characters`, `locations` beside
+`characters` on a project and a run — built by the same code
+(`routes/subjects.py`, `domain/subjects.py`), so the table is written once
+here and read twice.
 
 ### Entities
 
@@ -83,6 +97,7 @@ One table (D1), all five entity types (D3).
 Library    lib-…      the sharing unit; has members
  ├ Node    node-…     a folder or a file, with a parent
  ├ Character char-…   who a subject is
+ ├ Location loc-…     where a frame is — a room, a set, a street
  ├ Project  proj-…    a unit of production
  ├ Run      run-…     one submission to a model
  ├ Scene    scene-…   an ordered series of runs, cut into one take
@@ -103,13 +118,17 @@ parses it.
 | Node — by id | `NODE#<node_id>` | `META` | exists |
 | **Character** | `CHAR#<char_id>` | `META` | the record |
 | **Character index** | `LIB#<lib>` | `CHAR#<char_id>` | the list-characters query |
+| **Location** | `LOC#<loc_id>` | `META` | the record — a character's shape, a room's bible |
+| **Location index** | `LIB#<lib>` | `LOC#<loc_id>` | the list-locations query |
 | ~~**Reference entry**~~ | ~~`CHAR#<char_id>`~~ | ~~`REF#<node_id>`~~ | **superseded** — identity is `default` + a group tag on the node |
 | **Project** | `PROJ#<proj_id>` | `META` | the record |
 | **Project index** | `LIB#<lib>` | `PROJ#<proj_id>` | the list-projects query |
 | **Project ↔ character** | `PROJ#<proj_id>` | `CHAR#<char_id>` | involvement; reverse-queryable |
+| **Project ↔ location** | `PROJ#<proj_id>` | `LOC#<loc_id>` | where it is shot; reverse-queryable |
 | **Run** | `RUN#<run_id>` | `META` | the envelope |
 | **Run in project** | `PROJ#<proj_id>` | `RUN#<created>#<run_id>` | list a project's runs, newest first, paginated |
 | **Run ↔ character** | `RUN#<run_id>` | `CHAR#<char_id>` | which characters a run used |
+| **Run ↔ location** | `RUN#<run_id>` | `LOC#<loc_id>` | where a run was shot (`locations` on the record) |
 | **Scene** | `SCENE#<scene_id>` | `META` | |
 | **Scene in project** | `PROJ#<proj_id>` | `SCENE#<created>#<scene_id>` | |
 | ~~**Shot**~~ | ~~`SCENE#<scene_id>`~~ | ~~`SHOT#<shot_id>`~~ | **superseded** — a shot is a run in the scene's cut |
@@ -365,11 +384,12 @@ Entity-prefixed keys (D2), and nothing below the prefix but the node
 
 ```
 characters/<char_id>/<node_id>.<ext>   bytes owned by a character
+locations/<loc_id>/<node_id>.<ext>     bytes owned by a location
 projects/<proj_id>/<node_id>.<ext>     bytes owned by a project (runs, scenes, movies, inputs)
 libraries/<lib_id>/<node_id>.<ext>     bytes under the library root, owned by neither
 ```
 
-Three prefixes and nothing else. No `blobs/`, no `phrasebook/`, no top-level
+Four prefixes and nothing else. No `blobs/`, no `phrasebook/`, no top-level
 `config/`. **Three segments always** — no slug, no folder path, and no filename:
 
 ```
@@ -476,6 +496,17 @@ moves with it.
 | `GET /api/characters/<id>/runs` | `?cursor=` → runs that used this character, newest first |
 | `GET /api/characters/<id>/projects` | projects that involve it |
 
+### Locations
+
+Every route above, under `/api/locations`, answering the same shapes — the two
+blueprints are built by one function. What differs: `POST` seeds from
+`location_template.json`; `PATCH …/profile` admits the location's sections and
+refuses `face`; `…/textblock` hands back `space`, `dressing`, `lighting`,
+`palette` and `consistency` as raw material. A project takes `locations` beside
+`characters` on create and `PATCH /api/projects/<id>/locations` replaces them;
+a run takes `locations` on create and on `PATCH`, and `GET /api/runs?location=`
+is one `by-sk` query.
+
 ### Projects
 
 | Route | Body / params → result |
@@ -558,10 +589,9 @@ records     runs      list · show · find · outputs · adopt         list/find
             projects  list · new · show · edit · rename · delete · link · unlink
                       inputs · add-inputs
 
-characters  character list · create · show · edit · set-profile · rename · delete
-                      refs · add-refs · describe-refs · set-ref-desc · sync-refs
-                      order · regroup · default-set · textblock · shoot
-                      pool · add-to
+subjects    character list · create · show · edit · set-profile · rename · delete
+                      textblock · images · selection · pool · add-to
+            location  the same twelve — one command tree, built twice
             curate    dedupe · groups · move
             contact-sheet
 
@@ -582,8 +612,9 @@ reachable from everywhere.
 
 | URL | Screen |
 |---|---|
-| `/` | Home — Characters, Projects, and Recent (the reel) |
+| `/` | Home — Favorites, Characters, Locations, Projects |
 | `/c/<char_id>` | Character page |
+| `/l/<loc_id>` | Location page — the character page with a room's bible |
 | `/p/<proj_id>` | Project page |
 | `/p/<proj_id>/r/<run_id>` | Run page |
 | `/s/<scene_id>` · `/m/<movie_id>` | Scene, Movie |

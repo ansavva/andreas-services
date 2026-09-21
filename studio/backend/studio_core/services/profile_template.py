@@ -1,4 +1,4 @@
-"""The blank bible — the shape a character starts with, and a hint per field.
+"""The blank bible — the shape a subject starts with, and a hint per field.
 
 **`profile_template.json` sits beside `models.json` and is the pipeline's
 `templates/profile.yaml` with the placeholders taken out.** The yaml is what
@@ -10,12 +10,16 @@ tree with every placeholder emptied and the placeholder's words kept as a
 (`wardrobe.tops.item`, not `wardrobe.tops.0.item`), so the SPA can draw the
 words under the field instead of inside it.
 
+**`location_template.json` is the same arrangement for a location**, derived
+from `templates/location.yaml`. One file per subject kind, keyed by
+`catalog.SUBJECT_KINDS`, and the same contract test holds each pair together.
+
 A list of maps keeps one blank entry rather than none: the entry is the only
 record of what a `tops` item or a `drift_modes` row holds, and the form adds
 entries by copying the first.
 
 **Two copies of one shape, held together by a test.** The API validates a
-bible by section and by nothing below it (`routes/characters.py`), so the
+bible by section and by nothing below it (`routes/subjects.py`), so the
 field names here are a starting point and not a rule — a person may add to or
 take from any section, and the form lets them. What must not drift is the
 sections and the fields the pipeline's engines actually read
@@ -32,21 +36,29 @@ import copy
 import json
 import pathlib
 
-PATH = pathlib.Path(__file__).resolve().parent.parent / "profile_template.json"
+_HERE = pathlib.Path(__file__).resolve().parent.parent
 
-_DOC = json.loads(PATH.read_text(encoding="utf-8"))
+#: One blank bible per subject kind. Spelled by kind name rather than imported
+#: from `catalog` so this module stays free of boto3 — it is loaded by the
+#: pipeline's fake API too.
+PATHS = {
+    "character": _HERE / "profile_template.json",
+    "location": _HERE / "location_template.json",
+}
+
+_DOCS = {kind: json.loads(path.read_text(encoding="utf-8")) for kind, path in PATHS.items()}
 
 
-def blank_profile() -> dict:
+def blank_profile(kind: str = "character") -> dict:
     """A fresh copy of the blank bible — every section, every field empty."""
-    return copy.deepcopy(_DOC["profile"])
+    return copy.deepcopy(_DOCS[kind]["profile"])
 
 
-def hints() -> dict[str, str]:
+def hints(kind: str = "character") -> dict[str, str]:
     """One line per field on what goes in it, keyed by dotted path."""
-    return dict(_DOC["hints"])
+    return dict(_DOCS[kind]["hints"])
 
 
-def template() -> dict:
-    """What `GET /api/characters/profile-template` answers with."""
-    return {"profile": blank_profile(), "hints": hints()}
+def template(kind: str = "character") -> dict:
+    """What `GET /api/<kind>s/profile-template` answers with."""
+    return {"profile": blank_profile(kind), "hints": hints(kind)}

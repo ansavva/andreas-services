@@ -1,35 +1,37 @@
-"""What every part of the character record needs: the record, and its pools.
+"""What every part of the character record needs: the SUBJECT, and its pools.
 
-**Nothing here builds a key.** The bible is a field on the record, not an
-object in the bucket (`profile.py`); a reference's group and order are tags on
-the file, so a filename carries nothing; and a pool is a **node**, resolved
-under the record's `root` and made if absent. `upload_file` takes the id of
-the folder to write into, because every caller already holds a node and none
-of them should be composing a string that the next rename invalidates.
+A character is one of the two subjects `domain/subjects.py` knows how to
+manage — the other is a location — and this module is where the character
+half is declared: which API segment, which id prefix, which yaml template,
+which keys that template has. Every function `curate`, `contact_sheet` and
+`engine/refs.py` import from here is the generic one bound to `SUBJECT`.
 
 **The four pools are a convention, not a schema — and not even something
 `POST /api/characters` creates any more.** `POOLS` is what the CLI prints back
 as a suggestion; a character is created holding none of them, and a pool
 appears the first time something is filed into it. Nothing afterwards requires
-any of them to exist: a person may rename `reference/`, delete `archive/` or
-add their own folder, and an image is a reference because a tag on it says so
-rather than because of where it sits. `pool_folder` therefore *ensures* rather
-than *asserts* — the self-healing the spec's layout section describes, and now
-the only thing that ever makes one of these folders at all.
+any of them to exist, and an image is a reference because a tag on it says so
+rather than because of where it sits.
 
 Nothing here reaches AWS. `entities` and `store` are both HTTP.
 """
 from __future__ import annotations
 
-import mimetypes
-import os
-from pathlib import Path
-
-
 from studio_pipeline import STUDIO_DIR
-from studio_pipeline.adapters import api, entities, store
 from studio_pipeline.domain import TEMPLATES_DIR
 from studio_pipeline.domain import paths as P
+from studio_pipeline.domain import subjects as S
+from studio_pipeline.domain.subjects import (
+    IMG_EXTS,
+    pool_folder,
+    pool_names,
+    pool_nodes,
+    pool_tree_nodes,
+    read_text,
+    require_pool,
+    upload_file,
+    write_text,
+)
 from studio_pipeline.errors import die
 
 # `TEMPLATES_DIR`, not `__file__` arithmetic: counting path segments is right
@@ -40,158 +42,60 @@ TEMPLATE = str(TEMPLATES_DIR / "profile.yaml")
 LOCAL_DIR = str(STUDIO_DIR / "local" / "characters")
 NAME_RE = P.NAME_RE
 
-IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
-
 # A character starts with none of these; they are FOUR CONVENTIONAL NAMES, made
 # on first use, and what distinguishes them is what they are FOR:
 #
-#   reference/  imagery that says who the character IS. The `REF#` rows point
-#               at files that conventionally live here, in purpose subfolders,
-#               because a model takes only a handful at once (Kling 7,
-#               Seedance 9, Nano Banana 14) and a character holds far more.
+#   reference/  imagery that says who the character IS — conventionally, since
+#               the `default` tag is what makes an image identity wherever it sits.
 #   corpus/     collected images and video of or for the character — uploads,
 #               keeper clips. Material, not identity.
 #   seed/       the founding real-world source photos. Small, historical,
 #               never sent to a model by default.
 #   archive/    retired material. NEVER referenced unless the user asks for it
 #               by name — that is the whole point of it having a name.
-#
-# A tuple of names, not a `{pool: {"folder": pool}}` map: nothing wants a pool
-# to have a different folder name from its own. The project's `input/` pool
-# (`projects.py`) is a separate thing entirely — working material for a piece
-# of work, not anything about a character.
 POOLS = P.CHAR_POOLS
+
+# The keys of the DOCUMENT a person edits — the bible as one map, which is the
+# shape `load_profile` returns and the shape `edit` round-trips. It is the
+# record's `profile` plus the promoted `name`.
+PROFILE_KEYS = (
+    "name",
+    "identity",
+    "face",
+    "body",
+    "wardrobe",
+    "voice",
+    "rendering",
+    "consistency",
+    "text_identity_block",
+)
+
+SUBJECT = S.Subject(
+    kind="character",
+    segment="characters",
+    id_prefix="char-",
+    cli="character",
+    template=TEMPLATE,
+    local_dir=LOCAL_DIR,
+    profile_keys=PROFILE_KEYS,
+    group_example="face",
+    pools=POOLS,
+    next_step="seed photos with `studio character add-to {name} seed <img>...`",
+)
+
+
+#: The twelve `studio character` commands, built ONCE. `profile`, `refs` and
+#: `pools` each export their share under the names `cli.py` assembles.
+COMMANDS = S.commands(SUBJECT)
 
 
 def resolve(character: str) -> dict:
-    """An id, or a name matched client-side -> the character record.
-
-    **An id is one call; a name is two.** A name is a free-text label: it
-    identifies nothing, two characters may share one, and the API will not
-    resolve it — so this lists and matches, and refuses an ambiguous name with
-    the ids rather than picking one.
-
-    Raises `api.NotFound` rather than dying, because every caller has a better
-    message than this one does: `character list` for a person, `RefError` for
-    the engine.
-    """
-    if character and character.startswith("char-"):
-        return entities.get_character(character)
-    try:
-        found = P.by_name(entities.list_characters(), character, "character")
-    except P.PathError as exc:
-        raise api.NotFound(str(exc), 404) from exc
-    return entities.get_character(found["id"])
-
-
-def pool_folder(record: dict, pool: str) -> dict:
-    """The node of one pool folder, created if it is not there.
-
-    **Ensuring, not asserting.** The pools are a starting layout; a route or a
-    command that cannot find its conventional folder is entitled to make one
-    and never to guess, because nothing structural hangs off the folder.
-    Deleting `archive/` and then archiving something is a folder appearing, not
-    an error.
-    """
-    return store.ensure_child_folder(record["root"], pool)
-
-
-def pool_names(record: dict) -> list[str]:
-    """The folder names under the character's root — the pools it actually has."""
-    return sorted(n["name"] for n in store.children_of(record["root"])
-                  if n.get("kind") == "folder")
-
-
-def require_pool(record: dict, pool: str) -> dict:
-    """The node of one pool folder, or a refusal naming the pools that exist.
-
-    The read-side twin of `pool_folder`. A command that only LISTS a pool
-    must not make one: a pool is any folder name now, so `pool <name> sede`
-    would otherwise leave an empty `sede/` behind where the `click.Choice`
-    used to catch the typo.
-    """
-    found = store.child(record["root"], pool)
-    if found is None or found.get("kind") != "folder":
-        have = pool_names(record)
-        die(f"{record['name']} has no pool {pool!r} "
-            f"(has: {', '.join(f'{n}/' for n in have) or 'no folders'})")
-    return found
-
-
-def pool_nodes(record: dict, pool: str, group: str | None = None) -> list[dict]:
-    """The file nodes in a pool, natural-sorted, optionally one level deeper.
-
-    `group` reaches a subfolder of the pool — `reference/face/` — and exists for
-    `curate`, which still works a folder at a time because deduplicating means
-    reading bytes and reading a whole subtree's worth is what it is trying to
-    avoid.
-
-    The natural sort stays even though ordering does not depend on filenames:
-    a person reading `character pool <name> seed` wants `_2` before `_10`, and
-    `store.files_of` is where that lives.
-    """
-    folder = pool_folder(record, pool)
-    if group:
-        folder = store.ensure_child_folder(folder["id"], group)
-    return store.files_of(folder["id"])
-
-
-def pool_tree_nodes(record: dict, pool: str) -> list[dict]:
-    """Every file node in a pool INCLUDING its subfolders, each carrying a `path`.
-
-    `pool_nodes` reads one folder, and `--group` reaches exactly one named
-    subfolder of it. Both are the right shape for `curate`, which works a folder
-    at a time on purpose. They are the wrong shape for a caller asking "what
-    material does this character have", because a pool is a tree: `seed/` grows
-    an `original/`, a `restored/` and a folder per age as soon as anyone tidies
-    it, and a listing of the root then answers with whatever was never filed.
-
-    That silence is what this exists to end. A turnaround resolved seed identity
-    through the root listing alone, so a folder of restored photographs one
-    level down was invisible to it — not refused, not mentioned, simply absent
-    from the pool it believed it had read, while `--seed-pick` rejected every one
-    of their names as "not in seed/". A pool bigger than an angle sends is a
-    question for a person (`_too_many` asks it); a pool bigger than the code can
-    see is not a question at all.
-
-    The `path` on each entry is relative to the pool — `restored/<file>` one
-    folder down, the bare basename at the root — so a name is unambiguous even
-    when two folders hold the same one.
-    """
-    return store.walk_files_of(pool_folder(record, pool)["id"])
-
-
-def upload_file(parent_id: str, local: str, name: str | None = None,
-                content_type: str | None = None) -> dict:
-    """Upload one local file INTO a folder node, and return the node it made.
-
-    **Takes an id, not a name path.** A path like
-    `characters/<name>/reference/<group>/<basename>` is three facts a rename
-    can invalidate and one that a person chose; this takes the folder the
-    caller already resolved and the basename the file already has.
-
-    The basename is kept. Renaming an arriving file would throw away the only
-    thing its name records, and ordering is a row attribute.
-    """
-    source = Path(local)
-    filename = name or source.name
-    ct = content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
-    return store.upload_into(parent_id, filename, source, content_type=ct)
-
-
-def read_text(path: str) -> str:
-    with open(path, encoding="utf-8") as fh:
-        return fh.read()
-
-
-def write_text(path: str, text: str) -> None:
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(text)
+    """An id, or a name matched client-side -> the character record."""
+    return S.resolve(SUBJECT, character)
 
 
 __all__ = [
-    "IMG_EXTS", "LOCAL_DIR", "NAME_RE", "POOLS", "TEMPLATE", "die",
-    "pool_folder", "pool_names", "pool_nodes", "read_text", "require_pool",
-    "resolve", "upload_file", "write_text",
+    "COMMANDS", "IMG_EXTS", "LOCAL_DIR", "NAME_RE", "POOLS", "PROFILE_KEYS", "SUBJECT", "TEMPLATE",
+    "die", "pool_folder", "pool_names", "pool_nodes", "pool_tree_nodes", "read_text",
+    "require_pool", "resolve", "upload_file", "write_text",
 ]

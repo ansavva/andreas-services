@@ -3,6 +3,9 @@ import type {
   AssetResponse,
   CharacterRecord,
   CharacterProfile,
+  LocationProfile,
+  LocationRecord,
+  LocationSummary,
   ProfileTemplate,
   CharacterSummary,
   CopiedNodes,
@@ -754,6 +757,84 @@ type EntityPatch<T> = Partial<T> & { id: string; rev: number };
  * the response itself; a caller that only reports needs to say more than the
  * code word.
  */
+// ---------------------------------------------------------------------------
+// Locations — the same routes one segment over.
+//
+// A location is served by the same blueprint builder as a character
+// (`routes/subjects.py`), so every wrapper below is its character twin with
+// `/api/locations` in place of `/api/characters` and nothing else changed.
+// Spelled out rather than parameterised by segment so a call site reads as
+// what it asks for, and so a type checker sees `LocationRecord` go in and out.
+// ---------------------------------------------------------------------------
+
+/** Every location in the library, with a signed hero URL per card. */
+export function getLocations(q?: string) {
+  return apiGet<LocationSummary[]>("/api/locations", { q });
+}
+
+/** One location's whole record, `profile` inline. */
+export function getLocation(id: string) {
+  return apiGet<LocationRecord>(`/api/locations/${encodeURIComponent(id)}`);
+}
+
+/** The blank location bible and a hint per field — `space`, `lighting`, not `face`. */
+export function getLocationProfileTemplate() {
+  return apiGet<ProfileTemplate>("/api/locations/profile-template");
+}
+
+export function createLocation(body: { name: string; profile?: LocationProfile }) {
+  return apiSend<LocationRecord>("POST", "/api/locations", body);
+}
+
+/** Rename or re-hero a location. Moves nothing — see `patchCharacter`. */
+export function patchLocation(
+  id: string,
+  body: { rev: number; name?: string; hero?: string },
+) {
+  return apiSend<EntityPatch<LocationRecord>>(
+    "PATCH",
+    `/api/locations/${encodeURIComponent(id)}`,
+    body,
+  );
+}
+
+/** Replace the whole bible — see `setCharacterProfile` for why it is `PATCH`. */
+export function setLocationProfile(id: string, profile: LocationProfile, rev: number) {
+  return apiSend<EntityPatch<LocationRecord>>(
+    "PATCH",
+    `/api/locations/${encodeURIComponent(id)}/profile`,
+    { profile, rev },
+  );
+}
+
+/** Delete a location. `force` drops the links projects and runs hold on it — see `deleteCharacter`. */
+export function deleteLocation(
+  id: string,
+  files: "keep" | "delete" = "keep",
+  force = false,
+) {
+  return apiSend<{ id: string; deleted: number }>(
+    "DELETE",
+    `/api/locations/${encodeURIComponent(id)}?files=${files}` +
+      (force ? "&force=1" : ""),
+  );
+}
+
+/** The ordered images a model would be shown of a location — see `getCharacterSelection`. */
+export function getLocationSelection(
+  id: string,
+  opts: { pick?: string; tag?: string; limit?: number } = {},
+) {
+  return apiGet<SelectionResponse>(
+    `/api/locations/${encodeURIComponent(id)}/selection`,
+    {
+      pick: opts.pick,
+      tag: opts.tag,
+      limit: opts.limit === undefined ? undefined : String(opts.limit),
+    },
+  );
+}
+
 export function getCharacterSelection(
   id: string,
   opts: { pick?: string; tag?: string; group?: string; limit?: number } = {},
@@ -839,6 +920,15 @@ export function setProjectCharacters(id: string, characters: string[]) {
     "PATCH",
     `/api/projects/${encodeURIComponent(id)}/characters`,
     { characters },
+  );
+}
+
+/** Replace where a project is shot. The same replace as `setProjectCharacters`, one prefix over. */
+export function setProjectLocations(id: string, locations: string[]) {
+  return apiSend<{ id: string; locations: ProjectRecord["locations"] }>(
+    "PATCH",
+    `/api/projects/${encodeURIComponent(id)}/locations`,
+    { locations },
   );
 }
 
@@ -932,6 +1022,8 @@ export function getProjectMovies(id: string) {
 type RunsQuery = {
   project?: string;
   character?: string;
+  /** The runs shot in one location — the same `by-sk` query as `character`, one prefix over. */
+  location?: string;
   /** The runs that belong to one scene — stills and clips alike. */
   scene?: string;
   model?: string;
@@ -1018,6 +1110,13 @@ export function createRun(body: CreateRunBody) {
 export function setRunCharacters(id: string, characters: string[]) {
   return apiSend<RunRecord>("PATCH", `/api/runs/${encodeURIComponent(id)}`, {
     characters,
+  });
+}
+
+/** Replace where a run was shot — the same pair of writes as `setRunCharacters`. */
+export function setRunLocations(id: string, locations: string[]) {
+  return apiSend<RunRecord>("PATCH", `/api/runs/${encodeURIComponent(id)}`, {
+    locations,
   });
 }
 

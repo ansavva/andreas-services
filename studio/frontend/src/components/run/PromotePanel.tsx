@@ -4,7 +4,15 @@ import { useNavigate } from "react-router-dom";
 import { Alert, Button, Field, Input, Select, Text, useToast } from "@ansavva/design-system";
 
 import { ApiError } from "../../apis/client";
-import { copyNodes, describeNode, getCharacter, getCharacters, getFolder } from "../../apis/studio";
+import {
+  copyNodes,
+  describeNode,
+  getCharacter,
+  getCharacters,
+  getFolder,
+  getLocation,
+  getLocations,
+} from "../../apis/studio";
 import { DestinationPicker } from "../browse/DestinationPicker";
 import { MediaThumb } from "../media/MediaThumb";
 import { TagSelect } from "../common/TagSelect";
@@ -12,7 +20,14 @@ import { FolderIcon } from "../common/icons";
 import { useResource } from "../../hooks/useResource";
 import type { RunAsset } from "../../types";
 import { assetLabel } from "../../utils/format";
-import { characterPath, objectPath } from "../../utils/location";
+import { characterPath, locationPath, objectPath } from "../../utils/location";
+
+/** The two kinds a picture can be filed under: who it is of, or where it is. */
+type SubjectKind = "character" | "location";
+
+function subjectPath(kind: SubjectKind, id: string): string {
+  return kind === "location" ? locationPath(id) : characterPath(id);
+}
 
 /** What landed, once a copy has finished. */
 interface Copied {
@@ -131,6 +146,7 @@ export async function copyIntoCharacter({
 export function PromotePanel({
   asset,
   runCharacters,
+  runLocations = [],
   onClose,
   onDirtyChange,
   unsavedWarning,
@@ -140,6 +156,8 @@ export function PromotePanel({
   asset: RunAsset;
   /** The character ids this run recorded. Offered first — usually the answer. */
   runCharacters: string[];
+  /** The location ids this run recorded — a rendered view of a room is filed the same way. */
+  runLocations?: string[];
   onClose: () => void;
   /**
    * Whether anything has been chosen or typed here, reported up so Escape can
@@ -162,51 +180,70 @@ export function PromotePanel({
 
   const loadCharacters = useCallback(() => getCharacters(), []);
   const characters = useResource(["characters"], loadCharacters);
+  const loadLocations = useCallback(() => getLocations(), []);
+  const locations = useResource(["locations"], loadLocations);
 
   /**
-   * The run's own characters first, then everyone else, each half by name.
+   * The run's own subjects first, then everyone else, each half by name —
+   * characters, then locations.
    *
-   * A run records who it was of, so the character being copied into is almost
-   * always one of them — and on a library of forty, scrolling past thirty-nine
-   * to reach the obvious one is the whole difference between this and the CLI,
-   * where the name is typed.
+   * A run records who it was of and where it was shot, so the subject being
+   * copied into is almost always one of them — and on a library of forty,
+   * scrolling past thirty-nine to reach the obvious one is the whole
+   * difference between this and the CLI, where the name is typed. A location
+   * is offered beside a character because a rendered view of a room becomes
+   * its identity by exactly this copy (hard rule #2b), and nothing else.
    */
   const offered = useMemo(() => {
-    const all = characters.data ?? [];
-    const own = new Set(runCharacters);
     const by = (a: { name: string }, b: { name: string }) =>
       a.name.localeCompare(b.name);
+    const half = (
+      all: ReadonlyArray<{ id: string; name: string }>,
+      ownIds: readonly string[],
+      kind: SubjectKind,
+    ) => {
+      const own = new Set(ownIds);
+      return [
+        ...all.filter((each) => own.has(each.id)).sort(by),
+        ...all.filter((each) => !own.has(each.id)).sort(by),
+      ].map((each) => ({ kind, id: each.id, name: each.name }));
+    };
     return [
-      ...all.filter((each) => own.has(each.id)).sort(by),
-      ...all.filter((each) => !own.has(each.id)).sort(by),
+      ...half(characters.data ?? [], runCharacters, "character"),
+      ...half(locations.data ?? [], runLocations, "location"),
     ];
-  }, [characters.data, runCharacters]);
+  }, [characters.data, locations.data, runCharacters, runLocations]);
 
   const [chosen, setChosen] = useState<string | null>(null);
   /**
-   * Preselected only when the run names exactly ONE character.
+   * Preselected only when the run names exactly ONE subject.
    *
    * Two is a choice this cannot make — an image of two people belongs to
-   * whichever the person says — and preselecting the first would be a guess
-   * wearing the shape of an answer.
+   * whichever the person says, and one of a person in a room to either — and
+   * preselecting the first would be a guess wearing the shape of an answer.
    */
-  const sole = runCharacters.length === 1 ? runCharacters[0] : null;
+  const named = [...runCharacters, ...runLocations];
+  const sole = named.length === 1 ? named[0] : null;
   const character =
     chosen ?? (sole && offered.some((each) => each.id === sole) ? sole : null);
-  const name = offered.find((each) => each.id === character)?.name ?? "";
+  const subject = offered.find((each) => each.id === character) ?? null;
+  const name = subject?.name ?? "";
+  const kind: SubjectKind = subject?.kind ?? "character";
 
-  /** The character's root, which is where the folder picker opens. */
+  /** The subject's root, which is where the folder picker opens. */
   const loadRoot = useCallback(
     () =>
       character
-        ? getCharacter(character).then(async (record) => {
-            const tree = await getFolder({ node: record.root }, "name");
-            return { id: record.root, prefix: tree.prefix ?? "" };
-          })
-        : Promise.reject(new Error("no character")),
-    [character],
+        ? (kind === "location" ? getLocation(character) : getCharacter(character)).then(
+            async (record) => {
+              const tree = await getFolder({ node: record.root }, "name");
+              return { id: record.root, prefix: tree.prefix ?? "" };
+            },
+          )
+        : Promise.reject(new Error("no subject")),
+    [character, kind],
   );
-  const root = useResource(character ? ["character-root", character] : null, character ? loadRoot : null);
+  const root = useResource(character ? ["subject-root", character] : null, character ? loadRoot : null);
 
   const [folder, setFolder] = useState<{ id: string; where: string } | null>(null);
   const [picking, setPicking] = useState(false);
@@ -263,11 +300,11 @@ export function PromotePanel({
       const tree = await getFolder({ node: destination }, "name");
       setFolder({
         id: destination,
-        where: label(tree.prefix ?? "", root.data?.prefix ?? "", name || "the character"),
+        where: label(tree.prefix ?? "", root.data?.prefix ?? "", name || `the ${kind}`),
       });
       setPicking(false);
     },
-    [label, name, root.data?.prefix],
+    [kind, label, name, root.data?.prefix],
   );
 
   async function copy() {
@@ -323,7 +360,7 @@ export function PromotePanel({
             {/* A real `<a href>`: command-click belongs to the browser, which is
                 the same bargain `OutputPanel`'s caption makes. */}
             <a
-              href={character ? characterPath(character) : "#"}
+              href={character ? subjectPath(kind, character) : "#"}
               onClick={(event) => {
                 if (
                   event.metaKey ||
@@ -334,11 +371,11 @@ export function PromotePanel({
                 )
                   return;
                 event.preventDefault();
-                navigate(characterPath(character));
+                navigate(subjectPath(kind, character));
               }}
               className="text-sm text-accent underline underline-offset-2 hover:opacity-80"
             >
-              Open {name || "the character"}
+              Open {name || `the ${kind}`}
             </a>
           </Alert.Description>
         </Alert.Root>
@@ -354,7 +391,7 @@ export function PromotePanel({
   return (
     <section className="flex flex-col gap-3 border-line bg-card p-3">
       <Text variant="title">
-        {name ? `Copy into ${name}` : "Copy into a character"}
+        {name ? `Copy into ${name}` : "Copy into a character or location"}
       </Text>
 
       {/* **A click outside does not throw typed words away.** The drawer asks
@@ -429,17 +466,18 @@ export function PromotePanel({
       <div className="flex flex-wrap items-start gap-2">
         <div className="min-w-56 flex-1">
           <Field.Root name="promote-character">
-            <Field.Label>Character</Field.Label>
+            <Field.Label>Character or location</Field.Label>
             <Select
               options={offered.map((each) => ({
                 value: each.id,
-                label: each.name,
+                // Two halves in one menu; the noun says which half a row is in.
+                label: each.kind === "location" ? `${each.name} (location)` : each.name,
               }))}
               value={character}
               placeholder={
-                characters.loading ? "Loading characters…" : "Choose a character"
+                characters.loading || locations.loading ? "Loading…" : "Choose one"
               }
-              disabled={characters.loading || offered.length === 0}
+              disabled={characters.loading || locations.loading || offered.length === 0}
               onValueChange={setChosen}
             />
           </Field.Root>

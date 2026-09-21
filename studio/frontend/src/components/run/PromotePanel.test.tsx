@@ -12,6 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../apis/studio", () => ({
   getCharacters: vi.fn(),
   getCharacter: vi.fn(),
+  getLocations: vi.fn().mockResolvedValue([]),
+  getLocation: vi.fn(),
   getFolder: vi.fn(),
   getTags: vi.fn().mockResolvedValue([]),
   copyNodes: vi.fn(),

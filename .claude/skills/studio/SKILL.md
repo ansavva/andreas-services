@@ -4,11 +4,11 @@ description: >-
   Repo rule. Entry point for every task in studio/ — the AI media generation pipeline
   and the app that browses its output. Route to one of studio's own skills before
   starting: a studio-media-* skill for anything that changes media or an S3 record
-  (an image, a clip, a character, a project, a run, a scene, a movie), or
-  studio-code-pipeline for studio's own code. Those skills live in
+  (an image, a clip, a character, a location, a project, a run, a scene, a movie),
+  or studio-code-pipeline for studio's own code. Those skills live in
   studio/.claude/skills/ and are NOT registered at session start, so use this first
   whenever a task mentions studio, generating or editing images or video, characters,
-  projects, runs, scenes or movies.
+  locations or sets, projects, runs, scenes or movies.
 ---
 
 # Route before working in `studio/`
@@ -18,12 +18,12 @@ surface live in `studio/CLAUDE.md` and in studio's own skills.
 
 ## Load studio's skills before doing the work
 
-Thirty-nine skills live in `studio/.claude/skills/`, in two families. Route by what
+Forty skills live in `studio/.claude/skills/`, in two families. Route by what
 the task **changes**, not by what it mentions:
 
 | Changing… | Load |
 |---|---|
-| media, or a catalog record — an image, a clip, a character, a project, a run, a scene, a movie | a **`studio-media-*`** skill (thirty-eight) |
+| media, or a catalog record — an image, a clip, a character, a location, a project, a run, a scene, a movie | a **`studio-media-*`** skill (thirty-nine) |
 | studio's own code — anything under `pipeline/`, `backend/`, `frontend/`, `infra/` | **`studio-code-pipeline`** |
 
 The table naming each one is in `studio/CLAUDE.md`, under "Which skill".

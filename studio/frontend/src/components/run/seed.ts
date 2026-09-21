@@ -70,6 +70,14 @@ function refOfSend(send: RunSend): AttachRef {
         kind: "character",
         ...(source.character ? { character: source.character } : {}),
       };
+    case "location":
+      return {
+        node: send.node,
+        url: send.url,
+        name: send.name,
+        kind: "location",
+        ...(source.location ? { location: source.location } : {}),
+      };
     case "run":
       return {
         node: send.node,
