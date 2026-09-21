@@ -145,9 +145,10 @@ Values: `apple_services_id` = `com.humbugg.auth`, `apple_team_id`, `apple_key_id
    verification*. The dev test can proceed in Development mode meanwhile — an app admin can sign in
    to a Development-mode app — so the credentials are still worth putting in `dev.env` now.
 
-**State on 2026-09-21:** a Humbugg app already existed on the developer account and was linked to
-the new *Andreas Services* portfolio; paused at verification. Facebook Login use case, redirect
-URIs and Basic settings still to do.
+**State on 2026-09-21:** a Humbugg app (`363719051061656`, Consumer type, Facebook Login product
+already added) existed on the developer account and is linked to the *Andreas Services* portfolio.
+Redirect URIs, app domain, terms, deletion URL, contact and category are set; the app icon is not.
+Dev sign-in verified in Development mode. Live waits on business verification.
 
 ### LinkedIn
 
@@ -232,6 +233,13 @@ On the shared dev pool with Google set:
    Google sign-in (no trigger call: already linked), the reset and the password sign-in.
 4. **LinkedIn-first.** The generic-OIDC path. **Passed 2026-09-21** after the `custom:idp_sub` fix
    above; the log line carries `usernameSubjectDiffers: true`, the finding kept visible.
+5. **Facebook onto an existing account.** **Passed 2026-09-21** in Development mode (admin only)
+   — third identity on the same sub. Two findings on the way: a stale grant from an earlier
+   attempt returned no email until the app was removed from the account's *Apps and websites*;
+   and with `custom:idp_sub → id` mapped, Cognito's attribute fetch returned only the username
+   ("attributes required: [email]") while the identical Graph call from the API Explorer returned
+   the email. Facebook maps the four plain fields only; its ids are digits, so the username
+   fallback is exact.
 4. `aws logs tail /aws/lambda/humbugg-dev-auth-pre-sign-up` shows one `linked federated identity`
    line per first sign-in, naming the sub and never the email.
 
