@@ -730,7 +730,7 @@ export function ObjectPage() {
  * is what it is called everywhere else in the app the address bar spells it
  * out (the header link, `BrowsePage`'s own title) — and a name still loading
  * falls back to the generic word for what it is, the same way
- * `useProjectCrumb` shows "Project" until the fetch lands.
+ * `useProjectName` answers "Project" until the fetch lands.
  */
 function useSourceCrumbs(source: ViewerSource | null): Crumb[] | undefined {
   const folderId = source && (source.in === "f" || source.in === "recursive") ? source.id : null;

@@ -5,32 +5,26 @@ import { Alert, Badge, Button, Input, Tabs, Text } from "@ansavva/design-system"
 
 import {
   createScene,
-  deleteProject,
   getCharacters,
   getProject,
   getProjectMovies,
   getProjectScenes,
 } from "../apis/studio";
-import { ApertureSpinner } from "../components/common/Aperture";
 import { EmptyState } from "../components/common/EmptyState";
 import { PageLoading } from "../components/common/PageLoading";
 import { SectionLoading } from "../components/common/SectionLoading";
-import { SettingsIcon, TrashIcon } from "../components/common/icons";
 import { FolderTab } from "../components/browse/FolderTab";
-import { CharacterChipLink } from "../components/character/CharacterChip";
-import { PageBar, useCopyLinkItem } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
 import { ProjectDetails } from "../components/project/ProjectDetails";
+import { ProjectBar } from "../components/project/ProjectBar";
 import { RunFeed } from "../components/project/RunFeed";
 import { RunLightbox } from "../components/run/RunLightbox";
-import { useInFlightRuns } from "../hooks/useInFlightRuns";
 import { useResource } from "../hooks/useResource";
-import type { HeroImage, ProjectRecord } from "../types";
+import type { HeroImage } from "../types";
 import { formatDate } from "../utils/format";
-import { PROJECTS_PATH, moviePath, runPath, scenePath } from "../utils/location";
+import { moviePath, runPath, scenePath } from "../utils/location";
 import { useSearchParamState } from "../hooks/useSearchParamState";
 import { LoadError } from "../components/common/LoadError";
-import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
 
 /**
  * One project: the feed of what has been run in it, and everything under it.
@@ -71,15 +65,12 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
  */
 export function ProjectPage() {
   const { projectId = "", runId } = useParams();
-  const copyLink = useCopyLinkItem();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [tabParam, setTab] = useSearchParamState("tab", "runs");
   // `?tab=overview` was the old default and is in old links; it is Settings now.
   const tab = tabParam === "overview" ? "settings" : tabParam;
-  /** The delete dialog, opened from the page bar's menu rather than drawn loose. */
-  const [deleteOpen, setDeleteOpen] = useState(false);
   const load = useCallback(() => getProject(projectId), [projectId]);
   const project = useResource(["project", projectId], load);
 
@@ -90,8 +81,6 @@ export function ProjectPage() {
     () => Object.fromEntries((characters.data ?? []).map((each) => [each.id, each.hero])),
     [characters.data],
   );
-
-  const running = useInFlightRuns()[projectId] ?? 0;
 
   const openRun = useCallback(
     (row: { id: string }, output?: number) =>
@@ -115,9 +104,7 @@ export function ProjectPage() {
   }
 
   const record = project.data;
-
   const counts = record.counts;
-  const held = counts.runs + counts.scenes + counts.movies;
 
   return (
     <>
@@ -125,81 +112,7 @@ export function ProjectPage() {
           when controlled: it seeds `useControllableState`, and Tabs does not
           introspect its List to guess a first tab. */}
       <Tabs.Root value={tab} defaultValue="runs" onValueChange={setTab}>
-        {/* **Delete lives behind `⋯`, and the noun still spells out the
-            cascade.** `ConfirmDestroyDialog` types the name because a project
-            takes its runs, scenes and movies with it.
-
-            **Nothing here makes a run.** The create bar in the top bar is
-            where a run is authored, on every screen; the page's own primary
-            slot holds who the project is about instead, per the mockup. */}
-        <PageBar
-          crumbs={[{ label: "Projects", to: PROJECTS_PATH }]}
-          title={record.name}
-          meta={
-            <>
-              {/* A mono caption, as every listing page counts — a Badge is
-                  for a status, and the spinner beside it is one. */}
-              <Text variant="caption" family="mono" tone="muted" className="tabular-nums">
-                {counts.runs} {counts.runs === 1 ? "run" : "runs"}
-              </Text>
-              {running > 0 && (
-                <Badge intent="neutral" className="gap-1.5 font-mono tabular-nums">
-                  <ApertureSpinner size="sm" label={`${running} running`} className="size-3.5" />
-                  {running} running
-                </Badge>
-              )}
-            </>
-          }
-          primary={
-            record.characters.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-2" aria-label="Characters">
-                {record.characters.map((each) => (
-                  <CharacterChipLink
-                    key={each.id}
-                    id={each.id}
-                    name={each.name}
-                    hero={heroes[each.id] ?? null}
-                  />
-                ))}
-              </div>
-            ) : undefined
-          }
-          menu={[copyLink, {
-              label: "Delete",
-              icon: <TrashIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />,
-              danger: true,
-              onSelect: () => setDeleteOpen(true),
-            }]}
-          tabs={
-            // Scrolls rather than wraps, like the character page's: a tab
-            // strip that grows a second row draws a second underline, which
-            // reads as two strips. Settings sits at the far end, after a gap,
-            // because it is about the project rather than in it.
-            <Tabs.List className="overflow-x-auto border-b border-line">
-              <Tabs.Tab value="runs">Runs</Tabs.Tab>
-              <Tabs.Tab value="scenes">Scenes</Tabs.Tab>
-              <Tabs.Tab value="movies">Movies</Tabs.Tab>
-              <Tabs.Tab value="files">Files</Tabs.Tab>
-              <Tabs.Tab value="settings" className="ml-auto gap-1.5">
-                <SettingsIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
-                Settings
-              </Tabs.Tab>
-            </Tabs.List>
-          }
-        />
-
-        <ConfirmDestroyDialog
-          open={deleteOpen}
-          onOpenChange={setDeleteOpen}
-          label="Delete"
-          title={`Delete ${record.name}?`}
-          summary={deleteSummary(held, counts)}
-          confirmWord={record.name}
-          onConfirm={async () => {
-            await deleteProject(record.id, "delete", held > 0);
-            navigate(PROJECTS_PATH);
-          }}
-        />
+        <ProjectBar record={record} heroes={heroes} />
 
         <Tabs.Panel value="runs">
           <RunFeed
@@ -379,20 +292,5 @@ function MoviesTab({ projectId }: { projectId: string }) {
         />
       ))}
     </div>
-  );
-}
-
-/**
- * What the delete dialog says is about to go.
- *
- * Spelled out rather than "this project", because the cascade is the part a
- * person cannot see from the header: the runs, scenes and movies go with it,
- * and the sentence is the last chance to notice that.
- */
-function deleteSummary(held: number, counts: ProjectRecord["counts"]): string {
-  if (held === 0) return "It holds no runs, scenes or movies. Its folder and files go with it.";
-  return (
-    `${counts.runs} run(s), ${counts.scenes} scene(s) and ${counts.movies} movie(s) ` +
-    "go with it, along with the project's folder and everything in it."
   );
 }

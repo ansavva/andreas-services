@@ -13,10 +13,12 @@ import { LoadError } from "../components/common/LoadError";
 import { PageLoading } from "../components/common/PageLoading";
 import { SectionHeading } from "../components/common/SectionHeading";
 import { EntityRow } from "../components/entity/EntityRow";
-import { PageBar, useCopyLinkItem } from "../components/layout/PageBar";
+import { useCopyLinkItem } from "../components/layout/PageBar";
 import { OutputPanel } from "../components/media/OutputPanel";
+import { ProjectBarOn, projectTabPath } from "../components/project/ProjectBar";
 import { RunFeed } from "../components/project/RunFeed";
-import { useProjectCrumb } from "../hooks/useProjectCrumb";
+import { SubTrail } from "../components/project/SubTrail";
+import { useProjectName } from "../hooks/useProjectName";
 import { useResource } from "../hooks/useResource";
 import type { RunAsset, SceneCut, SceneRecord } from "../types";
 import { formatDate } from "../utils/format";
@@ -50,7 +52,7 @@ export function ScenePage() {
     ["scene", sceneId],
     load,
   );
-  const crumbs = useProjectCrumb(data?.project ?? "");
+  const projectName = useProjectName(data?.project ?? "");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -107,8 +109,14 @@ export function ScenePage() {
 
   return (
     <>
-      <PageBar
-        crumbs={crumbs}
+      {/* **The project's bar, with Scenes selected, and the scene as a trail
+          under the tabs** — the way the Files tab draws a folder. This page
+          used to be the scene's own, a different title and no strip, and
+          opening a scene from the Scenes tab read as leaving the project.
+          `ProjectBar` has the reasoning. */}
+      <ProjectBarOn projectId={data.project} tab="scenes" />
+      <SubTrail
+        parent={{ label: projectName, to: projectTabPath(data.project, "scenes") }}
         title={data.name}
         meta={
           <>
