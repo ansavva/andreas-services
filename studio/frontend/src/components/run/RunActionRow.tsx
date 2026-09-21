@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -14,6 +14,7 @@ import {
   ClipboardIcon,
   FileIcon,
   FolderIcon,
+  FolderIntoIcon,
   FolderPlusIcon,
   LinkIcon,
   OpenIcon,
@@ -25,6 +26,7 @@ import {
 } from "../common/icons";
 import { ArmedButton } from "./ArmedButton";
 import { inFlight } from "./feedTime";
+import { MoveRunDialog } from "./MoveRunDialog";
 import type { useRunActions } from "./useRunActions";
 
 const GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
@@ -92,6 +94,7 @@ export function RunActionRow({
   const flying = inFlight(row.status);
   const draft = row.status === "draft";
   const link = useCopyToClipboard();
+  const [moving, setMoving] = useState(false);
 
   const run = useCallback(async () => {
     try {
@@ -189,6 +192,18 @@ export function RunActionRow({
           },
         ]
       : []),
+    // Into another project. A dialog, because a choice comes first —
+    // `MoveRunDialog` says what goes with the run and what it leaves.
+    ...(!flying
+      ? [
+          {
+            key: "move",
+            label: "Move to project…",
+            icon: <FolderIntoIcon className={GLYPH} />,
+            onSelect: () => setMoving(true),
+          },
+        ]
+      : []),
     ...(!flying
       ? [
           {
@@ -238,6 +253,7 @@ export function RunActionRow({
         />
       )}
       <ActionMenu label="This run" triggerLabel="More actions for this run" actions={menu} />
+      {moving && <MoveRunDialog row={row} onClose={() => setMoving(false)} />}
     </div>
   );
 }
