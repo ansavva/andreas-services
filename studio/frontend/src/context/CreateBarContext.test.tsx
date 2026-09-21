@@ -209,6 +209,22 @@ it("leaving the draft's project for another lets the edit go", () => {
   expect(state().prompt).toBe("p");
 });
 
+it("a training seed is refused — the sheet cannot draw or write one", () => {
+  mount("/p/proj-1");
+  act(() => api.loadRun({ project: "proj-1", kind: "image", prompt: "kept" }));
+  act(() =>
+    api.loadRun({
+      project: "proj-1",
+      kind: "training",
+      prompt: "",
+      editing: { run: "run-t", project: "proj-1", kind: "training", model: "m", plan: null },
+    }),
+  );
+  expect(state().kind).toBe("image");
+  expect(state().prompt).toBe("kept");
+  expect(state().editing).toBeNull();
+});
+
 it("setKind switches and drops the highlighted role", () => {
   mount();
   act(() => api.setKind("video"));

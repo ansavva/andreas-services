@@ -552,6 +552,17 @@ describe("the actions", () => {
     expect(bar().seed.prompt).toBe("a portrait, 85mm");
   });
 
+  it("Edit is refused on a training run — the sheet has no training mode", async () => {
+    await draw([row({ kind: "training", status: "draft", outputs: [], thumb: null, submitted: null, completed: null, cost: null })]);
+    const article = await screen.findByRole("article");
+    const edit = within(article).getByRole("button", { name: "Edit" });
+    expect((edit as HTMLButtonElement).disabled).toBe(true);
+    expect(edit.getAttribute("title")).toMatch(/CLI/);
+    fireEvent.click(edit);
+    expect(bar().editing).toBeNull();
+    expect(bar().kind).toBe("image");
+  });
+
   it("Edit on a submitted run loads a copy — nothing is marked", async () => {
     await draw([row()]);
     const article = await screen.findByRole("article");

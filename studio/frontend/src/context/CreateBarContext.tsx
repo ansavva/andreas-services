@@ -338,6 +338,11 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
   }, [routeProject, sceneProject, movieProject]);
 
   const loadRun = useCallback((seed: CreateSeed) => {
+    // The sheet has no training mode — no tile roles, no kind toggle — so a
+    // training seed would fill it with nothing and, edited in place, write
+    // the draft back without its dataset. Refused here as well as at the
+    // button, because every Edit-shaped gesture funnels through this call.
+    if (seed.kind === "training") return;
     setState((current) => {
       const model = seed.model ?? current.model[seed.kind];
       const params =
