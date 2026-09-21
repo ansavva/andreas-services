@@ -130,6 +130,8 @@ export function useRunActions(row: RunFeedRow) {
    */
   const remove = useCallback(async () => {
     await deleteRun(row.id);
+    // A draft the bar was editing: it is gone, so the bar stops writing to it.
+    bar.forget(row.id);
     await Promise.all([
       client.invalidateQueries({ queryKey: ["runs"] }),
       client.invalidateQueries({ queryKey: ["project", row.project] }),
@@ -137,7 +139,7 @@ export function useRunActions(row: RunFeedRow) {
     if (window.location.pathname === runPath(row.project, row.id)) {
       navigate(projectPath(row.project) + window.location.search, { replace: true });
     }
-  }, [client, navigate, row.id, row.project]);
+  }, [bar, client, navigate, row.id, row.project]);
 
   /**
    * Ask the API what the run is NOW, and draw that.

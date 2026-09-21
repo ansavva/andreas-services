@@ -44,6 +44,7 @@ import { FINE, useMediaQuery } from "../../hooks/useMediaQuery";
 import { useResource } from "../../hooks/useResource";
 import { useScrolledPast } from "../../hooks/useScrolledPast";
 import type { CreatedRun, RunSummary } from "../../types";
+import { ApiError } from "../../apis/client";
 import { citesTemplate } from "../../utils/citations";
 import { formatDate } from "../../utils/format";
 import {
@@ -408,6 +409,23 @@ export function CreateBar() {
   }, [attachments, bar.editing, cast, entry, params, prompt, shotIn]);
 
   /**
+   * A write to a draft that is not there any more — deleted from its row in
+   * another tab, discarded from the CLI, or its project gone. The edit is
+   * let go, so the next press makes a new run from what the sheet holds,
+   * and the message says so rather than "no such object".
+   */
+  const vanished = useCallback(
+    (err: unknown): boolean => {
+      if (!(err instanceof ApiError && err.status === 404)) return false;
+      bar.stopEditing();
+      void queryClient.invalidateQueries({ queryKey: ["runs"] });
+      return true;
+    },
+    [bar, queryClient],
+  );
+  const GONE = "That draft no longer exists. What the panel holds will be sent as a new run.";
+
+  /**
    * Save the draft and leave it a draft. Nothing is sent and nothing bills;
    * the row in the feed is the row that changes. The bar keeps editing it —
    * a save is a checkpoint, not a way out; × on the strip is that.
@@ -424,11 +442,14 @@ export function CreateBar() {
       void queryClient.invalidateQueries({ queryKey: ["runs"] });
       void queryClient.invalidateQueries({ queryKey: ["project", within] });
     } catch (err) {
-      setFailure({ title: "Could not save the draft", message: (err as Error).message });
+      setFailure({
+        title: "Could not save the draft",
+        message: vanished(err) ? GONE : (err as Error).message,
+      });
     } finally {
       setBusy(false);
     }
-  }, [attachments, bar.editing, busy, entry, prompt, queryClient, toast, writeEdits]);
+  }, [attachments, bar.editing, busy, entry, prompt, queryClient, toast, vanished, writeEdits]);
 
   const send = useCallback(
     async (force = false) => {
@@ -507,7 +528,12 @@ export function CreateBar() {
         if (bar.scene) void queryClient.invalidateQueries({ queryKey: ["scene", bar.scene] });
         if (!bar.onProject) navigate(projectPath(target));
       } catch (err) {
-        setFailure({ title: "Could not send this run", message: (err as Error).message });
+        // Only the edited draft can be gone: a run created just above exists.
+        const gone = bar.editing !== null && vanished(err);
+        setFailure({
+          title: "Could not send this run",
+          message: gone ? GONE : (err as Error).message,
+        });
       } finally {
         setBusy(false);
       }
@@ -527,6 +553,7 @@ export function CreateBar() {
       shotIn,
       target,
       toast,
+      vanished,
       writeEdits,
     ],
   );

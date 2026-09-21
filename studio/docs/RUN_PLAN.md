@@ -462,9 +462,14 @@ and the API refuses to rewrite it, so Edit on one loads a *copy* and the
 send makes a new draft — the behaviour every Edit had until then, which had
 left a draft the one run in studio the app could read and not change (the CLI
 could, with `runs edit`). `seedFromRow` decides by status, once, where it
-knows it; the bar never asks. The edit is let go by × on the strip, by a
-send, by a kind switch (the other kind's tiles are not the draft's pictures)
-and by leaving the draft's project.
+knows it; the bar never asks. **The row being edited is marked** — a ring
+and an `editing` badge — and stays in the feed: it is still a run of the
+project and the sheet is writing to it; a row that vanished on Edit would
+read as deleted. The edit is let go by × on the strip, by a send, by a kind
+switch (the other kind's tiles are not the draft's pictures), by leaving the
+draft's project, by the row's own Delete, and by a Save or Send that finds
+the draft gone (a 404 — deleted elsewhere), which says so and leaves the
+words for a new run.
 
 - **A mode, not an always-editable form.** This page is read far more often than
   it is written, and the plan is the thing a person is about to send — a prompt

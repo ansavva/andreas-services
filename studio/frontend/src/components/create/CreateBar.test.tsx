@@ -447,6 +447,26 @@ it("Save keeps the draft a draft, and writes the model only when it moved", asyn
   expect(submitRun).not.toHaveBeenCalled();
 });
 
+it("a draft that is gone by the time Save or Send reaches it lets the edit go and says so", async () => {
+  const { ApiError } = await import("../../apis/client");
+  await open();
+  editDraft("A portrait.");
+  await waitFor(() => expect(editor().textContent).toContain("A portrait."));
+
+  vi.mocked(setRunCharacters).mockRejectedValueOnce(
+    new ApiError("No such object: run-draft", 404, "not_found"),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText("Could not save the draft")).toBeTruthy();
+  expect(screen.getByText(/That draft no longer exists/)).toBeTruthy();
+  // Not editing any more; the words stay; the next Send makes a new run.
+  expect(screen.queryByText("Editing draft")).toBeNull();
+  expect(editor().textContent).toContain("A portrait.");
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(submitRun).toHaveBeenCalledWith("run-0001"));
+  expect(createRun).toHaveBeenCalledTimes(1);
+});
+
 it("× on the strip leaves the draft alone; the next Send makes a new run", async () => {
   await open();
   editDraft("A portrait.");

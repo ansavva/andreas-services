@@ -113,6 +113,12 @@ export interface CreateBarApi {
   /** Take every attachment naming `node` off, whichever kind holds it. */
   drop(node: string): void;
   setKind(kind: RunKind): void;
+  /**
+   * Stop editing `run`, if that is the draft being edited — a no-op
+   * otherwise. For the row that deletes it: a bar left editing a run that
+   * is gone would answer the next Save with "no such object".
+   */
+  forget(run: string): void;
 }
 
 export interface Attachment {
@@ -235,6 +241,12 @@ interface CreateBarStateValue extends CreateBarState {
 
 const ApiContext = createContext<CreateBarApi | null>(null);
 const StateContext = createContext<CreateBarStateValue | null>(null);
+/**
+ * The id of the draft being edited, on its own. A feed row reads this to
+ * mark itself; it must not read the bar's whole state, because that changes
+ * on every keystroke in the prompt and would re-render every row per key.
+ */
+const EditingContext = createContext<string | null>(null);
 
 function readProject(): string | null {
   try {
@@ -398,9 +410,17 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const forget = useCallback(
+    (run: string) =>
+      setState((current) =>
+        current.editing?.run === run ? { ...current, editing: null } : current,
+      ),
+    [],
+  );
+
   const api = useMemo<CreateBarApi>(
-    () => ({ loadRun, attach, replace, drop, setKind }),
-    [loadRun, attach, replace, drop, setKind],
+    () => ({ loadRun, attach, replace, drop, setKind, forget }),
+    [loadRun, attach, replace, drop, setKind, forget],
   );
 
   const setPrompt = useCallback(
@@ -560,9 +580,16 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
 
   return (
     <ApiContext.Provider value={api}>
-      <StateContext.Provider value={value}>{children}</StateContext.Provider>
+      <EditingContext.Provider value={state.editing?.run ?? null}>
+        <StateContext.Provider value={value}>{children}</StateContext.Provider>
+      </EditingContext.Provider>
     </ApiContext.Provider>
   );
+}
+
+/** Whether the bar is editing this run in place — what marks its row. */
+export function useIsEditing(run: string): boolean {
+  return useContext(EditingContext) === run;
 }
 
 /**
