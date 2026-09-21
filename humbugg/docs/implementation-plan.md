@@ -196,7 +196,10 @@ this is the only tier that exercises the authorizer with a valid token.
 **Social sign-in — Google, Apple, Facebook, LinkedIn. BUILT September 2026, providers land as their
 console credentials do.** Identity providers on the same pool, buttons on the same hosted page, and a
 pre-sign-up trigger that links a social identity onto the password account with the same email — the
-one piece that is not configuration, because a fresh `sub` per provider would orphan every row.
+one piece that is not configuration, because a fresh `sub` per provider would orphan every row. It
+also moved the dev Cognito pool out of the per-machine stack into one shared `envs/dev-shared`,
+because four provider consoles each holding a per-machine redirect URI was a console edit per new
+machine per provider.
 Instagram is out: it has no consumer sign-in. Apple is in because App Store guideline 4.8 makes it
 mandatory the moment the iOS build offers Google. The record, the per-provider console walk and the
 GitHub names the deploy reads are [`auth-social-login.md`](auth-social-login.md). **Open until

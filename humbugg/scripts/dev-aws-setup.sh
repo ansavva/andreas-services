@@ -46,8 +46,9 @@ if [[ "$CHECK_ONLY" -eq 1 ]]; then
   pool_id="$(jq -r '.outputs.cognito_user_pool_id.value // empty' <<<"$state_json")"
   [[ -n "$bucket" && -n "$pool_id" ]] || die "Terraform state is missing required development outputs."
   aws_dev s3api head-bucket --bucket "$bucket" >/dev/null || die "Development S3 bucket '$bucket' is unavailable."
-  aws_dev cognito-idp describe-user-pool --user-pool-id "$pool_id" >/dev/null ||
-    die "Development Cognito pool '$pool_id' is unavailable."
+  # The shared pool, by name: a machine set up before the pool moved out of
+  # its own stack still carries the old per-machine id in its outputs.
+  require_shared_pool "$pool_id"
   while IFS= read -r table; do
     aws_dev dynamodb describe-table --table-name "$table" >/dev/null ||
       die "Development DynamoDB table '$table' is unavailable."
@@ -62,6 +63,19 @@ if [[ "$CHECK_ONLY" -eq 1 ]]; then
   exit 0
 fi
 
+# The shared stack first — the pool this machine's stack reads from SSM.
+# Idempotent and locked, so every machine applies it on every run; the social
+# credentials it wires come from SSM, not from this machine, so a run here
+# never removes a provider another developer registered.
+log "Shared stack: s3://andreas-services-terraform-state/humbugg/dev-shared/terraform.tfstate"
+terraform_shared_init
+shared_apply_args=(apply -input=false "${SHARED_TF_VARS[@]}")
+[[ "$AUTO_APPROVE" -eq 1 ]] && shared_apply_args+=(-auto-approve)
+terraform -chdir="$SHARED_TF_DIR" "${shared_apply_args[@]}"
+shared_outputs="$(terraform_shared_output_json)"
+idp_response_url="$(jq -r '.idp_response_url.value' <<<"$shared_outputs")"
+identity_providers="$(jq -r '.identity_providers.value | join(", ")' <<<"$shared_outputs")"
+
 terraform_init
 apply_args=(apply -input=false "${TF_VARS[@]}")
 [[ "$AUTO_APPROVE" -eq 1 ]] && apply_args+=(-auto-approve)
@@ -74,8 +88,6 @@ auth_domain="$(jq -r '.cognito_auth_domain.value' <<<"$outputs")"
 bucket="$(jq -r '.app_bucket_name.value' <<<"$outputs")"
 webhook_url="$(jq -r '.webhook_endpoint_url.value' <<<"$outputs")"
 webhook_queue="$(jq -r '.webhook_queue_url.value' <<<"$outputs")"
-idp_response_url="$(jq -r '.idp_response_url.value' <<<"$outputs")"
-identity_providers="$(jq -r '.identity_providers.value | join(", ")' <<<"$outputs")"
 
 # Everything below lands in the one per-machine file. Generated keys are
 # rewritten on every run; keys the developer set by hand (Stripe, plan limits)
@@ -114,7 +126,10 @@ cat "$env_file" > "$previous" 2>/dev/null || true
 # region, the local Cognito endpoints — are dropped rather than carried over.
 for key in COGNITO_ENDPOINT_URL COGNITO_ISSUER_URL VITE_COGNITO_USER_POOL_ID VITE_COGNITO_CLIENT_ID \
   VITE_AWS_REGION VITE_COGNITO_ENDPOINT_URL EXPO_PUBLIC_COGNITO_USER_POOL_ID EXPO_PUBLIC_AWS_REGION \
-  ASPNETCORE_ENVIRONMENT CORS_ORIGIN APP_BASE_URL; do
+  ASPNETCORE_ENVIRONMENT CORS_ORIGIN APP_BASE_URL \
+  HUMBUGG_GOOGLE_CLIENT_ID HUMBUGG_GOOGLE_CLIENT_SECRET HUMBUGG_FACEBOOK_APP_ID HUMBUGG_FACEBOOK_APP_SECRET \
+  HUMBUGG_APPLE_SERVICES_ID HUMBUGG_APPLE_TEAM_ID HUMBUGG_APPLE_KEY_ID HUMBUGG_APPLE_PRIVATE_KEY_BASE64 \
+  HUMBUGG_LINKEDIN_CLIENT_ID HUMBUGG_LINKEDIN_CLIENT_SECRET; do
   remove_env "$previous" "$key"
 done
 
@@ -145,7 +160,7 @@ line "# AWS"
 gen AWS_PROFILE "$AWS_PROFILE_VALUE"
 gen AWS_DEFAULT_REGION "$AWS_REGION_VALUE"
 line ""
-line "# Cognito"
+line "# Cognito — the SHARED dev pool (infra/envs/dev-shared), one for every machine."
 gen COGNITO_REGION "$AWS_REGION_VALUE"
 gen COGNITO_USER_POOL_ID "$pool_id"
 gen COGNITO_CLIENT_ID "$client_id"
@@ -189,8 +204,8 @@ line ""
 # The product app holds the auth flow, and reaches the backend cross-origin at
 # its dev port rather than through a same-origin proxy. Metro inlines these.
 line "# Product app (Metro inlines EXPO_PUBLIC_*; dev-up-app.sh exports only this prefix)."
-line "# The domain is the Managed Login HOST — no scheme, no path — a default Cognito"
-line "# domain on a dev stack rather than a name Humbugg owns."
+line "# The domain is the Managed Login HOST — no scheme, no path — the shared dev"
+line "# pool's default Cognito domain, the same on every machine."
 gen EXPO_PUBLIC_COGNITO_CLIENT_ID "$client_id"
 gen EXPO_PUBLIC_COGNITO_DOMAIN "$auth_domain"
 gen EXPO_PUBLIC_API_BASE_URL "http://127.0.0.1:5001/api"
@@ -237,21 +252,8 @@ keep HUMBUGG_STRIPE_SECRET_KEY
 keep HUMBUGG_STRIPE_WEBHOOK_ENDPOINT_ID
 keep HUMBUGG_STRIPE_WEBHOOK_SECRET
 line ""
-line "# Social sign-in, per provider and opt-in. Register this machine's redirect URI"
-line "# (the line below) in the provider's console first, then set that provider's keys"
-line "# and re-run dev-aws-setup.sh. docs/auth-social-login.md walks each console."
-line "# Redirect URI for this machine: $idp_response_url"
-keep HUMBUGG_GOOGLE_CLIENT_ID
-keep HUMBUGG_GOOGLE_CLIENT_SECRET
-keep HUMBUGG_FACEBOOK_APP_ID
-keep HUMBUGG_FACEBOOK_APP_SECRET
-keep HUMBUGG_APPLE_SERVICES_ID
-keep HUMBUGG_APPLE_TEAM_ID
-keep HUMBUGG_APPLE_KEY_ID
-line "# base64 of the .p8 file, one line: \`base64 -i AuthKey_XXXX.p8 | tr -d '\\n'\`."
-keep HUMBUGG_APPLE_PRIVATE_KEY_BASE64
-keep HUMBUGG_LINKEDIN_CLIENT_ID
-keep HUMBUGG_LINKEDIN_CLIENT_SECRET
+line "# Social sign-in is configured on the SHARED dev pool, from SSM under /humbugg/dev/social/,"
+line "# not here — docs/auth-social-login.md. Providers on it now: ${identity_providers:-none}."
 
 # Anything the file held that no section above claims.
 leftover="$(awk -F= -v written=" $written " '
@@ -268,9 +270,9 @@ mv "$rendered" "$env_file"
 
 ok "AWS development resources are ready; $env_file is up to date."
 if [[ -n "$identity_providers" ]]; then
-  ok "Social sign-in on this stack: $identity_providers."
+  ok "Social sign-in on the shared dev pool: $identity_providers."
 else
-  log "No social sign-in provider on this stack. Register $idp_response_url with one and set its keys in $env_file to enable it."
+  log "No social sign-in provider on the shared dev pool. Register $idp_response_url with one and put its keys in SSM under /humbugg/dev/social/ — docs/auth-social-login.md."
 fi
 
 # The Stripe half of the webhook relay. After the file is written, because it

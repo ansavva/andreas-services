@@ -57,9 +57,8 @@ load_aws_identity
 load_dev_user_email
 terraform_init
 
-DEV_POOL_ID="$(jq -r '.cognito_user_pool_id.value' <<<"$(terraform_output_json)")"
-[[ -n "$DEV_POOL_ID" && "$DEV_POOL_ID" != "null" ]] ||
-  die "No dev pool in Terraform outputs. Run ./humbugg/scripts/dev-aws-setup.sh first."
+DEV_POOL_ID="$(jq -r '.cognito_user_pool_id.value // empty' <<<"$(terraform_output_json)")"
+require_shared_pool "$DEV_POOL_ID"
 
 log "Pool:    $DEV_POOL_ID"
 log "Account: $HUMBUGG_DEV_USER_EMAIL"

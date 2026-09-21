@@ -73,7 +73,7 @@ while [[ $# -gt 0 ]]; do
     --check)   CHECK=true ;;
     -h|--help)
       printf 'Usage: %s [--profile NAME] [--region REGION] [--check]\n\n' "$0"
-      printf 'Ensures every person in seeds/dev.json exists in this machine'"'"'s pool, then\n'
+      printf 'Ensures every person in seeds/dev.json exists in the shared dev pool, then\n'
       printf 'loads that fixture through the local API (start it: dev-up.sh).\n'
       printf 'Edit the fixture to change WHAT is seeded; this script only says where.\n'
       exit 0
@@ -94,16 +94,12 @@ require_dev_env
 terraform_init
 outputs="$(terraform_output_json)"
 
-# Belt and braces on "dev only", exactly as dev-aws-reset.sh does before it
-# deletes anything: the pool must be named for THIS machine.
+# Belt and braces on "dev only": the pool must be THE shared dev pool, by name.
+# Shared means these accounts exist for every machine once any machine seeds
+# them, with whatever password the last seed set.
 DEV_POOL_ID="$(jq -r '.cognito_user_pool_id.value // empty' <<<"$outputs")"
-[[ -n "$DEV_POOL_ID" ]] ||
-  die "No dev pool in Terraform outputs. Run ./humbugg/scripts/dev-aws-setup.sh first."
-expected_pool_name="$RESOURCE_PREFIX-development"
-pool_name="$(aws_dev cognito-idp describe-user-pool --user-pool-id "$DEV_POOL_ID" \
-  --query 'UserPool.Name' --output text)"
-[[ "$pool_name" == "$expected_pool_name" ]] ||
-  die "Refusing: Cognito pool '$DEV_POOL_ID' is named '$pool_name', not '$expected_pool_name'."
+require_shared_pool "$DEV_POOL_ID"
+pool_name="$SHARED_POOL_NAME"
 
 # ── The accounts ────────────────────────────────────────────────────────────────
 # FROM THE FIXTURE, not from HUMBUGG_DEV_USER_EMAIL: that names the one account

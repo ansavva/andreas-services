@@ -53,7 +53,8 @@ humbugg/
 ├── infra/                      # Terraform
 │   ├── modules/                # auth, compute, hosting, storage, webhook_relay (dev only)
 │   ├── envs/prod/              # Lambda + API Gateway + Cognito, S3 + CloudFront + Route53 alias
-│   └── envs/dev/               # per-machine: Cognito pool, tables, bucket, Stripe webhook relay
+│   ├── envs/dev-shared/        # the one shared dev resource: the Cognito pool
+│   └── envs/dev/               # per-machine: tables, bucket, Stripe webhook relay
 ├── seeds/                      # dev.json — who exists on a dev stack and what they are in
 ├── scripts/                    # dev-*.sh, dev-seed.mjs, webhook-relay/receiver.mjs and auth-trigger/pre-sign-up.mjs (the zips)
 └── CLAUDE.md                   # ← this file
@@ -79,8 +80,20 @@ Two distributions: `modules/hosting_marketing` serves marketing (aliases apex an
 Local development uses real, per-machine AWS resources rather than LocalStack
 or shared developer resources. `dev-aws-setup.sh` persists a random UUID at
 `~/.config/andreas-services/humbugg/machine-id`; that UUID scopes Terraform
-state, DynamoDB tables, the private S3 bucket, and the Cognito pool. A developer
+state, DynamoDB tables, the private S3 bucket and the webhook relay. A developer
 may therefore use multiple machines without collisions.
+
+**The one exception is the Cognito pool, which every machine shares** —
+`infra/envs/dev-shared`, pool `humbugg-dev`, Managed Login host
+`humbugg-dev.auth.us-east-1.amazoncognito.com`. It was per machine until
+September 2026; social sign-in moved it, because each provider console holds an
+exact list of redirect URIs and a per-machine domain made every new machine four
+console edits. `dev-aws-setup.sh` applies the shared stack (idempotent, locked)
+before the machine's own, and the machine's stack reads the pool's ids from
+`/humbugg/dev/cognito-*` in SSM. Accounts are therefore shared too: a `.test`
+person seeded on one machine exists for all, with whatever password the last
+seed set. Data stays per machine. Social credentials for it live in SSM under
+`/humbugg/dev/social/*`, never in `dev.env` — `docs/auth-social-login.md`.
 
 **Every local value lives in one file: `~/.config/andreas-services/humbugg/dev.env`.**
 Backend config, both frontends' inlined values, Stripe test keys, the dev test
@@ -161,7 +174,7 @@ All commands run from the repository root:
 | `humbugg/scripts/dev-logs-backend.sh` | Follow the backend container logs; accepts Docker Compose log options such as `--tail 200` |
 | `humbugg/scripts/dev-user.sh` | Create or converge the one dev-stack account `HUMBUGG_DEV_USER_EMAIL` names; `--generate-password` for a non-interactive run, `--check` to report without changing. The address should be one of the people in `seeds/dev.json` |
 | `humbugg/scripts/dev-aws-seed.sh` | Create every account in `seeds/dev.json` (one shared password, `HUMBUGG_DEV_USER_PASSWORD`) and load the fixture through the local API — profiles, exchanges, joins, a Plus purchase through Stripe test mode; `--check` reports without writing. Converges; see `seeds/README.md` |
-| `humbugg/scripts/dev-aws-reset.sh` | Destructive data reset scoped to this machine; run with `--dry-run` first; `--skip-cognito` preserves users |
+| `humbugg/scripts/dev-aws-reset.sh` | Destructive data reset scoped to this machine — tables and bucket; run with `--dry-run` first. Never touches accounts: the pool is shared |
 | `humbugg/scripts/dev-aws-destroy.sh` | Destroy this machine's AWS resources; the persistent UUID is deliberately retained |
 
 `humbugg/scripts/dev-aws-common.sh` is a sourced implementation helper, not a
@@ -187,10 +200,12 @@ To reset or remove only the current machine's environment:
 ```
 
 The reset script verifies the Terraform machine UUID and exact AWS resource
-prefix before deleting data. It recreates the DynamoDB tables through Terraform,
-empties S3, and deletes Cognito users unless `--skip-cognito` is supplied. It
-retains the pool and app client. The destroy script removes all per-machine AWS
-resources but retains the UUID and state identity for safe reprovisioning.
+prefix before deleting data. It recreates the DynamoDB tables through Terraform
+and empties S3. It never deletes Cognito users — the pool is the team's shared
+one. The destroy script removes all per-machine AWS resources but retains the
+UUID and state identity for safe reprovisioning; it leaves the shared stack
+alone, which is torn down by hand with `terraform -chdir=humbugg/infra/envs/dev-shared destroy`
+and only when no machine uses it.
 
 See [`scripts/README.md`](../scripts/README.md) for the setup scripts and GitHub Packages auth.
 

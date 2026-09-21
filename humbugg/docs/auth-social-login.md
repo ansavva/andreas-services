@@ -57,10 +57,17 @@ console asks for is this stack's redirect URI:
 | Stack | Redirect URI to register |
 |---|---|
 | prod | `https://auth.humbugg.com/oauth2/idpresponse` |
-| a dev stack | `https://humbugg-dev-<short12>.auth.us-east-1.amazoncognito.com/oauth2/idpresponse` — `dev-aws-setup.sh` prints it, and `dev.env` records it |
+| dev — every machine | `https://humbugg-dev.auth.us-east-1.amazoncognito.com/oauth2/idpresponse` |
 
-Cognito matches it exactly. Register both prod's and your dev stack's if you want to test locally
-before shipping.
+Cognito matches it exactly. Two URIs, registered once, and that is the whole reason the dev pool is
+shared (`infra/envs/dev-shared`): it was per machine until September 2026, and a per-machine Managed
+Login domain meant a new machine was a console edit at all four providers before its developer could
+sign in with any of them.
+
+**Two credentials per provider, one project/app.** Where the console allows several clients under
+one app — Google does — make a `Humbugg prod` and a `Humbugg dev` client, each with only its own
+redirect URI, so the dev secret that sits in SSM as a dev value can never be prod's. Facebook,
+LinkedIn and Apple take one list of URIs per app; put both on it.
 
 ### Google
 
@@ -70,9 +77,12 @@ before shipping.
    `https://www.humbugg.com/terms`. Scopes: `openid`, `email`, `profile` only — all non-sensitive, so
    **no verification review is needed**. Then *Publish app* (leave Testing and only listed test users
    can sign in).
-3. **Credentials → Create credentials → OAuth client ID.** Type **Web application**. Authorized
-   redirect URIs: the redirect URI(s) above. No JavaScript origins needed.
-4. Copy the **Client ID** and **Client secret**.
+3. **Credentials → Create credentials → OAuth client ID.** Type **Web application** — Cognito is
+   the OAuth client, exchanging the code server-side with a secret; the iOS/Android types have no
+   secret and no redirect. Name `Humbugg prod`, one authorized redirect URI: prod's. No JavaScript
+   origins.
+4. A second Web client, `Humbugg dev`, with the dev URI.
+5. Copy each **Client ID** and **Client secret**.
 
 ### Apple
 
@@ -81,9 +91,8 @@ before shipping.
 2. **Certificates, Identifiers & Profiles → Identifiers → App IDs**: the app's bundle id
    (`com.humbugg.app`, matching `app/app.json`), capability *Sign in with Apple* ticked.
 3. **Identifiers → Services IDs → +**: identifier `com.humbugg.auth` (this is the "client id"),
-   *Sign in with Apple* → Configure: primary App ID from step 2, **domain `auth.humbugg.com`**,
-   return URL the redirect URI above. A dev stack's `amazoncognito.com` host can be added as a second
-   domain and return URL.
+   *Sign in with Apple* → Configure: primary App ID from step 2, **domains `auth.humbugg.com` and
+   `humbugg-dev.auth.us-east-1.amazoncognito.com`**, return URLs both redirect URIs above.
 4. **Keys → +**: name `Humbugg Sign in with Apple`, tick *Sign in with Apple*, configure to the App
    ID. Download the `.p8` **once** — Apple never shows it again. Note the **Key ID**.
 5. Your **Team ID** is top-right of the membership page.
@@ -159,15 +168,31 @@ gh secret set HUMBUGG_GOOGLE_CLIENT_SECRET --env humbugg-production
 gh secret set HUMBUGG_APPLE_PRIVATE_KEY --env humbugg-production < AuthKey_XXXXXXXXXX.p8
 ```
 
-### A dev stack — `~/.config/andreas-services/humbugg/dev.env`
+### Dev — SSM, `/humbugg/dev/social/*`
 
-Uncomment and fill the keys in the *Social sign-in* block (`dev.env.sample` shows them; the Apple
-key travels base64 on one line because an env file cannot hold a PEM), then re-run
-`./humbugg/scripts/dev-aws-setup.sh`. It reports which providers the stack now has.
+Not `dev.env`: every machine applies the shared stack on every `dev-aws-setup.sh` run, so the values
+have to sit somewhere every machine reads, or the second developer's apply would remove the
+providers the first one added. The stack reads whatever exists under the path; a missing key is
+that provider off. Same names as the GitHub ones, kebab-case, ids `String` and secrets
+`SecureString`:
+
+```bash
+aws ssm put-parameter --name /humbugg/dev/social/google-client-id --type String --value 'PASTE_DEV_CLIENT_ID'
+```
+
+```bash
+aws ssm put-parameter --name /humbugg/dev/social/google-client-secret --type SecureString --value 'PASTE_DEV_CLIENT_SECRET'
+```
+
+The full set: `google-client-id`, `google-client-secret`, `facebook-app-id`, `facebook-app-secret`,
+`apple-services-id`, `apple-team-id`, `apple-key-id`, `apple-private-key` (the `.p8` contents —
+`--value file://AuthKey_XXXXXXXXXX.p8`), `linkedin-client-id`, `linkedin-client-secret`. Add
+`--overwrite` to change one. Then `./humbugg/scripts/dev-aws-setup.sh`; it reports the providers the
+pool now has, and the button is on the dev Managed Login page for every machine at once.
 
 ## Verifying
 
-On a dev stack with Google set:
+On the shared dev pool with Google set:
 
 1. `./humbugg/scripts/dev-up.sh`, open `http://localhost:8081`, reach the hosted page: a
    *Continue with Google* button sits above the form.
@@ -180,8 +205,8 @@ On a dev stack with Google set:
 3. **Google-first, then password.** A fresh Google address → lands in the app, profile setup as
    usual. Sign out. *Forgot password* with that address → a code arrives, a password is set, password
    sign-in reaches the same account.
-4. `aws logs tail /aws/lambda/<prefix>-development-auth-pre-sign-up` shows one `linked federated
-   identity` line per first sign-in, naming the sub and never the email.
+4. `aws logs tail /aws/lambda/humbugg-dev-auth-pre-sign-up` shows one `linked federated identity`
+   line per first sign-in, naming the sub and never the email.
 
 Production is verified the same way in a browser, by a person, after the apply.
 
@@ -199,5 +224,5 @@ empty account — as they would anywhere; the fix is to sign in the old way.
 | Providers, the client's list, the trigger, its grant | `infra/modules/auth/identity_providers.tf`, `pre_sign_up.tf` |
 | The trigger and its tests | `scripts/auth-trigger/pre-sign-up.mjs`, `pre-sign-up.test.mjs` |
 | Prod values | `.github/workflows/humbugg-prod.yaml` (`TF_VAR_*`), `infra/envs/prod/variables.tf` |
-| Dev values | `dev.env` → `scripts/dev-aws-common.sh` `add_social_login_vars` |
+| Dev values | SSM `/humbugg/dev/social/*` → `infra/envs/dev-shared/main.tf` |
 | Disclosure | `marketing/src/pages/PrivacyPage.tsx` §2; `docs/gdpr-compliance.md` §7 says why the providers are controllers, not sub-processors |

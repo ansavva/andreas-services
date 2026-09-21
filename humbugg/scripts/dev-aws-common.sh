@@ -3,6 +3,10 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HUMBUGG_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TF_DIR="$HUMBUGG_DIR/infra/envs/dev"
+# The team's one shared stack — the Cognito pool — applied before TF_DIR on
+# every run. Its state key is fixed; TF_DIR's carries the machine id.
+SHARED_TF_DIR="$HUMBUGG_DIR/infra/envs/dev-shared"
+SHARED_POOL_NAME="humbugg-dev"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/andreas-services/humbugg"
 MACHINE_ID_FILE="$CONFIG_DIR/machine-id"
 
@@ -133,34 +137,6 @@ set_terraform_vars() {
     "-var=machine_short_id=$MACHINE_SHORT_ID"
     "-var=machine_name=$MACHINE_NAME"
   )
-  add_social_login_vars
-}
-
-# Social sign-in on a dev stack is opt-in per provider: a key set in dev.env
-# becomes a -var, an unset one leaves the provider off. Read from dev.env
-# rather than the environment so a stray shell export from another checkout
-# cannot enable a provider this machine never registered. The Apple key is a
-# multi-line PEM, which an env file cannot hold, so it travels base64.
-add_social_login_vars() {
-  local pair key var value
-  for pair in \
-    HUMBUGG_GOOGLE_CLIENT_ID:google_client_id \
-    HUMBUGG_GOOGLE_CLIENT_SECRET:google_client_secret \
-    HUMBUGG_FACEBOOK_APP_ID:facebook_app_id \
-    HUMBUGG_FACEBOOK_APP_SECRET:facebook_app_secret \
-    HUMBUGG_APPLE_SERVICES_ID:apple_services_id \
-    HUMBUGG_APPLE_TEAM_ID:apple_team_id \
-    HUMBUGG_APPLE_KEY_ID:apple_key_id \
-    HUMBUGG_LINKEDIN_CLIENT_ID:linkedin_client_id \
-    HUMBUGG_LINKEDIN_CLIENT_SECRET:linkedin_client_secret; do
-    key="${pair%%:*}"; var="${pair##*:}"
-    value="$(read_env "$DEV_ENV_FILE" "$key")"
-    [[ -n "$value" ]] && TF_VARS+=("-var=$var=$value")
-  done
-  value="$(read_env "$DEV_ENV_FILE" HUMBUGG_APPLE_PRIVATE_KEY_BASE64)"
-  if [[ -n "$value" ]]; then
-    TF_VARS+=("-var=apple_private_key=$(printf '%s' "$value" | base64 --decode)")
-  fi
 }
 
 export_temporary_aws_credentials() {
@@ -199,6 +175,32 @@ terraform_init() {
   terraform -chdir="$TF_DIR" init -reconfigure -input=false \
     -backend-config="key=$STATE_KEY"
   set_terraform_vars
+}
+
+terraform_shared_init() {
+  export AWS_REGION="$AWS_REGION_VALUE"
+  export_temporary_aws_credentials
+  terraform -chdir="$SHARED_TF_DIR" init -reconfigure -input=false
+  SHARED_TF_VARS=(
+    "-var=aws_region=$AWS_REGION_VALUE"
+    "-var=aws_principal_arn=$AWS_PRINCIPAL_ARN"
+  )
+}
+
+terraform_shared_output_json() {
+  terraform -chdir="$SHARED_TF_DIR" output -json
+}
+
+# The pool every dev stack signs in against must be THE shared one, by name,
+# before a script creates or converges an account in it. The check that used
+# to compare against this machine's prefix — the same belt-and-braces, one
+# pool later.
+require_shared_pool() {
+  local pool_id="$1" pool_name
+  [[ -n "$pool_id" ]] || die "No dev pool in Terraform outputs. Run ./humbugg/scripts/dev-aws-setup.sh first."
+  pool_name="$(aws_dev cognito-idp describe-user-pool --user-pool-id "$pool_id" --query 'UserPool.Name' --output text)"
+  [[ "$pool_name" == "$SHARED_POOL_NAME" ]] ||
+    die "Refusing: Cognito pool '$pool_id' is named '$pool_name', not '$SHARED_POOL_NAME'."
 }
 
 terraform_output_json() {

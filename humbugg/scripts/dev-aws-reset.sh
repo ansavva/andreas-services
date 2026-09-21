@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 # Reset this machine's AWS-backed Humbugg development data and recreate its tables.
+#
+# Cognito accounts are NOT touched: the pool is the team's shared one
+# (infra/envs/dev-shared) and its users are not this machine's to delete. A
+# machine that wants fresh people re-runs dev-aws-seed.sh, which converges.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,16 +12,16 @@ source "$SCRIPT_DIR/dev-aws-common.sh"
 
 AUTO_APPROVE=0
 DRY_RUN=0
-SKIP_COGNITO=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile) [[ $# -ge 2 ]] || die "--profile requires a value."; AWS_PROFILE_VALUE="$2"; shift ;;
     --region) [[ $# -ge 2 ]] || die "--region requires a value."; AWS_REGION_VALUE="$2"; shift ;;
     --yes|-y) AUTO_APPROVE=1 ;;
     --dry-run) DRY_RUN=1 ;;
-    --skip-cognito) SKIP_COGNITO=1 ;;
+    # Accepted and ignored: users were never deleted since the pool became shared.
+    --skip-cognito) ;;
     --help|-h)
-      printf 'Usage: %s [--profile NAME] [--region REGION] [--yes] [--dry-run] [--skip-cognito]\n' "$0"
+      printf 'Usage: %s [--profile NAME] [--region REGION] [--yes] [--dry-run]\n' "$0"
       exit 0
       ;;
     *) die "Unknown option: $1" ;;
@@ -34,26 +38,17 @@ output_machine_id="$(jq -r '.machine_id.value' <<<"$outputs")"
 [[ "$output_machine_id" == "$MACHINE_ID" ]] ||
   die "Terraform state belongs to machine '$output_machine_id', not '$MACHINE_ID'."
 
-pool_id="$(jq -r '.cognito_user_pool_id.value' <<<"$outputs")"
 bucket="$(jq -r '.app_bucket_name.value' <<<"$outputs")"
-expected_pool_name="$RESOURCE_PREFIX-development"
 
 [[ "$bucket" == "humbugg-dev-$AWS_ACCOUNT_ID-$MACHINE_SHORT_ID-app" ]] ||
   die "Refusing reset: unexpected S3 bucket '$bucket'."
-pool_name="$(aws_dev cognito-idp describe-user-pool --user-pool-id "$pool_id" --query 'UserPool.Name' --output text)"
-[[ "$pool_name" == "$expected_pool_name" ]] ||
-  die "Refusing reset: Cognito pool is named '$pool_name', not '$expected_pool_name'."
 
 printf '\nThis will clear development data owned by:\n'
 printf '  AWS account: %s\n' "$AWS_ACCOUNT_ID"
 printf '  Machine ID:  %s\n' "$MACHINE_ID"
 printf '  Tables:      %s-*\n' "$RESOURCE_PREFIX"
 printf '  S3 bucket:   %s\n' "$bucket"
-if [[ "$SKIP_COGNITO" -eq 1 ]]; then
-  printf '  Cognito:     skipped\n\n'
-else
-  printf '  Cognito:     %s (users only)\n\n' "$pool_id"
-fi
+printf '  Cognito:     untouched (the shared pool)\n\n'
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   ok "Dry run complete; nothing was changed."
@@ -89,14 +84,6 @@ done
 log "Emptying s3://$bucket..."
 aws_dev s3 rm "s3://$bucket" --recursive >/dev/null
 
-if [[ "$SKIP_COGNITO" -eq 0 ]]; then
-  users_json="$(aws_dev cognito-idp list-users --user-pool-id "$pool_id" --output json)"
-  while IFS= read -r username; do
-    [[ -n "$username" ]] || continue
-    aws_dev cognito-idp admin-delete-user --user-pool-id "$pool_id" --username "$username"
-  done < <(jq -r '.Users[].Username' <<<"$users_json")
-  ok "Removed $(jq '.Users | length' <<<"$users_json") Cognito user(s)."
-fi
 
 log "Recreating the empty DynamoDB tables through Terraform..."
 terraform -chdir="$TF_DIR" apply -input=false -auto-approve "${TF_VARS[@]}"

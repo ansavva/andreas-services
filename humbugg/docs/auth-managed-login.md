@@ -87,11 +87,12 @@ longer a gap for a value to cross.
 | Environment | Managed Login host | Why |
 |---|---|---|
 | prod | `auth.humbugg.com` | A name Humbugg owns, on Humbugg's own certificate. |
-| dev (per machine) | `<resource-prefix>.auth.<region>.amazoncognito.com` | A default Cognito domain. |
+| dev (shared by every machine) | `humbugg-dev.auth.us-east-1.amazoncognito.com` | A default Cognito domain. |
 
-Dev stacks take the default because a custom one costs a certificate SAN, a hosted-zone record and a
-~15-minute apply **per machine**, for pages only that machine's developer ever loads. The prefix must
-be globally unique across AWS, which the per-machine id already guarantees.
+Dev takes the default because a custom one costs a certificate SAN on the prod certificate — a
+replacement — for pages no user ever loads. The pool was per machine
+(`<resource-prefix>.auth…`) until September 2026, when social sign-in made one shared pool the
+cheaper shape; the addendum below says why.
 
 `auth.humbugg.com` was added as a SAN to the existing certificate, which **replaces** it.
 `create_before_destroy` on `modules/certificates` keeps www, app and api serving through the swap.

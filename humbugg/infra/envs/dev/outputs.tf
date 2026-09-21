@@ -2,16 +2,21 @@ output "resource_prefix" {
   value = local.resource_prefix
 }
 
+# The shared pool's, read back from SSM so every script keeps reading the
+# machine's own outputs and none has to know where the pool lives.
+# `insecure_value`: the provider marks every parameter's `value` sensitive,
+# which would make these outputs refuse to render; these three are plain
+# `String` ids, public in every authorize URL.
 output "cognito_user_pool_id" {
-  value = module.auth.user_pool_id
+  value = data.aws_ssm_parameter.cognito_user_pool_id.insecure_value
 }
 
 output "cognito_client_id" {
-  value = module.auth.user_pool_client_id
+  value = data.aws_ssm_parameter.cognito_client_id.insecure_value
 }
 
 output "cognito_auth_domain" {
-  value = module.auth.auth_domain
+  value = data.aws_ssm_parameter.cognito_auth_domain.insecure_value
 }
 
 output "table_names" {
@@ -34,13 +39,4 @@ output "webhook_endpoint_url" {
 output "webhook_queue_url" {
   description = "The queue behind that endpoint; the consumer dev-up.sh starts drains it."
   value       = module.webhook_relay.queue_url
-}
-
-# What to paste into each provider's console as this machine's redirect URI.
-output "idp_response_url" {
-  value = module.auth.idp_response_url
-}
-
-output "identity_providers" {
-  value = module.auth.identity_providers
 }

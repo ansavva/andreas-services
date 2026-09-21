@@ -106,7 +106,8 @@ Each rule traces to a real hazard, most of them already paid for once:
    is exported in exactly one place — `dev-test-integration.sh`.
 2. **No integration test may depend on prod, or on another machine's stack.**
    Configuration comes only from `~/.config/andreas-services/humbugg/dev.env`, written by `dev-aws-setup.sh`
-   from the machine-scoped Terraform outputs. `AWS_PROFILE` in that file is
+   from the machine-scoped Terraform outputs. The Cognito pool in it is the
+   team's shared one, by design; tables and bucket are this machine's. `AWS_PROFILE` in that file is
    deliberately ignored by the fixture.
 3. **Integration tests write `itest-`-prefixed ids and register cleanup.** The
    dev-stack tables are shared with your local app; `dev-aws-reset.sh` is the
