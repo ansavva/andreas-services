@@ -28,6 +28,9 @@ vi.mock("../../apis/studio", () => ({
   getAsset: vi.fn(),
   getModelDefaults: vi.fn().mockResolvedValue({ defaults: {} }),
   getModels: vi.fn().mockResolvedValue({}),
+  getFavoriteIds: vi.fn().mockResolvedValue({ ids: ["node-o2"] }),
+  addFavorite: vi.fn().mockResolvedValue({ node: "node-o1" }),
+  removeFavorite: vi.fn().mockResolvedValue({ node: "node-o2" }),
 }));
 // The player is its own suite; here the stage only has to name what it shows.
 vi.mock("../media/MediaPlayer", () => ({
@@ -38,7 +41,14 @@ vi.mock("../media/MediaPlayer", () => ({
   ),
 }));
 
-import { deleteRun, getNodeText, getRun, getRuns } from "../../apis/studio";
+import {
+  addFavorite,
+  deleteRun,
+  getNodeText,
+  getRun,
+  getRuns,
+  removeFavorite,
+} from "../../apis/studio";
 import { RunLightbox } from "./RunLightbox";
 
 const list = vi.mocked(getRuns);
@@ -445,6 +455,23 @@ describe("the opened run", () => {
     expect(screen.getByTestId("attachments").textContent).toBe(
       "start:node-o1,end:node-o2",
     );
+  });
+
+  it("the rail's menu favorites the output on the stage, and un-favorites one already kept", async () => {
+    await draw();
+    await screen.findByTestId("stage");
+
+    // The heart had gone from the run's surfaces when it left the tile for
+    // the menu: a picture could be favorited from its folder and not from
+    // the run that made it. One line, by the node on the stage.
+    openRailMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Add to favorites" }));
+    await waitFor(() => expect(addFavorite).toHaveBeenCalledWith("node-o1"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Output 2 of 2" }));
+    openRailMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove from favorites" }));
+    await waitFor(() => expect(removeFavorite).toHaveBeenCalledWith("node-o2"));
   });
 
   it("Delete arms in the menu, then deletes and returns to the project", async () => {

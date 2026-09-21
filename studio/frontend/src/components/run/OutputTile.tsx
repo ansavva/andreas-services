@@ -3,6 +3,7 @@ import { assetLabel } from "../../utils/format";
 import { DownloadIcon, PromoteIcon, RerunIcon, UpscaleIcon } from "../common/icons";
 import { ActionMenu, type MenuAction } from "../common/ActionMenu";
 import { attachActions } from "../create/attachActions";
+import { FavoriteMark, favoriteAction } from "../common/Favorite";
 import { ratioOf } from "./aspect";
 import { kindOfFile } from "../../utils/media";
 import { objectPath } from "../../utils/location";
@@ -44,7 +45,7 @@ const GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
  */
 /**
  * What an output offers, in the order a person reaches for it: make something
- * from it, then take it away with you.
+ * from it, keep it, then take it away with you.
  *
  * **A still offers three roles and Upscale; a clip offers one role.** A
  * picture can be a reference or a frame, a clip can be the clip a model works
@@ -97,6 +98,8 @@ export function outputMenu(
           },
         ]
       : []),
+    // The heart, before Download the way the browsed tile's menu has it.
+    favoriteAction(asset.node, actions.isFavorite(asset.node), actions.toggleFavorite),
     {
       key: "download",
       label: `Download ${assetLabel(asset.name)}`,
@@ -164,7 +167,7 @@ export function OutputTile({
     <div className="group relative">
       {/* `md`, the Tiles wall's corner (`RunTiles`), so the same run reads the
           same in the feed and on the wall. */}
-      <div className="overflow-hidden rounded-md border border-line bg-card">
+      <div className="relative overflow-hidden rounded-md border border-line bg-card">
         {/* The tile is the opening button; its frame is on the box around it. */}
         <button
           type="button"
@@ -195,6 +198,8 @@ export function OutputTile({
             drag={refOfOutput(row, asset, index)}
           />
         </button>
+        {/* Top left, clear of the menu; a browsed tile keeps its checkbox there. */}
+        <FavoriteMark id={asset.node} className="left-1.5 top-1.5" />
       </div>
 
       {/* Hidden until the tile is hovered or holds focus, and always drawn

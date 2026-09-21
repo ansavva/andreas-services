@@ -9,6 +9,7 @@ import { MediaThumb } from "../media/MediaThumb";
 import { expectedOutputs, ratioOf } from "../run/aspect";
 import { elapsedSince, inFlight, relativeTime, type DayGroup } from "../run/feedTime";
 import { CheckpointList, hasCheckpoints } from "../run/CheckpointList";
+import { FavoriteMark } from "../common/Favorite";
 import { outputMenu } from "../run/OutputTile";
 import { PromoteDrawer, isVideoAsset } from "../run/PromoteDrawer";
 import { refOfOutput } from "../run/seed";
@@ -296,6 +297,7 @@ const RunTile = memo(function RunTile({
             drag={refOfOutput(row, asset, index)}
           />
         </button>
+        <FavoriteMark id={asset.node} className="left-1.5 top-1.5" />
 
         {/* The run's word and when, on hover and focus — always-on scrims over
             a wall of pictures would be the plan column back in another shape.

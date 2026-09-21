@@ -45,6 +45,7 @@ import {
   UpscaleIcon,
 } from "../common/icons";
 import { type MenuAction } from "../common/ActionMenu";
+import { favoriteAction } from "../common/Favorite";
 import { LoadError } from "../common/LoadError";
 import { SectionLoading } from "../common/SectionLoading";
 import {
@@ -746,8 +747,8 @@ const GLYPH = "size-4 fill-none stroke-current stroke-[1.5]";
  * one), This frame as (the frame the clip is stopped on — `useFrameGrab`
  * says why the time is read off the player when the line is pressed, and
  * the player paused so the frame on screen is the frame taken), Upscale,
- * Copy into a character, Download. The same lines every tile's `⋮` offers
- * (`outputMenu`), decided by the kind.
+ * Copy into a character, the heart, Download. The same lines every tile's
+ * `⋮` offers (`outputMenu`), decided by the kind.
  */
 function RailActions({
   row,
@@ -817,6 +818,7 @@ function RailActions({
               },
             ]
           : []),
+        favoriteAction(asset.node, actions.isFavorite(asset.node), actions.toggleFavorite),
         {
           key: "download",
           label: "Download",

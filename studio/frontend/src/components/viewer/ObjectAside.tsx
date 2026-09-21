@@ -28,7 +28,6 @@ interface ControlsProps {
   onDelete?: () => Promise<unknown>;
   editing?: boolean;
   onToggleEditing?: () => void;
-  onClose?: () => void;
   /** Hand the open picture to the create bar, in a role. Absent on a clip — see `ObjectActions`. */
   onUseAs?: (role: AttachRole) => void;
   /** The open clip's frame — the one the player is on — to the bar, in a role. Video only. */
@@ -57,33 +56,33 @@ export function ObjectControls({
   onDelete,
   editing = false,
   onToggleEditing,
-  onClose,
   onUseAs,
   onFrameAs,
   className,
 }: ControlsProps) {
   return (
     <header className={`flex min-w-0 items-center gap-2 ${className ?? ""}`}>
-      {/* `-ml-1.5` because an icon button's box is wider than its glyph: the
-          row lines up with the column's text edge optically, not by its own. */}
-      <div className="-ml-1.5 flex min-w-0 flex-wrap items-center gap-0.5">
+      {position && (
+        // Mono, so the figures do not reflow under every step along the feed.
+        // First, where the opened run's rail has its status: the fact on the
+        // left, the controls at the row's end.
+        <Text variant="caption" family="mono" tone="muted" className="shrink-0 tabular-nums">
+          {position}
+        </Text>
+      )}
+
+      {/* At the end, so the `⋯` opens leftward into the column rather than
+          past its edge — the rail scrolls, and clips what leaves it. */}
+      <div className="ml-auto flex shrink-0 items-center gap-1">
         <ObjectActions
           file={file}
           onDelete={onDelete}
           editing={editing}
           onToggleEditing={onToggleEditing}
-          onClose={onClose}
           onUseAs={onUseAs}
           onFrameAs={onFrameAs}
         />
       </div>
-
-      {position && (
-        // Mono, so the figures do not reflow under every step along the feed.
-        <Text variant="caption" family="mono" tone="muted" className="ml-auto shrink-0">
-          {position}
-        </Text>
-      )}
     </header>
   );
 }

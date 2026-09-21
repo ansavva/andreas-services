@@ -224,10 +224,12 @@ describe("editing the file's own fields", () => {
     open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
     await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
 
-    // One control, and it is the same one in the header and over the player —
-    // hence `getAllBy`. There used to be two here, a describe toggle and a
-    // rename dialog, editing three fields of one row between them.
-    fireEvent.click(screen.getAllByLabelText("Edit details")[0]!);
+    // One line, in the rail's `⋯`. There used to be two controls here, a
+    // describe toggle and a rename dialog, editing three fields of one row
+    // between them; then one icon button; now the row is Download and a
+    // menu, the shape the opened run's row has.
+    fireEvent.click(screen.getAllByRole("button", { name: "More actions" })[0]!);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit details" }));
     return await screen.findByRole("dialog");
   }
 
@@ -291,7 +293,8 @@ describe("the picture owning the screen", () => {
     // because the view is for viewing: zoom, and the way back out.
     const stage = screen.getByRole("button", { name: "Exit fullscreen (f)" }).closest(".fixed")!;
     const within_ = within(stage as HTMLElement);
-    expect(within_.queryByLabelText("Edit details")).toBeNull();
+    expect(within_.queryByRole("button", { name: "More actions" })).toBeNull();
+    expect(within_.queryByRole("button", { name: "Download" })).toBeNull();
     expect(within_.queryByRole("button", { name: /^Delete/ })).toBeNull();
     expect(within_.getByRole("button", { name: "Zoom in (+)" })).toBeTruthy();
     // And the frame climbs past the header and the sheet handle (`z-30`),
@@ -301,7 +304,7 @@ describe("the picture owning the screen", () => {
     expect(frame.classList.contains("z-20")).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Exit fullscreen (f)" }));
-    expect(screen.getAllByLabelText("Edit details")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Download" })).toHaveLength(1);
     expect(frame.classList.contains("z-20")).toBe(true);
   });
 });

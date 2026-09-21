@@ -67,8 +67,6 @@ import {
   FolderIcon,
   FolderIntoIcon,
   FolderPlusIcon,
-  HeartFilledIcon,
-  HeartIcon,
   ImageIcon,
   LinkIcon,
   TrashIcon,
@@ -76,6 +74,7 @@ import {
 } from "../common/icons";
 import { ActionMenu, type MenuAction } from "../common/ActionMenu";
 import { BULK_GATE, ConfirmDestroyDialog } from "../common/ConfirmDestroyDialog";
+import { favoriteAction } from "../common/Favorite";
 import { attachActions } from "../create/attachActions";
 
 /** Every tile-menu line's glyph, at the size a line of text carries. */
@@ -581,16 +580,7 @@ export function FolderBrowser({
           file.kind,
           firstFrame.take,
         ),
-        {
-          key: "favorite",
-          label: favorite ? "Remove from favorites" : "Add to favorites",
-          icon: favorite ? (
-            <HeartFilledIcon className="size-4 fill-current stroke-none" />
-          ) : (
-            <HeartIcon className={MENU_GLYPH} />
-          ),
-          onSelect: () => favorites.toggle(file.id),
-        },
+        favoriteAction(file.id, favorite, favorites.toggle),
         {
           key: "download",
           label: "Download",

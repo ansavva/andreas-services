@@ -125,7 +125,8 @@ describe("the download button", () => {
       { wrapper: TestProviders },
     );
 
-    fireEvent.click(screen.getByLabelText("Download"));
+    // The one button on the row — filled, worded, the way the run's Rerun is.
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
 
     await waitFor(() => expect(signed).toHaveBeenCalledWith(FILE.id, "attachment"));
   });

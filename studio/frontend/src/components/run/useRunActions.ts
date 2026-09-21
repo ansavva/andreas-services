@@ -8,6 +8,7 @@ import { deleteRun, getAsset, getModels, getRun, getScene, setSceneRuns } from "
 import { useCreateBar, type AttachRole } from "../../context/CreateBarContext";
 import { useFrameGrab } from "../../hooks/useFrameGrab";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { useFavorites } from "../../hooks/useFavorites";
 import { useResource } from "../../hooks/useResource";
 import type { RunAsset, RunFeedRow } from "../../types";
 import { objectPath, projectPath, runPath } from "../../utils/location";
@@ -42,6 +43,10 @@ export function useRunActions(row: RunFeedRow) {
   const client = useQueryClient();
   const { copy } = useCopyToClipboard();
   const again = useRunAgain(row);
+  // An output is a node, so the heart on it is the same heart as on a
+  // browsed file: one cached id set for the app, `isFavorite` per line. Here
+  // rather than in `outputMenu`, which is a plain function every tile calls.
+  const favorites = useFavorites();
   // Read lazily by whoever mounts first and shared by key; the registry is
   // one request for the whole feed, not one per row.
   const models = useResource(["models"], useCallback(() => getModels(), []));
@@ -216,6 +221,8 @@ export function useRunActions(row: RunFeedRow) {
     useAs,
     frameAs,
     download,
+    isFavorite: favorites.isFavorite,
+    toggleFavorite: favorites.toggle,
     remove,
     refresh,
     refreshing,
