@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { Button, Text } from "@ansavva/design-system";
 
@@ -79,6 +79,7 @@ export function FavoritesSection({
   const bar = useCreateBar();
   const firstFrame = useFrameGrab();
   const favorites = useFavorites();
+  const navigate = useNavigate();
 
   const tileActions = useCallback(
     (file: FavoriteEntry): MenuAction[] => [
@@ -144,27 +145,36 @@ export function FavoritesSection({
 
       {items.length > 0 && (
         <div className={MEDIA_GRID}>
-          {items.map((file) => (
-            <MediaTile
-              key={file.id}
-              file={file}
-              // No checkbox: there is no move, copy or delete toolbar behind
-              // this grid, so a selection here would collect an answer nothing
-              // asks for. `MediaTile` draws one only when given somewhere to
-              // send it.
-              onOpen={() => undefined}
-              // What this screen can do to a picture, which is less than the
-              // browser can: there is no folder here to move it within and no
-              // rename field to open. Taking it off the screen is the one this
-              // grid owes — it is where the heart used to be.
-              actions={tileActions(file)}
-              // The viewer steps through the favorites, not through the folder
-              // each one happens to live in — `?in=fav`. Opening a picture from
-              // here and finding yourself in somebody's `reference` folder is
-              // the exact teleport `ViewerSource` exists to stop.
-              to={objectPath(file.id, { in: "fav", id: null })}
-            />
-          ))}
+          {items.map((file) => {
+            // The viewer steps through the favorites, not through the folder
+            // each one happens to live in — `?in=fav`. Opening a picture from
+            // here and finding yourself in somebody's `reference` folder is
+            // the exact teleport `ViewerSource` exists to stop.
+            const to = objectPath(file.id, { in: "fav", id: null });
+            return (
+              <MediaTile
+                key={file.id}
+                file={file}
+                // No checkbox: there is no move, copy or delete toolbar behind
+                // this grid, so a selection here would collect an answer nothing
+                // asks for. `MediaTile` draws one only when given somewhere to
+                // send it.
+                //
+                // `onOpen` is the plain click, not a fallback: the tile
+                // `preventDefault`s its own anchor so shift-click can mean
+                // "extend" in a selecting grid, which leaves a plain press with
+                // nothing to do unless this navigates. It was a no-op once, and
+                // a favorite could only be opened by command-click.
+                onOpen={() => navigate(to)}
+                // What this screen can do to a picture, which is less than the
+                // browser can: there is no folder here to move it within and no
+                // rename field to open. Taking it off the screen is the one this
+                // grid owes — it is where the heart used to be.
+                actions={tileActions(file)}
+                to={to}
+              />
+              );
+          })}
         </div>
       )}
 

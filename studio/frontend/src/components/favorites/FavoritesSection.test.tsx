@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 vi.mock("../../apis/studio", () => ({
@@ -47,13 +47,22 @@ beforeEach(() => {
   vi.mocked(getFavoriteIds).mockResolvedValue({ ids: [] });
 });
 
+/** Where the router ended up, readable from the tree. */
+function Where() {
+  const { pathname, search } = useLocation();
+  return <output data-testid="where">{pathname + search}</output>;
+}
+
 function show(variant: "preview" | "full" = "full") {
   render(
     <TestProviders>
       <MemoryRouter>
         {/* A tile's menu can hand a picture to the create bar. */}
         <CreateBarProvider>
-          <FavoritesSection variant={variant} />
+          <Routes>
+            <Route path="/" element={<FavoritesSection variant={variant} />} />
+            <Route path="/o/:id" element={<Where />} />
+          </Routes>
         </CreateBarProvider>
       </MemoryRouter>
     </TestProviders>,
@@ -76,6 +85,18 @@ it("opens each tile into the favorites feed, not into the folder it lives in", a
   // `?in=fav`. Opening a picture from here and landing in somebody's
   // `reference` folder is the teleport `ViewerSource` exists to stop.
   expect(link.getAttribute("href")).toBe("/o/node-0?in=fav");
+});
+
+it("opens the viewer on a plain click, not only on a command-click", async () => {
+  // The tile `preventDefault`s its own anchor and hands the press to `onOpen`;
+  // for a while this grid passed a no-op there and a favorite on home could
+  // not be opened at all.
+  favorites.mockResolvedValue(page(1));
+  show("preview");
+
+  fireEvent.click(await screen.findByRole("link", { name: "frame-0.webp" }));
+
+  expect((await screen.findByTestId("where")).textContent).toBe("/o/node-0?in=fav");
 });
 
 it("draws no checkbox, because nothing here acts on a selection", async () => {
