@@ -42,11 +42,24 @@ refuses the link.
 sign-in.** Measured on a dev stack: the cold create path timed out at 256 MB and took 2.3 s at
 1024 MB. The memory is CPU; it is not oversized.
 
-**Known Cognito behaviour to watch for on first live use:** the *first* federated sign-in that
-performs a link has historically failed once with "Already found an entry for username google_…"
-and succeeded on the second click. Whether that still happens is measured on a dev stack with a real
-Google client, not assumed either way — see *Verifying* below. If it does, the mitigation is a
-one-shot retry in `app/src/auth/oauth.ts`'s callback handling, not anything in the trigger.
+**The "first link fails once" quirk did not occur.** Cognito historically failed the first
+federated sign-in that performed a link with "Already found an entry for username google_…" and
+succeeded on the second click. Measured 2026-09-21 on the shared dev pool with a real Google client:
+password-first → Google linked onto the existing sub and landed in the app on the first click. If it
+ever reappears, the mitigation is a one-shot retry in `app/src/auth/oauth.ts`'s callback handling,
+not anything in the trigger.
+
+**Two things the first live sign-ins did find, both fixed the same day:**
+
+- The trigger refused Google with "That provider has not verified your email address." Cognito
+  hands every federated user `email_verified=false` as a placeholder when the claim is not mapped —
+  indistinguishable from a provider saying so. Google, Apple and LinkedIn now map their real claim
+  and the trigger checks it only for them (`HUMBUGG_EMAIL_VERIFIED_PROVIDERS`); Facebook has no
+  claim and is never checked.
+- Sign-out signed you straight back in. `logout()` adopted "signed out" before `signOut()` reached
+  `/logout`; the protected layout mounted `SignInRedirect`, its authorize won the race, and
+  Cognito's still-live session cookie answered it silently. Pre-existing; a password retype had
+  masked it. `signOut` now navigates first and web never adopts.
 
 ## What each provider needs from you
 
@@ -196,12 +209,11 @@ On the shared dev pool with Google set:
 2. **Password-first, then Google.** Sign up with a password using a Google-owned address, confirm,
    create an exchange. Sign out. *Continue with Google* with the same address → the same exchange is
    there. `aws cognito-idp admin-get-user --username <email>` shows one user with
-   `identities` naming Google. **This is where the first-sign-in quirk above would show**: an error
-   page after Google's consent screen, cured by clicking the button again. Record what happened in
-   this file.
+   `identities` naming Google. **Passed 2026-09-21, first click.**
 3. **Google-first, then password.** A fresh Google address → lands in the app, profile setup as
    usual. Sign out. *Forgot password* with that address → a code arrives, a password is set, password
-   sign-in reaches the same account.
+   sign-in reaches the same account. **Passed 2026-09-21** — one sub through sign-out, a second
+   Google sign-in (no trigger call: already linked), the reset and the password sign-in.
 4. `aws logs tail /aws/lambda/humbugg-dev-auth-pre-sign-up` shows one `linked federated identity`
    line per first sign-in, naming the sub and never the email.
 

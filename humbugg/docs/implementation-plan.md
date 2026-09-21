@@ -202,9 +202,10 @@ because four provider consoles each holding a per-machine redirect URI was a con
 machine per provider.
 Instagram is out: it has no consumer sign-in. Apple is in because App Store guideline 4.8 makes it
 mandatory the moment the iOS build offers Google. The record, the per-provider console walk and the
-GitHub names the deploy reads are [`auth-social-login.md`](auth-social-login.md). **Open until
-measured on a dev stack with a real Google client:** whether the first linking sign-in still fails
-once, Cognito's long-standing quirk; the doc says where the retry would go if it does.
+GitHub names the deploy reads are [`auth-social-login.md`](auth-social-login.md). Google measured
+end to end on the shared dev pool 2026-09-21: password-first links onto the same sub first click
+(Cognito's old "fails once" quirk did not occur), Google-first creates a native account a later
+password reset reaches. Facebook, LinkedIn and Apple await their console credentials.
 
 ---
 
