@@ -169,6 +169,14 @@ storage" (`marketing/src/pages/PrivacyPage.tsx`) — **#192 closed**.
 | **Stripe, Inc.** | Payment processing for Plus | Name, email, billing details as entered on Stripe Checkout — Humbugg never stores card data (category 9) | Stripe Data Processing Agreement, incorporated in the Stripe Services Agreement, with SCCs |
 | **Google LLC (Google Workspace)** | The support mailbox `support@humbugg.com` | Whatever a data subject sends to support | Google Workspace Data Processing Addendum, SCCs |
 
+**Social sign-in providers are not on this table, deliberately.** Google, Apple, Meta and LinkedIn
+act as *independent controllers* when a user signs in through them: the user holds the account with
+the provider, authenticates on the provider's own pages under the provider's own policy, and the
+provider then hands Humbugg a name, an email address and an opaque identifier (`docs/auth-social-
+login.md`). Humbugg processes nothing on the provider's behalf and the provider processes nothing on
+Humbugg's. What Humbugg receives, and that the provider learns of the sign-in, is disclosed in the
+Privacy Policy §2 (`marketing/src/pages/PrivacyPage.tsx`) rather than here.
+
 All three are published on the **[Sub-processors](../marketing/src/pages/SubProcessorsPage.tsx)**
 page (`/sub-processors`), reachable from the Privacy Policy's "How we share information" section and
 the new "Cookies and local storage" section. Each is bound by an Art. 28 DPA incorporating the EU

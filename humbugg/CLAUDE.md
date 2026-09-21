@@ -29,7 +29,7 @@ What it does:
 | Backend | ASP.NET Core 10 (C# 14) packaged as a Docker container Lambda behind API Gateway HTTP API, on its own domain |
 | Marketing (`marketing/`) | React Router v7 SSR on a Docker Lambda + CloudFront; hashed assets on S3. Vite, Tailwind v4, the design system's **web** leaves |
 | Product app (`app/`) | Expo + Expo Router; `expo export -p web` → S3 + CloudFront. Metro, **no Tailwind**, the design system's **native** leaves rendered through react-native-web |
-| Auth | AWS Cognito (User Pool + secretless App Client). Sign-in **and sign-up** are hosted **Managed Login** pages at `auth.humbugg.com`; the app runs authorization code + PKCE through `expo-auth-session` and holds one screen, a button. Refresh-token rotation is on, which is why `ALLOW_REFRESH_TOKEN_AUTH` must never return to the client. The API still validates **access** tokens, unchanged. See [`docs/auth-managed-login.md`](docs/auth-managed-login.md) |
+| Auth | AWS Cognito (User Pool + secretless App Client). Sign-in **and sign-up** are hosted **Managed Login** pages at `auth.humbugg.com`; the app runs authorization code + PKCE through `expo-auth-session` and holds one screen, a button. Refresh-token rotation is on, which is why `ALLOW_REFRESH_TOKEN_AUTH` must never return to the client. The API still validates **access** tokens, unchanged. See [`docs/auth-managed-login.md`](docs/auth-managed-login.md). **Social sign-in** (Google, Apple, Facebook, LinkedIn) is buttons on that same page — Cognito identity providers, each optional on its credentials, plus a pre-sign-up trigger (`scripts/auth-trigger/`) that links a social identity onto the password account with the same email so the `sub` every row keys on stays one per person. [`docs/auth-social-login.md`](docs/auth-social-login.md) |
 | Data | DynamoDB — profiles, groups, groupmembers, private draws, reveal audit events, and email delivery IDs. **No email address**: Humbugg stores none, and reads a verified one back from Cognito at send time (`IAccountDirectory`, #137) |
 | Infra | Terraform in `humbugg/infra/` (`modules/` + `envs/prod` + per-machine `envs/dev`) |
 
@@ -53,9 +53,10 @@ humbugg/
 ├── infra/                      # Terraform
 │   ├── modules/                # auth, compute, hosting, storage, webhook_relay (dev only)
 │   ├── envs/prod/              # Lambda + API Gateway + Cognito, S3 + CloudFront + Route53 alias
-│   └── envs/dev/               # per-machine: Cognito pool, tables, bucket, Stripe webhook relay
+│   ├── envs/dev-shared/        # the one shared dev resource: the Cognito pool
+│   └── envs/dev/               # per-machine: tables, bucket, Stripe webhook relay
 ├── seeds/                      # dev.json — who exists on a dev stack and what they are in
-├── scripts/                    # dev-*.sh, dev-seed.mjs, webhook-relay/receiver.mjs (the zip)
+├── scripts/                    # dev-*.sh, dev-seed.mjs, webhook-relay/receiver.mjs and auth-trigger/pre-sign-up.mjs (the zips)
 └── CLAUDE.md                   # ← this file
 ```
 
@@ -79,8 +80,24 @@ Two distributions: `modules/hosting_marketing` serves marketing (aliases apex an
 Local development uses real, per-machine AWS resources rather than LocalStack
 or shared developer resources. `dev-aws-setup.sh` persists a random UUID at
 `~/.config/andreas-services/humbugg/machine-id`; that UUID scopes Terraform
-state, DynamoDB tables, the private S3 bucket, and the Cognito pool. A developer
+state, DynamoDB tables, the private S3 bucket and the webhook relay. A developer
 may therefore use multiple machines without collisions.
+
+**The one exception is the Cognito pool, which every machine shares** —
+`infra/envs/dev-shared`, pool `humbugg-dev`, Managed Login host
+`humbugg-dev.auth.us-east-1.amazoncognito.com`. It was per machine until
+September 2026; social sign-in moved it, because each provider console holds an
+exact list of redirect URIs and a per-machine domain made every new machine four
+console edits. `dev-aws-setup.sh` applies the shared stack (idempotent, locked)
+before the machine's own, and the machine's stack reads the pool's ids from
+`/humbugg/dev/cognito-*` in SSM. Accounts are therefore shared too: a `.test`
+person seeded on one machine exists for all, with whatever password the last
+seed set. Data stays per machine. Social credentials for it come from the
+applying machine's `dev.env` (from the team password manager); the script
+refuses to apply the shared stack while the pool has a provider this machine
+has no keys for, so a keyless machine cannot strip what another added —
+`--skip-shared` uses the pool untouched, `--allow-provider-removal` is the
+override. `docs/auth-social-login.md`.
 
 **Every local value lives in one file: `~/.config/andreas-services/humbugg/dev.env`.**
 Backend config, both frontends' inlined values, Stripe test keys, the dev test
@@ -153,7 +170,7 @@ All commands run from the repository root:
 |---|---|
 | `scripts/dev-setup.sh` | Idempotently install shared tooling; use `--check` for a read-only prerequisite audit |
 | `humbugg/scripts/dev-setup.sh` | Canonical dependency chain: shared setup → .NET 10 → per-machine AWS setup; accepts `--profile`, `--region`, `--yes`, `--check` |
-| `humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS provision/check command called by canonical setup; accepts `--profile`, `--region`, `--yes`, `--check` |
+| `humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS provision/check command called by canonical setup; applies the shared pool stack then this machine's; accepts `--profile`, `--region`, `--yes`, `--check`, `--skip-shared`, `--allow-provider-removal` |
 | `humbugg/scripts/dev-up.sh` | Preferred full local startup — backend + webhook consumer, both frontends; accepts `--profile`, `--region` |
 | `humbugg/scripts/dev-up-backend.sh` | Backend startup — the API and the Stripe webhook consumer, two services of one Compose project; exports temporary AWS credentials into Docker Compose without writing them to disk |
 | `humbugg/scripts/dev-up-marketing.sh` | Marketing-site-only startup; exports `VITE_*` from `dev.env` and checks installed dependencies first |
@@ -161,7 +178,7 @@ All commands run from the repository root:
 | `humbugg/scripts/dev-logs-backend.sh` | Follow the backend container logs; accepts Docker Compose log options such as `--tail 200` |
 | `humbugg/scripts/dev-user.sh` | Create or converge the one dev-stack account `HUMBUGG_DEV_USER_EMAIL` names; `--generate-password` for a non-interactive run, `--check` to report without changing. The address should be one of the people in `seeds/dev.json` |
 | `humbugg/scripts/dev-aws-seed.sh` | Create every account in `seeds/dev.json` (one shared password, `HUMBUGG_DEV_USER_PASSWORD`) and load the fixture through the local API — profiles, exchanges, joins, a Plus purchase through Stripe test mode; `--check` reports without writing. Converges; see `seeds/README.md` |
-| `humbugg/scripts/dev-aws-reset.sh` | Destructive data reset scoped to this machine; run with `--dry-run` first; `--skip-cognito` preserves users |
+| `humbugg/scripts/dev-aws-reset.sh` | Destructive data reset scoped to this machine — tables and bucket; run with `--dry-run` first. Never touches accounts: the pool is shared |
 | `humbugg/scripts/dev-aws-destroy.sh` | Destroy this machine's AWS resources; the persistent UUID is deliberately retained |
 
 `humbugg/scripts/dev-aws-common.sh` is a sourced implementation helper, not a
@@ -187,10 +204,12 @@ To reset or remove only the current machine's environment:
 ```
 
 The reset script verifies the Terraform machine UUID and exact AWS resource
-prefix before deleting data. It recreates the DynamoDB tables through Terraform,
-empties S3, and deletes Cognito users unless `--skip-cognito` is supplied. It
-retains the pool and app client. The destroy script removes all per-machine AWS
-resources but retains the UUID and state identity for safe reprovisioning.
+prefix before deleting data. It recreates the DynamoDB tables through Terraform
+and empties S3. It never deletes Cognito users — the pool is the team's shared
+one. The destroy script removes all per-machine AWS resources but retains the
+UUID and state identity for safe reprovisioning; it leaves the shared stack
+alone, which is torn down by hand with `terraform -chdir=humbugg/infra/envs/dev-shared destroy`
+and only when no machine uses it.
 
 See [`scripts/README.md`](../scripts/README.md) for the setup scripts and GitHub Packages auth.
 

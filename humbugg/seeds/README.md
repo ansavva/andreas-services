@@ -30,8 +30,10 @@ Plus when it next is.
 **Nothing here is real.** Every address ends in `.test` (RFC 2606 — it can never
 be a mailbox, and nothing is mailed anyway: the wrapper passes
 `MessageAction SUPPRESS`); every name is invented. The wrapper refuses a pool
-not named for this machine, the loader refuses an API base that is not
-loopback, and both refuse an address that is not `.test`. There is no staging
+not named `humbugg-dev` — the shared dev pool, so these seven exist for every
+machine once any machine seeds them, with the password of the last seed — the
+loader refuses an API base that is not loopback, and both refuse an address
+that is not `.test`. There is no staging
 or prod mode and no flag that makes one.
 
 ## What the fixture is for

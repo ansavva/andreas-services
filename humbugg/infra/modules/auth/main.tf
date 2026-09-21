@@ -89,6 +89,25 @@ resource "aws_cognito_user_pool" "main" {
     }
   }
 
+  # The identity provider's `sub`, verbatim. The pool is case-insensitive
+  # (above), so the federated username Cognito hands the pre-sign-up trigger —
+  # `linkedin_<sub>` — arrives LOWERCASED, and a link made from it names an id
+  # LinkedIn never issued: "Invalid ProviderName/Username combination" on
+  # every sign-in after, measured 2026-09-21. Google's subs are digits and
+  # never showed it. Every provider maps `sub` here; the trigger links with
+  # this and falls back to the username only if it is absent.
+  schema {
+    name                = "idp_sub"
+    attribute_data_type = "String"
+    required            = false
+    mutable             = true
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 256
+    }
+  }
+
   account_recovery_setting {
     recovery_mechanism {
       name     = "verified_email"
@@ -128,6 +147,13 @@ resource "aws_cognito_user_pool" "main" {
   admin_create_user_config {
     allow_admin_create_user_only = false
   }
+
+  # Social sign-ins are linked onto the password account with the same email
+  # before Cognito creates anything — `pre_sign_up.tf`. An in-place change to
+  # the pool, unlike `username_configuration` above.
+  lambda_config {
+    pre_sign_up = aws_lambda_function.pre_sign_up.arn
+  }
 }
 
 # The region is only ever needed to spell out a DEFAULT Cognito domain's host,
@@ -150,7 +176,19 @@ resource "aws_cognito_user_pool_client" "main" {
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
-  supported_identity_providers         = ["COGNITO"]
+
+  # COGNITO is the password form; every other name is a button on the hosted
+  # page. Cognito rejects a name it has no provider for, so the client waits
+  # for the providers — with none enabled, `depends_on` a count-0 resource is
+  # inert.
+  supported_identity_providers = concat(["COGNITO"], local.identity_provider_names)
+
+  depends_on = [
+    aws_cognito_identity_provider.google,
+    aws_cognito_identity_provider.facebook,
+    aws_cognito_identity_provider.apple,
+    aws_cognito_identity_provider.linkedin,
+  ]
 
   # **`ALLOW_REFRESH_TOKEN_AUTH` must never come back while this block exists.**
   # Cognito rejects the pair at apply time — `terraform validate` and `tflint`
@@ -242,6 +280,31 @@ resource "aws_cognito_managed_login_branding" "main" {
     color_mode = "DARK"
     extension  = "ICO"
     bytes      = filebase64("${path.module}/assets/humbugg-favicon.ico")
+  }
+
+  # LinkedIn's button icon. Google, Facebook and Apple are native Cognito
+  # types and get their own logos; LinkedIn is a generic OIDC provider and
+  # got Cognito's chain-link glyph until this. `IDP_BUTTON_ICON` is keyed by
+  # the provider's name in `resource_id`, and only exists while the provider
+  # does — an icon for a provider the pool lacks is a rejected record. The
+  # file is LinkedIn's own "in" bug, as its brand guidelines ask a sign-in
+  # button to carry — with its `id`/`data-name` attributes stripped, which
+  # Cognito's SVG sanitizer rejects, and its viewBox padded to a square,
+  # which Cognito requires of an IDP icon (1:1, measured to the pixel). Both
+  # were learned from a failed create. LIGHT and DARK rather than DYNAMIC,
+  # as the favicon.
+  #
+  # An `asset` block is ForceNew, so the apply that adds LinkedIn to prod
+  # replaces the branding record: seconds of "Login pages unavailable".
+  dynamic "asset" {
+    for_each = local.linkedin_enabled ? ["LIGHT", "DARK"] : []
+    content {
+      category    = "IDP_BUTTON_ICON"
+      color_mode  = asset.value
+      extension   = "SVG"
+      resource_id = "LinkedIn"
+      bytes       = filebase64("${path.module}/assets/linkedin-bug.svg")
+    }
   }
 }
 

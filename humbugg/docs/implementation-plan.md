@@ -193,6 +193,20 @@ account's ID token is refused, and no token is refused. Part of epic #370.
 real token through `api.humbugg.com`; #373's dev-stack version has no API Gateway in front of it, so
 this is the only tier that exercises the authorizer with a valid token.
 
+**Social sign-in — Google, Apple, Facebook, LinkedIn. BUILT September 2026, providers land as their
+console credentials do.** Identity providers on the same pool, buttons on the same hosted page, and a
+pre-sign-up trigger that links a social identity onto the password account with the same email — the
+one piece that is not configuration, because a fresh `sub` per provider would orphan every row. It
+also moved the dev Cognito pool out of the per-machine stack into one shared `envs/dev-shared`,
+because four provider consoles each holding a per-machine redirect URI was a console edit per new
+machine per provider.
+Instagram is out: it has no consumer sign-in. Apple is in because App Store guideline 4.8 makes it
+mandatory the moment the iOS build offers Google. The record, the per-provider console walk and the
+GitHub names the deploy reads are [`auth-social-login.md`](auth-social-login.md). Google measured
+end to end on the shared dev pool 2026-09-21: password-first links onto the same sub first click
+(Cognito's old "fails once" quirk did not occur), Google-first creates a native account a later
+password reset reaches. Facebook, LinkedIn and Apple await their console credentials.
+
 ---
 
 ## Then, in order

@@ -80,3 +80,72 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# ---------------------------------------------------------------------------
+# Social sign-in. Every provider is optional: an empty id leaves it uncreated
+# and the button off the hosted page. `identity_providers.tf`.
+# ---------------------------------------------------------------------------
+
+variable "google_client_id" {
+  description = "Google OAuth client id (Web application type). Empty disables Google."
+  type        = string
+  default     = ""
+}
+
+variable "google_client_secret" {
+  description = "Google OAuth client secret. Required with google_client_id."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "facebook_app_id" {
+  description = "Meta app id with Facebook Login enabled. Empty disables Facebook."
+  type        = string
+  default     = ""
+}
+
+variable "facebook_app_secret" {
+  description = "Meta app secret. Required with facebook_app_id."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "apple_services_id" {
+  description = "Sign in with Apple Services ID (the identifier, e.g. com.humbugg.auth). Empty disables Apple."
+  type        = string
+  default     = ""
+}
+
+variable "apple_team_id" {
+  description = "Apple Developer Team ID. Required with apple_services_id."
+  type        = string
+  default     = ""
+}
+
+variable "apple_key_id" {
+  description = "Key ID of the Sign in with Apple private key. Required with apple_services_id."
+  type        = string
+  default     = ""
+}
+
+variable "apple_private_key" {
+  description = "The Sign in with Apple private key, PEM (.p8 contents). Required with apple_services_id."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "linkedin_client_id" {
+  description = "LinkedIn app client id with the 'Sign In with LinkedIn using OpenID Connect' product. Empty disables LinkedIn."
+  type        = string
+  default     = ""
+}
+
+variable "linkedin_client_secret" {
+  description = "LinkedIn app client secret. Required with linkedin_client_id."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

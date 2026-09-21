@@ -12,26 +12,22 @@ locals {
   }
 }
 
-module "auth" {
-  source = "../../modules/auth"
+# THE POOL IS NOT HERE. It is the shared stack's, `envs/dev-shared`, one pool
+# for every machine — because social sign-in registers one redirect URI per
+# Managed Login domain at four provider consoles, and a per-machine domain
+# made every new machine four console edits. `dev-aws-setup.sh` applies that
+# stack before this one; these reads fail with the parameter's name if it has
+# not been. Tables, bucket and webhook relay stay per machine.
+data "aws_ssm_parameter" "cognito_user_pool_id" {
+  name = "/humbugg/dev/cognito-user-pool-id"
+}
 
-  project     = local.resource_prefix
-  environment = "development"
+data "aws_ssm_parameter" "cognito_client_id" {
+  name = "/humbugg/dev/cognito-client-id"
+}
 
-  # 8081, not 5173: the product app is the only surface that authenticates and it
-  # is served by Metro. 5173 is the marketing site, which signs nobody in — those
-  # entries were stale from before the split and were never reachable, because
-  # the client had no OAuth flow enabled to make them live.
-  callback_urls = ["http://localhost:8081/auth/callback", "humbugg://auth/callback"]
-  logout_urls   = ["http://localhost:8081/login", "humbugg://auth/logout"]
-
-  # Dev stacks take a DEFAULT Cognito domain. A custom one would need a SAN on a
-  # certificate, a hosted-zone record and a ~15-minute apply per machine, for
-  # pages nobody but that machine's developer ever loads. The prefix must be
-  # unique across all of AWS, which the per-machine id already guarantees.
-  auth_domain_prefix = local.resource_prefix
-
-  tags = local.common_tags
+data "aws_ssm_parameter" "cognito_auth_domain" {
+  name = "/humbugg/dev/cognito-auth-domain"
 }
 
 module "storage" {

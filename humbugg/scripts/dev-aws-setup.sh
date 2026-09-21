@@ -8,14 +8,22 @@ source "$SCRIPT_DIR/dev-aws-common.sh"
 
 AUTO_APPROVE=0
 CHECK_ONLY=0
+SKIP_SHARED=0
+ALLOW_PROVIDER_REMOVAL=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile) [[ $# -ge 2 ]] || die "--profile requires a value."; AWS_PROFILE_VALUE="$2"; shift ;;
     --region) [[ $# -ge 2 ]] || die "--region requires a value."; AWS_REGION_VALUE="$2"; shift ;;
     --yes|-y) AUTO_APPROVE=1 ;;
     --check) CHECK_ONLY=1 ;;
+    # Use the shared pool as it stands; do not apply envs/dev-shared. For a
+    # machine without the social keys, or a run that must not touch the pool.
+    --skip-shared) SKIP_SHARED=1 ;;
+    # The one way past the guard: apply the shared stack with exactly the
+    # providers this machine's dev.env names, removing the rest from the pool.
+    --allow-provider-removal) ALLOW_PROVIDER_REMOVAL=1 ;;
     --help|-h)
-      printf 'Usage: %s [--profile NAME] [--region REGION] [--yes] [--check]\n' "$0"
+      printf 'Usage: %s [--profile NAME] [--region REGION] [--yes] [--check] [--skip-shared] [--allow-provider-removal]\n' "$0"
       exit 0
       ;;
     *) die "Unknown option: $1" ;;
@@ -46,8 +54,9 @@ if [[ "$CHECK_ONLY" -eq 1 ]]; then
   pool_id="$(jq -r '.outputs.cognito_user_pool_id.value // empty' <<<"$state_json")"
   [[ -n "$bucket" && -n "$pool_id" ]] || die "Terraform state is missing required development outputs."
   aws_dev s3api head-bucket --bucket "$bucket" >/dev/null || die "Development S3 bucket '$bucket' is unavailable."
-  aws_dev cognito-idp describe-user-pool --user-pool-id "$pool_id" >/dev/null ||
-    die "Development Cognito pool '$pool_id' is unavailable."
+  # The shared pool, by name: a machine set up before the pool moved out of
+  # its own stack still carries the old per-machine id in its outputs.
+  require_shared_pool "$pool_id"
   while IFS= read -r table; do
     aws_dev dynamodb describe-table --table-name "$table" >/dev/null ||
       die "Development DynamoDB table '$table' is unavailable."
@@ -61,6 +70,25 @@ if [[ "$CHECK_ONLY" -eq 1 ]]; then
   ok "Per-machine AWS resources and $DEV_ENV_FILE are ready."
   exit 0
 fi
+
+# The shared stack first — the pool this machine's stack reads from SSM.
+# Idempotent and locked, so every machine applies it on every run. Its social
+# credentials come from THIS machine's dev.env, so before applying, refuse if
+# the pool holds a provider this machine has no keys for: the apply would
+# remove it, and Terraform cannot tell an absent key from that intent.
+log "Shared stack: s3://andreas-services-terraform-state/humbugg/dev-shared/terraform.tfstate"
+terraform_shared_init
+if [[ "$SKIP_SHARED" -eq 1 ]]; then
+  log "Skipping the shared stack (--skip-shared); using the pool as it is."
+else
+  [[ "$ALLOW_PROVIDER_REMOVAL" -eq 1 ]] || require_social_keys_for_pool
+  shared_apply_args=(apply -input=false "${SHARED_TF_VARS[@]}")
+  [[ "$AUTO_APPROVE" -eq 1 ]] && shared_apply_args+=(-auto-approve)
+  terraform -chdir="$SHARED_TF_DIR" "${shared_apply_args[@]}"
+fi
+shared_outputs="$(terraform_shared_output_json)"
+idp_response_url="$(jq -r '.idp_response_url.value' <<<"$shared_outputs")"
+identity_providers="$(jq -r '.identity_providers.value | join(", ")' <<<"$shared_outputs")"
 
 terraform_init
 apply_args=(apply -input=false "${TF_VARS[@]}")
@@ -143,7 +171,7 @@ line "# AWS"
 gen AWS_PROFILE "$AWS_PROFILE_VALUE"
 gen AWS_DEFAULT_REGION "$AWS_REGION_VALUE"
 line ""
-line "# Cognito"
+line "# Cognito — the SHARED dev pool (infra/envs/dev-shared), one for every machine."
 gen COGNITO_REGION "$AWS_REGION_VALUE"
 gen COGNITO_USER_POOL_ID "$pool_id"
 gen COGNITO_CLIENT_ID "$client_id"
@@ -187,8 +215,8 @@ line ""
 # The product app holds the auth flow, and reaches the backend cross-origin at
 # its dev port rather than through a same-origin proxy. Metro inlines these.
 line "# Product app (Metro inlines EXPO_PUBLIC_*; dev-up-app.sh exports only this prefix)."
-line "# The domain is the Managed Login HOST — no scheme, no path — a default Cognito"
-line "# domain on a dev stack rather than a name Humbugg owns."
+line "# The domain is the Managed Login HOST — no scheme, no path — the shared dev"
+line "# pool's default Cognito domain, the same on every machine."
 gen EXPO_PUBLIC_COGNITO_CLIENT_ID "$client_id"
 gen EXPO_PUBLIC_COGNITO_DOMAIN "$auth_domain"
 gen EXPO_PUBLIC_API_BASE_URL "http://127.0.0.1:5001/api"
@@ -234,6 +262,23 @@ keep HUMBUGG_STRIPE_PUBLISHABLE_KEY
 keep HUMBUGG_STRIPE_SECRET_KEY
 keep HUMBUGG_STRIPE_WEBHOOK_ENDPOINT_ID
 keep HUMBUGG_STRIPE_WEBHOOK_SECRET
+line ""
+line "# Social sign-in on the SHARED dev pool. Keys from the team password manager; a"
+line "# machine that has them applies them for everyone on its next dev-aws-setup.sh run,"
+line "# and one that lacks them for a provider the pool already has is refused (--skip-shared"
+line "# to use the pool untouched). docs/auth-social-login.md. Providers on the pool now: ${identity_providers:-none}."
+line "# Dev redirect URI, every machine: $idp_response_url"
+keep HUMBUGG_GOOGLE_CLIENT_ID
+keep HUMBUGG_GOOGLE_CLIENT_SECRET
+keep HUMBUGG_FACEBOOK_APP_ID
+keep HUMBUGG_FACEBOOK_APP_SECRET
+keep HUMBUGG_APPLE_SERVICES_ID
+keep HUMBUGG_APPLE_TEAM_ID
+keep HUMBUGG_APPLE_KEY_ID
+line "# base64 of the .p8 file, one line: \`base64 -i AuthKey_XXXX.p8 | tr -d '\\n'\`."
+keep HUMBUGG_APPLE_PRIVATE_KEY_BASE64
+keep HUMBUGG_LINKEDIN_CLIENT_ID
+keep HUMBUGG_LINKEDIN_CLIENT_SECRET
 
 # Anything the file held that no section above claims.
 leftover="$(awk -F= -v written=" $written " '
@@ -249,6 +294,11 @@ rm -f "$previous"
 mv "$rendered" "$env_file"
 
 ok "AWS development resources are ready; $env_file is up to date."
+if [[ -n "$identity_providers" ]]; then
+  ok "Social sign-in on the shared dev pool: $identity_providers."
+else
+  log "No social sign-in provider on the shared dev pool. Register $idp_response_url with one, put its keys in $env_file, re-run — docs/auth-social-login.md."
+fi
 
 # The Stripe half of the webhook relay. After the file is written, because it
 # reads the key from it and writes the endpoint id and secret back into it.
