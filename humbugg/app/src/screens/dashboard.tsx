@@ -271,10 +271,13 @@ function CreateGroup({ onCreated }: { onCreated(id: string): void }) {
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [eventDate, setEventDate] = useState('');
-  const [signupDeadline, setSignupDeadline] = useState('');
-  const [spendingLimit, setSpendingLimit] = useState('');
   const minimumDate = todayInputValue();
+  // Both dates start on today. An empty field is a valid state for the package
+  // but a poor one for this form — the group needs both dates — and it is also
+  // where the picker's own fallback (1 Jan 2024) used to leak through.
+  const [eventDate, setEventDate] = useState(minimumDate);
+  const [signupDeadline, setSignupDeadline] = useState(minimumDate);
+  const [spendingLimit, setSpendingLimit] = useState('');
 
   async function submit() {
     const values = { name, description, eventDate, signupDeadline, spendingLimit };
@@ -325,6 +328,7 @@ function CreateGroup({ onCreated }: { onCreated(id: string): void }) {
               */}
               <DateInput
                 value={eventDate}
+                today={minimumDate}
                 min={signupDeadline && signupDeadline > minimumDate ? signupDeadline : minimumDate}
                 onValueChange={(next) => { setEventDate(next); setError(null); }}
               />
@@ -332,8 +336,15 @@ function CreateGroup({ onCreated }: { onCreated(id: string): void }) {
           </View>
           <View style={{ flex: 1 }}>
             <FieldLabel label="Join by">
+              {/*
+                `today` is a prop, not a clock read, so the picker opens on it
+                when the field is cleared. Without it the package falls back to
+                1 Jan 2024 — outside `min`, so every wheel row was struck
+                through and no join-by date could be chosen.
+              */}
               <DateInput
                 value={signupDeadline}
+                today={minimumDate}
                 min={minimumDate}
                 max={eventDate || undefined}
                 onValueChange={(next) => { setSignupDeadline(next); setError(null); }}
