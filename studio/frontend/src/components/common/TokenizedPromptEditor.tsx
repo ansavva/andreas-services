@@ -258,8 +258,19 @@ export function TokenizedPromptEditor({
         {onSubmit && <SubmitOnEnter onSubmit={onSubmit} menuOpen={menuOpen} />}
         <Focus focusKey={focusKey} />
         <Blur blurKey={blurKey} />
+        {/* **`ignoreHistoryMergeTagChange={false}`, or a loaded prompt can be
+            silently kept from the box.** `Pillify` re-registers its transform
+            whenever `known` changes — a run loaded with a different cast does
+            that — and Lexical marks the existing nodes dirty in an update it
+            tags `history-merge`. `Hydrate`'s rebuild in the same tick merges
+            into that pending update and inherits the tag, which the plugin
+            skips by default: the box redrew, nothing was emitted, `held`
+            kept the previous text, and the next value equal to it was
+            treated as already shown. Edit on run A, then B, then A again
+            left B's words in the box over A's plan. */}
         <OnChangePlugin
           ignoreSelectionChange
+          ignoreHistoryMergeTagChange={false}
           onChange={(state) =>
             state.read(() => {
               const next = $getRoot().getTextContent();

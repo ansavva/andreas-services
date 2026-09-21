@@ -23,7 +23,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { getMovie, getScene } from "../apis/studio";
 
-import type { RunKind } from "../types";
+import type { RunKind, RunPlan } from "../types";
 
 /** What an attachment is FOR. The same five words a send's `role` takes. */
 export type AttachRole = "reference" | "start" | "end" | "input" | "clip";
@@ -67,6 +67,31 @@ export interface AttachRef {
   pending?: string;
 }
 
+/**
+ * The draft the bar is editing, when it is one — the run `Send` and `Save`
+ * write to instead of creating another.
+ *
+ * **Edit means two things, decided by the run's state.** A draft has not
+ * gone out, so Edit on it opens THAT run: the plan is patched in place, the
+ * row in the feed is the row that changes, and Send submits it. A submitted
+ * run's plan is what was sent and the API refuses to rewrite it, so Edit on
+ * one loads a copy — the same prompt, params and pictures, as a new draft.
+ * The seed carries this so the row decides once, where it knows the status,
+ * and the bar never asks.
+ *
+ * `plan` is the record's plan as loaded, so a save carries `origin` and
+ * `note` through: a backfilled plan that became `authored` on a reword would
+ * claim somebody wrote words that were read off a request document.
+ */
+export interface EditingDraft {
+  run: string;
+  project: string;
+  kind: RunKind;
+  /** The model the draft was loaded with — a save writes the model only when it moved. */
+  model: string;
+  plan: RunPlan | null;
+}
+
 /** What a feed row hands the bar to re-open a run in it. */
 export interface CreateSeed {
   project: string;
@@ -76,6 +101,8 @@ export interface CreateSeed {
   prompt?: string;
   params?: Record<string, unknown>;
   attachments?: { ref: AttachRef; role: AttachRole }[];
+  /** Set when the seed is a draft to edit in place rather than a run to copy. */
+  editing?: EditingDraft;
 }
 
 export interface CreateBarApi {
@@ -125,6 +152,14 @@ interface CreateBarState {
   attachments: Record<RunKind, Attachment[]>;
   /** The project chosen IN the bar. The route's project beats it. */
   project: string | null;
+  /**
+   * The draft being edited in place, or null while the bar makes new runs.
+   * Set by `loadRun` from a seed that names one; cleared by `sent`, by
+   * `stopEditing`, and by a kind switch — the bar holds attachments per
+   * kind, so a draft's pictures are not what the other kind's tiles show,
+   * and a send from there is a new run rather than a rewrite of this one.
+   */
+  editing: EditingDraft | null;
   /** The highlighted role — the one the drawer supplies images for. */
   role: AttachRole | null;
   /** Bumped when something loads the bar, so it can take focus. */
@@ -194,6 +229,8 @@ interface CreateBarStateValue extends CreateBarState {
   dismiss(): void;
   /** After a send: the prompt goes, the images go unless kept. */
   sent(): void;
+  /** Leave the draft as it is; what the bar holds becomes a new run's. */
+  stopEditing(): void;
 }
 
 const ApiContext = createContext<CreateBarApi | null>(null);
@@ -223,6 +260,7 @@ const EMPTY: CreateBarState = {
   params: {},
   attachments: { image: [], video: [], training: [] },
   project: null,
+  editing: null,
   role: null,
   focus: 0,
   raised: 0,
@@ -276,9 +314,15 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
     const here = routeProject ?? sceneProject ?? movieProject;
     if (!here) return;
     writeProject(here);
-    setState((current) =>
-      current.project === here ? current : { ...current, project: here },
-    );
+    // A draft belongs to one project. Leaving it for another while the bar
+    // is editing one would send the next press to a run the page no longer
+    // shows, so the edit is let go and what the bar holds is a new run's.
+    setState((current) => {
+      const editing = current.editing?.project === here ? current.editing : null;
+      return current.project === here && current.editing === editing
+        ? current
+        : { ...current, project: here, editing };
+    });
   }, [routeProject, sceneProject, movieProject]);
 
   const loadRun = useCallback((seed: CreateSeed) => {
@@ -294,6 +338,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
         params,
         attachments: { ...current.attachments, [seed.kind]: seed.attachments ?? [] },
         project: seed.project,
+        editing: seed.editing ?? null,
         role: null,
         focus: current.focus + 1,
         raised: current.raised + 1,
@@ -348,7 +393,9 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setKind = useCallback((kind: RunKind) => {
-    setState((current) => (current.kind === kind ? current : { ...current, kind, role: null }));
+    setState((current) =>
+      current.kind === kind ? current : { ...current, kind, role: null, editing: null },
+    );
   }, []);
 
   const api = useMemo<CreateBarApi>(
@@ -407,8 +454,14 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
         ...current,
         prompt: "",
         role: null,
+        editing: null,
         attachments: { ...current.attachments, [current.kind]: [] },
       })),
+    [],
+  );
+
+  const stopEditing = useCallback(
+    () => setState((current) => (current.editing ? { ...current, editing: null } : current)),
     [],
   );
 
@@ -481,6 +534,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       swapFrames,
       move,
       sent,
+      stopEditing,
     }),
     [
       state,
@@ -500,6 +554,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       swapFrames,
       move,
       sent,
+      stopEditing,
     ],
   );
 

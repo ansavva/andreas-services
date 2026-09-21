@@ -1027,11 +1027,16 @@ def _revised(record: dict, assignments: dict, send_entries: list[dict]) -> dict:
     again — one answer to "can this be submitted" rather than two.
     """
     plan = assignments.get("plan", record.get("plan"))
-    fingerprint = catalog.submission_fingerprint(record.get("model"), plan, send_entries)
+    model = assignments.get("model", record.get("model"))
+    fingerprint = catalog.submission_fingerprint(model, plan, send_entries)
     assignments = {**assignments, "fingerprint": fingerprint, "status": "draft"}
-    return catalog.update_project_entity(
-        KIND, record, assignments, {"status": "draft", "fingerprint": fingerprint}
-    )
+    listing = {"status": "draft", "fingerprint": fingerprint}
+    if "model" in assignments:
+        # Projected like `kind` and `status`: `?model=` filters a page off the
+        # listing row, and a draft moved to another engine has to be found
+        # under it.
+        listing["model"] = model
+    return catalog.update_project_entity(KIND, record, assignments, listing)
 
 
 @bp.get("/runs/<run_id>/payload")
@@ -1237,6 +1242,30 @@ def update_run(run_id: str):
         destination = project_routes.project_at(body["project"], held)
         parent = project_routes.folder_for(destination, layout.RUN_PARENT)
         return jsonify(catalog.move_run(record, destination, parent["node_id"])), 200
+
+    # **The model, while it is still a draft.** The one envelope field the
+    # create bar can change on a run it is editing: a draft loaded back into
+    # the bar is offered the model chip like any other, and refusing the
+    # switch there would make "edit the draft" mean "edit everything but
+    # that". `engine` rides with it because the two are one choice — the
+    # registry entry — spelled twice. Gated exactly as `/plan` and `/sends`
+    # are, and through the same write, because a model change moves the
+    # fingerprint as surely as a reworded prompt does.
+    if "model" in body or "engine" in body:
+        if len(body) > (1 if "model" in body else 0) + (1 if "engine" in body else 0):
+            raise ValidationError("model and engine cannot be combined with other changes")
+        _draftable(record)
+        assignments = {}
+        if "model" in body:
+            if not isinstance(body["model"], str) or not body["model"]:
+                raise ValidationError("model is required")
+            assignments["model"] = body["model"]
+        if "engine" in body:
+            if body["engine"] is not None and not isinstance(body["engine"], str):
+                raise ValidationError("engine must be a string or null")
+            assignments["engine"] = body["engine"]
+        send_entries = catalog.sends(record["id"])
+        return jsonify(view(_revised(record, assignments, send_entries), send_entries)), 200
 
     assignments = {}
     listing = {}

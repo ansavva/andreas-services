@@ -26,7 +26,11 @@ import {
   getRuns,
   getTemplates,
   patchRunPlan,
+  patchRunSends,
   setModelDefaults,
+  setRunCharacters,
+  setRunLocations,
+  setRunModel,
   submitRun,
   type ModelDefaults,
 } from "../../apis/studio";
@@ -101,9 +105,16 @@ const CHARACTER_FIELDS = [
  * Discard deletes it.
  */
 interface Held {
-  draft: CreatedRun;
+  draft: Draft;
   twin: RunSummary;
 }
+
+/**
+ * The run a send goes on to submit: one just created, or the draft the bar
+ * was editing once its edits are written. `fingerprint` is whatever the API
+ * answered last — the duplicate question is asked over it.
+ */
+type Draft = Pick<CreatedRun, "id" | "fingerprint">;
 
 const GLYPH = "size-4 fill-none stroke-current stroke-[1.5]";
 
@@ -194,7 +205,7 @@ export function CreateBar() {
   const [sheetView, setSheetView] = useState<"settings" | "models" | "projects" | "templates">("settings");
   const sheetRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{ title: string; message: string } | null>(null);
   const [held, setHeld] = useState<Held | null>(null);
 
   const attachments = bar.attachments[bar.kind];
@@ -361,6 +372,64 @@ export function CreateBar() {
    * A twin that was actually sent holds the draft and asks; a draft or a
    * discard is not a twin, because nothing was spent on it.
    */
+  /**
+   * Write what the bar holds back onto the draft it is editing.
+   *
+   * **In place, and only what the routes take.** A draft is one run whose
+   * plan may still change, and the API offers that as three writes — the
+   * model (`PATCH /runs/<id>`, drafts only), the plan (`/plan`) and the
+   * ordered images (`/sends`) — each replacing its half whole. The cast and
+   * the location go first because `/plan` fills a template from the run's
+   * characters as they stand; the sends go last because the fingerprint the
+   * duplicate question reads is the one the last write answered. The model
+   * is written only when it moved: it is the one write of the four that is
+   * refused outright once the run has gone out, and a save that did not
+   * touch it should not be the thing that finds that out.
+   */
+  const writeEdits = useCallback(async (): Promise<Draft> => {
+    const editing = bar.editing!;
+    const entryNow = entry!;
+    if (entryNow.model !== editing.model) {
+      await setRunModel(editing.run, entryNow.model, entryNow.skill);
+    }
+    await setRunCharacters(editing.run, cast);
+    await setRunLocations(editing.run, shotIn);
+    const held = editing.plan;
+    await patchRunPlan(editing.run, {
+      ...(held ?? {}),
+      version: held?.version ?? 1,
+      origin: held?.origin ?? "authored",
+      prompt,
+      params,
+      ...(citesTemplate(prompt) ? { template: prompt } : {}),
+    });
+    const written = await patchRunSends(editing.run, sendsOf(attachments, entryNow));
+    return { id: editing.run, fingerprint: written.fingerprint ?? "" };
+  }, [attachments, bar.editing, cast, entry, params, prompt, shotIn]);
+
+  /**
+   * Save the draft and leave it a draft. Nothing is sent and nothing bills;
+   * the row in the feed is the row that changes. The bar keeps editing it —
+   * a save is a checkpoint, not a way out; × on the strip is that.
+   */
+  const save = useCallback(async () => {
+    if (!bar.editing || !entry || prompt === "" || busy || anyPending(attachments)) return;
+    const { run, project: within } = bar.editing;
+    setBusy(true);
+    setFailure(null);
+    try {
+      await writeEdits();
+      toast.add({ intent: "success", title: "Saved", description: "The draft was updated." });
+      void queryClient.invalidateQueries({ queryKey: ["run", run] });
+      void queryClient.invalidateQueries({ queryKey: ["runs"] });
+      void queryClient.invalidateQueries({ queryKey: ["project", within] });
+    } catch (err) {
+      setFailure({ title: "Could not save the draft", message: (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }, [attachments, bar.editing, busy, entry, prompt, queryClient, toast, writeEdits]);
+
   const send = useCallback(
     async (force = false) => {
       if (!entry || !target || prompt === "" || busy || anyPending(attachments)) return;
@@ -369,6 +438,12 @@ export function CreateBar() {
       try {
         let draft = held?.draft ?? null;
         let fingerprint = draft?.fingerprint ?? null;
+        if (!draft && bar.editing) {
+          // Editing: the draft already exists, so what goes out is that run
+          // with its edits written, not a second one beside it.
+          draft = await writeEdits();
+          fingerprint = draft.fingerprint;
+        }
         if (!draft) {
           const cited = citesTemplate(prompt);
           const created = await createRun({
@@ -432,7 +507,7 @@ export function CreateBar() {
         if (bar.scene) void queryClient.invalidateQueries({ queryKey: ["scene", bar.scene] });
         if (!bar.onProject) navigate(projectPath(target));
       } catch (err) {
-        setFailure((err as Error).message);
+        setFailure({ title: "Could not send this run", message: (err as Error).message });
       } finally {
         setBusy(false);
       }
@@ -452,6 +527,7 @@ export function CreateBar() {
       shotIn,
       target,
       toast,
+      writeEdits,
     ],
   );
 
@@ -461,12 +537,19 @@ export function CreateBar() {
     try {
       await deleteRun(held.draft.id, "delete");
       setHeld(null);
+      // The draft the bar was editing, when it was: it is gone, so the bar
+      // is making a new run again and the feed no longer lists it.
+      if (bar.editing?.run === held.draft.id) {
+        bar.stopEditing();
+        void queryClient.invalidateQueries({ queryKey: ["runs"] });
+        void queryClient.invalidateQueries({ queryKey: ["project", bar.editing.project] });
+      }
     } catch (err) {
-      setFailure((err as Error).message);
+      setFailure({ title: "Could not discard the draft", message: (err as Error).message });
     } finally {
       setBusy(false);
     }
-  }, [held]);
+  }, [bar, held, queryClient]);
 
   const placeholder = bar.scene
     ? "Describe what to make for this scene…"
@@ -627,8 +710,8 @@ export function CreateBar() {
 
       {failure && (
         <Alert.Root intent="danger">
-          <Alert.Title>Could not send this run</Alert.Title>
-          <Alert.Description>{failure}</Alert.Description>
+          <Alert.Title>{failure.title}</Alert.Title>
+          <Alert.Description>{failure.message}</Alert.Description>
         </Alert.Root>
       )}
 
@@ -679,6 +762,26 @@ export function CreateBar() {
       >
         <div className="flex items-center justify-between gap-2" onPointerDownCapture={leavePrompt}>
           {kindSwitch}
+
+          {/* **Which draft the sheet is editing, and the way out of it.** A
+              draft loaded with Edit is written back in place, so the sheet
+              says so where the eye lands first; × leaves the draft as it is
+              and makes what the sheet holds a new run's. Not drawn for a run
+              loaded as a copy — that IS a new run, and there is nothing to
+              stop. */}
+          {bar.editing && (
+            <span
+              data-editing-draft={bar.editing.run}
+              className="flex min-w-0 items-center gap-1 rounded-pill bg-fill py-0.5 pl-2.5 pr-0.5"
+            >
+              <Text as="span" variant="caption" tone="muted" className="truncate">
+                Editing draft
+              </Text>
+              <IconButton size="sm" label="Stop editing this draft" onClick={bar.stopEditing}>
+                <CloseIcon />
+              </IconButton>
+            </span>
+          )}
 
           {/* **Only over the viewer.** On a page the sheet is part of the
               page and there is nothing to close; on the opened run it was
@@ -950,6 +1053,20 @@ export function CreateBar() {
           </Drawer.Root>
 
           <span className="flex-1" />
+
+          {/* Save, while editing: the draft as it now reads, still a draft.
+              Beside Send and quieter than it, because the two differ by
+              exactly the thing Send's shape says — one spends. */}
+          {bar.editing && (
+            <Button
+              size="sm"
+              intent="ghost"
+              disabled={!canSend}
+              onClick={() => void save()}
+            >
+              {busy ? "Saving…" : "Save"}
+            </Button>
+          )}
 
           {/* Round, white, an arrow — the one filled control on the sheet.
               The word is for assistive tech; the shape is the word for

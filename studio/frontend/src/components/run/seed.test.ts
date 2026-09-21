@@ -94,6 +94,25 @@ describe("seedFromRow", () => {
     ]);
   });
 
+  it("edits a draft in place and copies a submitted run — decided by status", () => {
+    // A submitted run is what was sent: the seed names no draft, so the bar
+    // makes a new one.
+    expect(seedFromRow(row())).not.toHaveProperty("editing");
+    expect(seedFromRow(row({ status: "running" }))).not.toHaveProperty("editing");
+
+    // A draft — and a discard, which a save turns back into one — is opened
+    // as itself, with the plan as loaded so `origin` and `note` survive.
+    const draft = row({ status: "draft", plan: { version: 1, origin: "backfilled", prompt: "p", params: {}, note: "n" } });
+    expect(seedFromRow(draft).editing).toEqual({
+      run: "run-1",
+      project: "proj-1",
+      kind: "image",
+      model: "openai/gpt-image-2",
+      plan: { version: 1, origin: "backfilled", prompt: "p", params: {}, note: "n" },
+    });
+    expect(seedFromRow(row({ status: "discarded" })).editing?.run).toBe("run-1");
+  });
+
   it("copies the params rather than sharing the row's object", () => {
     const source = row();
     const seed = seedFromRow(source);

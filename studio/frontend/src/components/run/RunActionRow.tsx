@@ -231,7 +231,22 @@ export function RunActionRow({
       {/* The word only where the header is wide enough for it — under 30rem
           the pencil stands alone, so the three controls fit beside the
           badges on one line at 320px. */}
-      <Button intent="ghost" size="sm" aria-label="Edit" onClick={actions.edit} className="">
+      {/* One word, two meanings, told apart by the tooltip: a draft has not
+          gone out and is opened in the sheet as itself; a submitted run is
+          what was sent, so Edit loads a copy and the send makes a new run.
+          `seedFromRow` decides which by the same status. */}
+      <Button
+        intent="ghost"
+        size="sm"
+        aria-label="Edit"
+        title={
+          draft
+            ? "Open this draft in the create panel. Save keeps it a draft; Send submits it."
+            : "Load this run's prompt, settings and images into the create panel as a new draft. This run is not changed."
+        }
+        onClick={actions.edit}
+        className=""
+      >
         <PencilIcon className={GLYPH} />
         <span className="hidden @min-[30rem]:inline">Edit</span>
       </Button>
