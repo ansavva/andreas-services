@@ -101,13 +101,17 @@ resource "aws_cognito_identity_provider" "facebook" {
     # it back, ignored below. Pinning one here is pinning a date Meta retires.
   }
 
-  # Facebook's Graph field names, not OIDC's.
+  # Facebook's Graph field names, not OIDC's. No `custom:idp_sub` here: a
+  # Facebook id is digits, so the lowercased username the trigger falls back
+  # to is already exact, and with the custom mapping present Cognito's
+  # attribute fetch returned nothing but the username — "attributes
+  # required: [email]" — while the same Graph call from the API Explorer
+  # returned the email. Measured 2026-09-21.
   attribute_mapping = {
-    username         = "id"
-    "custom:idp_sub" = "id"
-    email            = "email"
-    given_name       = "first_name"
-    family_name      = "last_name"
+    username    = "id"
+    email       = "email"
+    given_name  = "first_name"
+    family_name = "last_name"
   }
 
   lifecycle {
