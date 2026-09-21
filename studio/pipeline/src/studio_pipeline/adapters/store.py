@@ -53,7 +53,7 @@ from pathlib import Path
 from studio_pipeline.adapters import api
 
 #: One page of `GET /api/nodes`. The route caps it at 1,000; asking for the cap
-#: makes an ordinary folder one request, and `_paged` follows the cursor when a
+#: makes an ordinary folder one request, and `paged` follows the cursor when a
 #: pool is bigger than that rather than stopping at the first page.
 PAGE = 1000
 
@@ -99,10 +99,10 @@ def _listing(**params) -> list[dict]:
     a caller says otherwise. Every caller in this module documented
     name-ascending, so that is asked for here rather than left to the default.
     """
-    return _paged(sort="name", **params)
+    return paged(sort="name", **params)
 
 
-def _paged(**params) -> list[dict]:
+def paged(**params) -> list[dict]:
     """Every page of one listing, followed to the end.
 
     **Followed rather than capped, because a short answer here is silent.** The
@@ -110,6 +110,12 @@ def _paged(**params) -> list[dict]:
     returned a folder whole — so a caller taking the first page of a pool of
     1,200 would bind the wrong images and nothing would say so. `next_cursor` is
     null on the last page, which is the only stop condition needed.
+
+    **Public, because `entities` lists too.** `subject_images` read one page of
+    the same route on its own for a fortnight and returned 200 of a production
+    character's 202 images — the two newest, sorted past the cut — and nothing
+    said so: `curate` and `pool --unreferenced` sit on that call. Every
+    `GET /api/nodes` listing in this package goes through here.
     """
     found: list[dict] = []
     cursor = None
@@ -462,7 +468,7 @@ def walk_files_of(node_id: str) -> list[dict]:
         # prefix of the node asked about, so the difference is the path relative
         # to it — which is what a caller printing two same-named files needs.
         {**entry, "path": entry["key"][len(base):]}
-        for entry in _paged(under=node_id, depth="all")
+        for entry in paged(under=node_id, depth="all")
         if _is_file(entry) and entry.get("key")
     ]
     return sorted(found, key=_depth_first)

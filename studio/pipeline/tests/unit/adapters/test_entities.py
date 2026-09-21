@@ -309,6 +309,21 @@ def test_a_characters_images_are_its_whole_branch_not_an_index(library):
         library.face_1, library.face_2, library.body_1}
 
 
+def test_a_characters_images_follow_the_listing_past_its_first_page(library, monkeypatch):
+    """**Every page, not the first.** `GET /api/nodes` pages at 200 and the
+    listing used to take one page and stop, so a production character's 201st
+    and 202nd images — the two newest — were invisible to `images`, `curate`
+    and `pool --unreferenced`, and nothing said so. A page of one makes the
+    cursor load-bearing with three images.
+    """
+    monkeypatch.setattr(S, "PAGE", 1)
+
+    found = E.character_images(library.character)
+
+    assert {entry["id"] for entry in found} == {
+        library.face_1, library.face_2, library.body_1}
+
+
 def test_images_filter_on_every_named_tag(library):
     """ALL of them, not any."""
     assert [e["id"] for e in E.character_images(library.character, ["default", "face"])] == [
