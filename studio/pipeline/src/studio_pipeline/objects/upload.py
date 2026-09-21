@@ -34,7 +34,7 @@ def content_type(path: str) -> str:
 
 @click.command(help=__doc__, epilog="\n\nArguments:\n  FILES  Local file(s) to upload.")
 @click.argument("files", nargs=-1, required=True)
-@click.option("--folder", required=True, help="Destination key prefix (e.g. characters/<name>/seed).")
+@click.option("--folder", required=True, help="Destination name path from the library root (e.g. char-<uuid>/seed, proj-<uuid>/input).")
 @click.option("--json", "json_", is_flag=True, help="Emit a JSON list instead of text.")
 @click.option("--presign", is_flag=True, help="Also emit a temporary HTTPS URL per file.")
 def upload(files, folder, json_, presign):

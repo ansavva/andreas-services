@@ -22,7 +22,7 @@ from studio_pipeline.adapters import api, store
 
 @click.command(help=__doc__, epilog="\n\nArguments:\n  NAMES  With --folder: specific basenames (default: all in the folder).")
 @click.argument("names", nargs=-1)
-@click.option("--folder", help="Key prefix (e.g. characters/<name>/reference).")
+@click.option("--folder", help="Name path from the library root (e.g. char-<uuid>/reference).")
 @click.option("--json", "json_", is_flag=True, help="Emit JSON [{key,url}] instead of one URL per line.")
 @click.option("--key", help="An exact key (e.g. projects/<p>/runs/<id>/output/clip.mp4).")
 def presign(names, folder, json_, key):

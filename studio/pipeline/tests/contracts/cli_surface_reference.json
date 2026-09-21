@@ -3027,7 +3027,7 @@
         "flags": [
           "--folder"
         ],
-        "help": "Key prefix (e.g. characters/<name>/reference).",
+        "help": "Name path from the library root (e.g. char-<uuid>/reference).",
         "hidden": false,
         "multiple": false,
         "nargs": 1,
@@ -5627,7 +5627,7 @@
         "flags": [
           "--folder"
         ],
-        "help": "Destination key prefix (e.g. characters/<name>/seed).",
+        "help": "Destination name path from the library root (e.g. char-<uuid>/seed, proj-<uuid>/input).",
         "hidden": false,
         "multiple": false,
         "nargs": 1,
