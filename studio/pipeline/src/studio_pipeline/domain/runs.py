@@ -162,17 +162,19 @@ def render_payload(run: str, model: str, endpoint: str, payload: dict,
     """Render a submission for a person to read, as TWO JSON documents.
 
     **This is hard rule #2's surface and nothing may shorten it.** One combined
-    document is unreviewable: `prompt` is itself a serialized JSON object, so
-    nesting it inside the payload double-escapes it onto one enormous line.
-    Splitting them keeps both as real, indented JSON — the prompt as the
-    structured object it is, and the payload as the parameters the model
-    receives. It mirrors how a run is stored: prompt.json beside request.json.
+    document is unreviewable: on Seedance `prompt` is itself a serialized JSON
+    object, so nesting it inside the payload double-escapes it onto one
+    enormous line, and on Kling it is a multi-line paragraph that would become
+    one line of `\n`. Splitting them keeps both readable — the prompt as the
+    structured object it is, or verbatim when it is text, and the payload as
+    the parameters the model receives. It mirrors how a run is stored:
+    prompt.json beside request.json.
     """
     prompt = payload.get("prompt")
-    try:  # studio-media-prompt emits a serialized JSON object — show it unpacked
+    try:  # a Seedance prompt is a serialized JSON object — show it unpacked
         prompt_doc = json.loads(prompt) if isinstance(prompt, str) else prompt
     except json.JSONDecodeError:
-        prompt_doc = prompt  # plain prose prompt; show as-is
+        prompt_doc = prompt  # prose (Kling, image prompts) — shown verbatim
 
     inp = {k: v for k, v in payload.items() if k != "prompt"}
     if prompt is not None:
@@ -186,7 +188,7 @@ def render_payload(run: str, model: str, endpoint: str, payload: dict,
 
     return "\n".join([
         "===== 1/2  PROMPT — serialized into the `prompt` string at submit time =====",
-        dump(prompt_doc),
+        prompt_doc if isinstance(prompt_doc, str) else dump(prompt_doc),
         "",
         "===== 2/2  INPUT — the parameters this model receives =====",
         dump({"run": run, "model": model, "endpoint": endpoint, "input": inp}),

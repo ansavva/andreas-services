@@ -70,7 +70,10 @@ README for limiting sentences and flags any that name a live schema value as a
      A model with a clip input and no `clips` block has an input nothing can
      bind — `--clip-run` / `--clip-key` and the app's **Source video** tile read it.
    - For video, the whole `video` block is a template — set `max_cuts`,
-     `technical`, and `resolution_map` by hand.
+     `technical`, and `resolution_map` by hand. `prompt_format` is how
+     `studio prompt` serialises the authored object for this engine: omit it
+     for JSON; `kling` for Kuaishou's prose formula. Pick it from the vendor's
+     own prompt guide, not from what a prompt-generator site sells.
 3. **Add `denied`** for anything the README says is unsupported but the schema
    still offers.
 4. **Write.** `--write` appends the entry to the registry. It writes nothing

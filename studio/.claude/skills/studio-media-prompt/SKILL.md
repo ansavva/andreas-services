@@ -1,15 +1,23 @@
 ---
 name: studio-media-prompt
-description: Author video prompts as structured JSON for any studio-* engine (Seedance 2.0 and Kling 3.0 / O3 Omni, both on Replicate). Use whenever a video request wants tight, repeatable control over camera / subject / action / scene / lighting / style / audio, a multi-shot timeline, an image-to-video shot, or a reusable prompt template. Assembles + validates the JSON (one camera move, no bare "fast", no camera verbs in the action, beat budget, start-frame redundancy) and routes technical fields and the negative prompt to wherever the target engine actually takes them. A prompting technique, not a separate model.
+description: Author video prompts as one structured object for any studio-* engine (Seedance 2.0 and Kling 3.0 / O3 Omni, both on Replicate) and compile it to the text each vendor documents — JSON for Seedance, Kuaishou's subject + movement + scene + camera formula as prose for Kling. Use whenever a video request wants tight, repeatable control over camera / subject / action / scene / lighting / style / audio, a multi-shot timeline, an image-to-video shot, or a reusable prompt template. Validates the object (one camera move, no bare "fast", no camera verbs in the action, beat budget, start-frame redundancy) and routes technical fields and the negative prompt to wherever the target engine actually takes them. A prompting technique, not a separate model.
 ---
 
-# studio-media-prompt — JSON prompting for the studio-* engines
+# studio-media-prompt — structured prompting for the studio-* engines
 
-**JSON prompting is a way to WRITE the prompt, not a separate model or API mode.**
-Every engine's `prompt` field is a plain **text string**. "JSON prompting" means
-serializing a structured object *into that string* — models read structured text
-consistently, which makes camera / subject / action / style controllable and
-prompts reusable.
+**The object is how the prompt is WRITTEN and checked; the engine receives
+text.** Every engine's `prompt` field is a plain **text string**. You author one
+object — subject, action, scene, camera, lighting, style, audio, negative — the
+API validates it, and `studio prompt` compiles it into that string **in the
+form the engine's vendor documents**:
+
+| Engine | Wire form | Why |
+|---|---|---|
+| Seedance | the object as indented JSON | ByteDance's guidance endorses labelled structured text |
+| Kling | Kuaishou's formula as prose — *subject + movement + scene + (camera + lighting + atmosphere)*, `Shot N (Ns):` lines for a timeline, `Avoid …` last | Nothing Kuaishou publishes mentions JSON; see [`studio-media-kling`](../studio-media-kling/SKILL.md#prose-not-json-what-kuaishou-actually-documents) |
+
+Same object, same checks, same locked template. Only the serialisation differs,
+and the object — not the wire text — is what `prompt.json` records beside a run.
 
 This skill owns *how the prompt is authored*. Rendering belongs to an engine
 skill:
@@ -21,10 +29,10 @@ skill:
 | **`studio-media-kling`** | Kling 3.0 Omni | Replicate, via `studio run --model kling` | `kling-replicate` |
 
 Use this skill when the user wants precise, repeatable control, a multi-shot
-timeline, or a template they can tweak. For a quick one-off, plain prose is fine
-— don't force JSON on everything.
+timeline, or a template they can tweak. For a quick one-off, writing the prose
+by hand is fine — don't force the object on everything.
 
-> **Character videos:** JSON controls the *words*; it does **not** replace
+> **Character videos:** the object controls the *words*; it does **not** replace
 > character references. If the request names a known character, load
 > **`studio-media-character`** first. On Seedance that means passing `reference_images`
 > and citing them as `[Image1]`, `[Image2]`, …; on Kling via Replicate it is the
@@ -34,14 +42,14 @@ timeline, or a template they can tweak. For a quick one-off, plain prose is fine
 ## The one rule that shapes everything: text is TEXT
 
 The model does not receive a JSON document over a typed API — it receives the
-**serialized string**. So the JSON's job is human/agent legibility and consistent
-structure; the model still reads it top-to-bottom as text. Two consequences drive
-the whole schema:
+**serialized string**. So the object's job is human/agent legibility, the
+checks, and a diffable template; the model still reads whatever it is given
+top-to-bottom as text. Two consequences drive the whole schema:
 
 1. **Subject + action lead.** The first ~20–30 words carry the most weight. Put
    `subject` and `action` first. (Some third-party guides push a *camera-first*
-   order — ByteDance's own guidance and most others disagree, and so do we.
-   `studio prompt` always emits subject/action first.)
+   order — ByteDance's and Kuaishou's own guidance both disagree, and so do we.
+   `studio prompt` always emits subject/action first, in either wire form.)
 2. **Technical fields are NOT prompt text.** `aspect_ratio`, `duration`,
    `resolution`, `seed`, `generate_audio` are real settings — Replicate input
    params on Seedance and Replicate-hosted Kling, the Kling API's own `settings`
@@ -50,8 +58,9 @@ the whole schema:
 
 ## Schema
 
-Author a single JSON object. Creative blocks become the serialized prompt; the
-`technical` block is split off to the engine's settings.
+Author a single JSON object. Creative blocks become the prompt text — as JSON
+on Seedance, as prose on Kling — and the `technical` block is split off to the
+engine's settings.
 
 ```json
 {
@@ -62,7 +71,7 @@ Author a single JSON object. Creative blocks become the serialized prompt; the
   "lighting": "Physical light setup (key/rim/practical, colour, direction).",
   "style":    "Aesthetic + medium (film tone, grade, grain, animation style).",
   "audio":    "Named sound: ambience + SFX. Music mood if wanted.",
-  "dialogue": ["Spoken lines — quoted strings drive native lip-synced audio."],
+  "dialogue": [{"speaker": "Who", "line": "Spoken words — drive native lip-synced audio.", "delivery": "fast, urgent"}],
   "negative": "What to AVOID — jitter, bent limbs, temporal flicker, extra fingers.",
   "start_image": false,
   "technical": {
@@ -89,14 +98,18 @@ Author a single JSON object. Creative blocks become the serialized prompt; the
 | `lighting` | prompt | Physical setup. **Omit when `start_image` is set.** |
 | `style` | prompt | Medium + grade. `"cinematic"` is fine here (a style word, not filler). |
 | `audio` | prompt | Name sounds explicitly; models only add audio you direct. |
-| `dialogue` | prompt | Array of quoted lines → native synced speech. |
-| `negative` | prompt | No engine here has a negative-prompt param; it is folded into the prompt text as `avoid`. |
+| `dialogue` | prompt | Lines → native synced speech. A string, or `{speaker, line, delivery}` — Kuaishou: keep name, line and delivery together; on Kling that compiles to `Mom (fast, urgent): "…"`. |
+| `negative` | prompt | Neither engine has a negative-prompt param; it is folded into the text — an `avoid` key on Seedance, a closing `Avoid …` sentence on Kling. |
 | `start_image` | validator only | `true` when a start frame is supplied; enables redundancy checks. |
 | `technical.*` | **engine settings** | A Replicate `input`, or the Kling API `settings` object. |
 
 Camera movements (pick **one**): `push-in` · `pull-out` · `pan` · `tilt` ·
 `tracking` · `orbit` · `aerial/drone` · `handheld` · `crane` · `rack focus` ·
-`static/hold`.
+`static/hold`. Write the move as a sentence the way Kuaishou's guide does —
+"the camera slowly pushes toward the subject", "camera follows beside the
+runner" — rather than a tag; and name pace with its words (*slow*, *steady*,
+*quick*). Shot sizes and what each is for, from the same guide, are on
+[`studio-media-kling`](../studio-media-kling/SKILL.md#kuaishous-prompt-guide-applied).
 
 ### Multi-shot: timeline mode
 
@@ -125,6 +138,9 @@ warns when a timeline exceeds the target engine's budget.
 Treat warnings as author feedback; fix them before spending a render.
 
 - **One camera move.** `"dolly in and orbit"` → chaos. One shot type + one move.
+  On Kling, one *described* motion: Kuaishou's own showcase prompt is a dolly-in
+  with a simultaneous subtle pan and tilt, written as a single controlled
+  gesture, and the warning on it is advisory — see the Kling page.
 - **No bare `"fast"`.** Qualify it: `"fast whip-pan"`, `"quick 1s push-in"`.
 - **No camera verbs in `subject`/`action`.** Those blocks describe the subject;
   camera direction lives in `camera`. The verb form counts: `"she zooms toward
@@ -133,11 +149,14 @@ Treat warnings as author feedback; fix them before spending a render.
   unless the line names the camera as the one doing it (`"the camera pans across
   the bay"`), so `"she tilts her head"` is fine.
 - **No vague adjectives** (`amazing`, `epic`, `stunning`, `beautiful`…). Models
-  ignore mood words — describe what's observable instead.
+  ignore mood words — describe what's observable instead. Kuaishou says the
+  same: not "magic", but "swirling blue energy particles with an ethereal
+  glow". A short quality tail in `style` ("photorealistic, 8K detail") is not
+  a mood word and their own examples carry one.
 - **Beat budget.** Too many beats for the duration means the model drops or
   morphs them.
-- **60–100 words** of real content is the sweet spot for a single shot. JSON
-  keys/structure don't count against you; padding prose does.
+- **60–100 words** of real content is the sweet spot for a single shot. Keys
+  and structure don't count against you; padding prose does.
 - **Technical fields** never sit in the prompt text.
 - **Fix a seed** whenever the engine exposes one (Seedance does; **no Kling
   surface does**). Without one, every run rolls a fresh world and you cannot tell
@@ -150,7 +169,8 @@ Everything above is shared. These differ, and `--engine` switches them:
 
 | | `seedance` | `kling-replicate` |
 |---|---|---|
-| Negative prompt | No param — folded in as `avoid` | No param — folded in |
+| Wire form | the object as JSON | Kuaishou's formula as prose |
+| Negative prompt | No param — folded in as `avoid` | No param — closing `Avoid …` sentence |
 | Seed | **Yes** — use it | **None** |
 | Beat budget | ~3 per 8s | **6 cuts** → `multi_prompt` array |
 | Duration | 1–15s (`-1` = intelligent) | 3–15s |
@@ -255,7 +275,7 @@ studio prompt prompt.json \
   --aspect-ratio 9:16 --duration 8 --resolution 1080p
 ```
 
-Output shape (Seedance):
+Output shape (Seedance — the object as JSON):
 
 ```json
 {
@@ -265,12 +285,13 @@ Output shape (Seedance):
 }
 ```
 
-Output shape (`kling-replicate` — a ready Replicate input, shots compiled to
-`multi_prompt`, no aspect_ratio because a start frame is set):
+Output shape (`kling-replicate` — the object as Kuaishou's prose, a ready
+Replicate input, shots compiled to `multi_prompt`, no aspect_ratio because a
+start frame is set):
 
 ```json
 {
-  "prompt": "{ …serialized creative JSON, negative folded in as `avoid`… }",
+  "prompt": "The man from the source image, unchanged. Neo-noir grade.\n\nShot 1 (3s): Medium shot, static. He raises both arms…\nShot 2 (3s): …\n\nAvoid changing face, changing wardrobe, cuts.",
   "input": {
     "prompt": "…", "mode": "standard", "duration": 9, "generate_audio": false,
     "multi_prompt": "[{\"prompt\":\"He raises both arms…\",\"duration\":3}, …]"
@@ -278,6 +299,14 @@ Output shape (`kling-replicate` — a ready Replicate input, shots compiled to
   "engine": "kling-replicate", "timeline": true, "warnings": [ … ]
 }
 ```
+
+A single-shot Kling prompt is one paragraph in the formula's order — subject
+and action joined into a sentence, then scene, camera (`Medium shot, slow
+push-in, 35mm lens.`), lighting, style, audio — then dialogue as
+`Speaker (delivery): "line"`, then `Avoid …`. Shot durations on the
+`Shot N (Ns):` lines are the same numbers `multi_prompt` carries. Every rule
+in that shape is Kuaishou's own — its prompt guide is worked through on
+[`studio-media-kling`](../studio-media-kling/SKILL.md#kuaishous-prompt-guide-applied).
 
 Flags: positional `source` (file or `-` for stdin) · `--json` · `--engine seedance|kling-replicate` · creative overrides (`--subject/--action/--scene/
 --style/--lighting/--audio/--negative`, `--camera-movement/--camera-shot/
@@ -311,9 +340,9 @@ what THE RULE forbids: everything sent to a model must already be in the media
 library, and the runner mints the short-lived presigned URL at submit time. Any
 image field baked into `input.json` is dropped for that reason.
 
-## When NOT to use JSON
+## When NOT to use the object
 
-- A single simple clip with no fussy camera/lighting needs → a plain prose prompt
-  reads just as well and is faster to write.
+- A single simple clip with no fussy camera/lighting needs → a prose prompt
+  written by hand reads just as well and is faster to write.
 - When identity is the whole point → the win is **references or a start frame**,
-  not JSON. Use JSON for the surrounding motion/framing.
+  not the prompt. Use the object for the surrounding motion/framing.

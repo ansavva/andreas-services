@@ -20,6 +20,8 @@ A caller decides what to do with warnings. `studio prompt --strict` exits
 non-zero; an editor draws them beside the field they came from.
 """
 
+import json
+
 import pytest
 
 from studio_core.services import prompt as P
@@ -298,3 +300,105 @@ def test_a_half_written_prompt_is_200_with_errors(api):
     resp = api.post("/api/prompt", json={"object": {}})
     assert resp.status_code == 200
     assert resp.get_json()["errors"]
+
+
+# ── the wire text is per engine ─────────────────────────────────────────────
+#
+# Every engine's `prompt` is one text field. Seedance gets the object as JSON,
+# which ByteDance's own guidance endorses; Kling gets Kuaishou's formula as
+# prose, because nothing Kuaishou publishes mentions JSON and the braces were
+# reaching a 2,500-character field as literal characters. The object stays the
+# authored record either way — only `serialize` differs.
+
+
+def kling_base(**over):
+    return base(
+        scene="rocky coastline at dusk",
+        camera={"shot": "medium", "movement": "slow push-in", "lens_mm": 35},
+        lighting="low golden-hour sun",
+        style="cinematic film tone",
+        audio="soft wind, distant gulls",
+        negative="jitter, extra fingers",
+        **over,
+    )
+
+
+def test_seedance_receives_the_object_as_json():
+    prompt = P.assemble(base(), "seedance")["prompt"]
+    assert json.loads(prompt)["subject"] == "a woman in a linen dress"
+
+
+def test_kling_receives_the_formula_as_prose_not_json():
+    """Subject + movement + scene + (camera + lighting + atmosphere), in that
+    order, as sentences. No braces, no quoted key names."""
+    prompt = P.assemble(kling_base(), "kling")["prompt"]
+    assert "{" not in prompt and '"subject"' not in prompt
+    assert prompt.startswith("A woman in a linen dress turns to face the sea. ")
+    order = ["Rocky coastline", "Medium shot, slow push-in, 35mm lens",
+             "Low golden-hour sun", "Cinematic film tone", "Soft wind"]
+    positions = [prompt.index(s) for s in order]
+    assert positions == sorted(positions)
+
+
+def test_the_kling_negative_becomes_an_avoid_sentence():
+    """Kling has no negative_prompt field, so the only place the negative can
+    go is the end of the text — after everything it must not colour."""
+    prompt = P.assemble(kling_base(), "kling")["prompt"]
+    assert prompt.endswith("Avoid jitter, extra fingers.")
+
+
+def test_the_kling_alias_serializes_the_same_way():
+    assert (P.assemble(kling_base(), "kling-replicate")["prompt"]
+            == P.assemble(kling_base(), "kling")["prompt"])
+
+
+def test_a_kling_timeline_is_shot_lines_with_durations():
+    """The 3.0 Omni guide writes multi-shot prompts as `Shot N (Ns): …`. The
+    durations are the ones `multi_prompt` carries, from the same arithmetic."""
+    obj = {
+        "subject": "a detective in a long coat",
+        "style": "neo-noir grade",
+        "shots": [
+            {"t": "0s", "shot": "wide", "camera": "static", "description": "stands in the rain"},
+            {"t": "5s", "shot": "close", "camera": "hold", "description": "he exhales"},
+        ],
+        "technical": {"duration": 8},
+    }
+    answer = P.assemble(obj, "kling")
+    lines = answer["prompt"].splitlines()
+    assert lines[0] == "A detective in a long coat. Neo-noir grade."
+    assert "Shot 1 (5s): Wide shot, static. Stands in the rain." in lines
+    assert "Shot 2 (3s): Close shot, hold. He exhales." in lines
+    assert [s["duration"] for s in json.loads(answer["input"]["multi_prompt"])] == [5, 3]
+
+
+def test_kling_dialogue_carries_a_speaker_label_in_quotes():
+    obj = base(dialogue=[{"speaker": "Guide", "line": "This way."}, "Wait."])
+    prompt = P.assemble(obj, "kling")["prompt"]
+    assert 'Guide: "This way."' in prompt
+    assert '"Wait."' in prompt
+
+
+def test_kling_delivery_sits_on_the_speaker_label():
+    """Kuaishou: name, line and delivery close together."""
+    obj = base(dialogue=[{"speaker": "Mom", "line": "Shoes. Now.", "delivery": "fast, urgent"}])
+    assert 'Mom (fast, urgent): "Shoes. Now."' in P.assemble(obj, "kling")["prompt"]
+
+
+def test_an_acronym_opening_the_action_keeps_its_case():
+    prompt = P.assemble(base(action="DJs the set"), "kling")["prompt"]
+    assert prompt.startswith("A woman in a linen dress DJs the set.")
+
+
+def test_the_kling_prose_is_what_the_length_cap_measures():
+    """The cap is a property of the wire text. Prose is shorter than the JSON
+    it replaced, so a prompt that fits as prose is not refused for a JSON
+    length nothing sends."""
+    long = kling_base(subject="a woman in a linen dress " * 60)
+    assert P.assemble(long, "kling")["errors"] == []
+    assert len(P.assemble(long, "kling")["prompt"]) < 2500
+
+
+def test_prompt_format_defaults_to_json_for_an_engine_that_says_nothing():
+    assert P.engines()["seedance"]["prompt_format"] == "json"
+    assert P.engines()["kling"]["prompt_format"] == "kling"

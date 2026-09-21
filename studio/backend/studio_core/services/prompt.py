@@ -1,10 +1,28 @@
 """Authoring a structured video prompt: assemble it, then say what is wrong with it.
 
-Every engine's `prompt` field is a plain TEXT string. "JSON prompting" means
-serializing a structured object into that string, because models read structured
-text consistently. This module takes the object, checks it against the shared
-prompting rules and the target engine's own, routes the technical fields off the
-prompt text into the provider's `input`, and answers with both plus the warnings.
+Every engine's `prompt` field is a plain TEXT string. The author writes an
+object — subject, action, scene, camera, lighting, style, audio, negative — and
+this module checks it against the shared prompting rules and the target
+engine's own, routes the technical fields off the prompt text into the
+provider's `input`, serializes the rest into that one string, and answers with
+both plus the warnings.
+
+**How the object becomes the string is per engine** — `video.prompt_format` in
+the registry, `"json"` unless an entry says otherwise:
+
+- `json` — the object as indented JSON. ByteDance's Seedance guidance endorses
+  labelled structured text, so that is what Seedance receives.
+- `kling` — Kuaishou's own formula: *subject + subject movement + scene +
+  (camera + lighting + atmosphere)* as a paragraph of short sentences, shots as
+  `Shot N (Ns): …` lines, dialogue with speaker labels, then an `Avoid …`
+  sentence. Kuaishou's prompt guide, its 3.0 Omni user guide and its blog use
+  prose throughout and mention no JSON; the only JSON the model parses is the
+  typed `multi_prompt` field. Kling used to receive the JSON form, which was
+  validated on Seedance and never on Kling — the braces and key names reached
+  it as literal characters in a 2,500-character field. Settled 2026-09-20.
+
+The object is the record either way: it is what `prompt.json` stores beside a
+run and what the locked-template discipline diffs. Only the wire text differs.
 
 **It lived in the pipeline and nothing server-side knew it existed.** Six hundred
 and ninety lines of prompting judgement — one camera move per shot, no bare
@@ -99,6 +117,7 @@ def engines() -> dict[str, dict]:
             "negative": vid.get("negative", "prompt"),
             "technical": vid.get("technical", "api"),
             "image_tokens": vid.get("image_tokens", False),
+            "prompt_format": vid.get("prompt_format", "json"),
         }
         cap = REG.field(entry, "prompt.max_chars")
         if cap:
@@ -594,6 +613,138 @@ def build_settings(obj: dict, prompt_str: str, engine: str) -> tuple[str, dict]:
 
 
 
+def _sentence(text) -> str:
+    """One component as a sentence: trimmed, capitalised, ending in a full stop."""
+    t = str(text).strip().rstrip(".,;")
+    if not t:
+        return ""
+    return t[0].upper() + t[1:] + "."
+
+
+def _camera_sentence(cam) -> str:
+    """`{"shot": "medium", "movement": "slow push-in", "lens_mm": 35}` →
+    "Medium shot, slow push-in, 35mm lens." — the vocabulary Kuaishou's guide
+    lists under camera language, in the order it lists it."""
+    if isinstance(cam, str):
+        return _sentence(cam)
+    if not isinstance(cam, dict):
+        return ""
+    bits = []
+    shot = cam.get("shot")
+    if isinstance(shot, str) and shot.strip():
+        shot = shot.strip()
+        bits.append(shot if shot.lower().endswith("shot") else f"{shot} shot")
+    for k in ("movement", "speed"):
+        v = cam.get(k)
+        if isinstance(v, str) and v.strip():
+            bits.append(v.strip())
+    lens = cam.get("lens_mm")
+    if lens not in (None, ""):
+        bits.append(f"{lens}mm lens")
+    return _sentence(", ".join(bits))
+
+
+def _dialogue_lines(dialogue) -> list[str]:
+    """Kuaishou: dialogue in quotation marks under a clear speaker label, and
+    "keep the speaker's name, line, and delivery close together" — so a
+    `delivery` sits in brackets on the label: `Mom (fast, urgent): "…"`."""
+    out = []
+    for line in dialogue or []:
+        if isinstance(line, dict):
+            speaker, text = line.get("speaker"), line.get("line") or line.get("text")
+            delivery = line.get("delivery")
+        else:
+            speaker, text, delivery = None, line, None
+        if not isinstance(text, str) or not text.strip():
+            continue
+        text = text.strip().strip('"')
+        label = speaker.strip() if isinstance(speaker, str) and speaker.strip() else ""
+        if isinstance(delivery, str) and delivery.strip():
+            label = f"{label} ({delivery.strip()})" if label else f"({delivery.strip()})"
+        out.append(f'{label}: "{text}"' if label else f'"{text}"')
+    return out
+
+
+def _subject_movement(prompt_obj: dict) -> str:
+    """Subject and action as one sentence — "A woman in a linen dress turns to
+    face the sea" — which is how the formula reads them, rather than two
+    fragments. The action's first letter drops to lower case to join — unless
+    the second is a capital too, which is an acronym ("DJs the set")."""
+    subject = str(prompt_obj.get("subject") or "").strip().rstrip(".,;")
+    action = str(prompt_obj.get("action") or "").strip()
+    if subject and action:
+        if len(action) > 1 and action[1].islower():
+            action = action[0].lower() + action[1:]
+        return f"{subject} {action}"
+    return subject or action
+
+
+def _kling_shot(shot) -> str:
+    """`Shot N (Ns): wide shot, static camera. What happens.` — framing first,
+    as the Omni guide's `[shot type]: [description]` lines put it."""
+    if not isinstance(shot, dict):
+        return _sentence(shot)
+    framing = []
+    kind = shot.get("shot")
+    if isinstance(kind, str) and kind.strip():
+        kind = kind.strip()
+        framing.append(kind if kind.lower().endswith("shot") else f"{kind} shot")
+    cam = shot.get("camera")
+    if isinstance(cam, str) and cam.strip():
+        framing.append(cam.strip())
+    return " ".join(p for p in (_sentence(", ".join(framing)),
+                                _sentence(shot.get("description") or "")) if p)
+
+
+def render_kling(prompt_obj: dict, obj: dict, total: int | None) -> str:
+    """The creative object as the prose Kuaishou documents.
+
+    Single shot: one paragraph, a sentence per component, in the order of the
+    official formula — subject, movement, scene, camera, lighting, style,
+    audio — then dialogue, then `Avoid …`. Multi-shot: the globals as that
+    paragraph, then one `Shot N (Ns): …` line per beat, the shape the 3.0 Omni
+    user guide writes a multi-shot prompt in. Durations come from the same
+    `_shot_seconds` that fills `multi_prompt`, so the two never disagree; a
+    timeline without resolvable durations gets `Shot N:` alone.
+    """
+    shots = prompt_obj.get("shots")
+    lead = [_sentence(_subject_movement(prompt_obj))]
+    if prompt_obj.get("scene"):
+        lead.append(_sentence(prompt_obj["scene"]))
+    lead.append(_camera_sentence(prompt_obj.get("camera")))
+    lead += [_sentence(prompt_obj[k]) for k in ("lighting", "style", "audio")
+             if prompt_obj.get(k)]
+    paragraphs = [" ".join(p for p in lead if p)]
+
+    if shots:
+        durs = _shot_seconds(obj.get("shots") or [], total) or [None] * len(shots)
+        lines = []
+        for i, (shot, d) in enumerate(zip(shots, durs), start=1):
+            label = f"Shot {i} ({d}s)" if d else f"Shot {i}"
+            lines.append(f"{label}: {_kling_shot(shot)}")
+        paragraphs.append("\n".join(lines))
+
+    spoken = _dialogue_lines(prompt_obj.get("dialogue"))
+    if spoken:
+        paragraphs.append("\n".join(spoken))
+    if prompt_obj.get("avoid"):
+        paragraphs.append(_sentence(f"Avoid {str(prompt_obj['avoid']).strip()}"))
+    return "\n\n".join(p for p in paragraphs if p)
+
+
+def serialize(prompt_obj: dict, obj: dict, engine: str, *, compact: bool = False) -> str:
+    """The wire text for one engine — see the module docstring for the two forms."""
+    spec = engines()[engine]
+    if spec["prompt_format"] == "kling":
+        tech = obj.get("technical") if isinstance(obj.get("technical"), dict) else {}
+        return render_kling(prompt_obj, obj, tech.get("duration"))
+    return json.dumps(
+        prompt_obj, ensure_ascii=False,
+        indent=None if compact else 2,
+        separators=(",", ":") if compact else None,
+    )
+
+
 # ── the one entry point ─────────────────────────────────────────────────────
 
 
@@ -628,11 +779,7 @@ def assemble(obj: dict, engine: str, *, emit: str = "both", compact: bool = Fals
                 "prompt": None, "timeline": False}
 
     prompt_obj, timeline = build_prompt_object(obj, engine)
-    prompt_str = json.dumps(
-        prompt_obj, ensure_ascii=False,
-        indent=None if compact else 2,
-        separators=(",", ":") if compact else None,
-    )
+    prompt_str = serialize(prompt_obj, obj, engine, compact=compact)
 
     hard = spec.get("prompt_max")
     soft = spec.get("prompt_recommended")

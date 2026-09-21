@@ -88,13 +88,14 @@ the schema does not enforce — before anything bills. Review the payload, then
 let the validator confirm the model actually accepts it.
 
 **Show it as TWO JSON documents — never one.** A single document is unreviewable:
-`prompt` is often itself a serialized JSON object, so nesting it double-escapes
-onto one enormous line. Split, both stay readable, and it mirrors how a run is
-stored (`prompt.json` beside `request.json`):
+`prompt` on Seedance is itself a serialized JSON object, so nesting it
+double-escapes onto one enormous line, and on Kling it is a multi-line
+paragraph. Split, both stay readable, and it mirrors how a run is stored
+(`prompt.json` beside `request.json`):
 
 ```
 ===== 1/2  PROMPT — serialized into the `prompt` string at submit time =====
-{ …the prompt as real, indented JSON (or the plain string, for image prompts)… }
+{ …the prompt as real, indented JSON — or the text verbatim, for Kling and image prompts… }
 
 ===== 2/2  INPUT — the parameters this model receives =====
 { "run": …, "model": …, "endpoint": …, "input": { "prompt": "<< see 1/2 >>", … } }
