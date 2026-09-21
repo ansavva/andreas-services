@@ -49,7 +49,14 @@ password-first → Google linked onto the existing sub and landed in the app on 
 ever reappears, the mitigation is a one-shot retry in `app/src/auth/oauth.ts`'s callback handling,
 not anything in the trigger.
 
-**Two things the first live sign-ins did find, both fixed the same day:**
+**Three things the first live sign-ins did find, all fixed the same day:**
+
+- **LinkedIn linked under an id LinkedIn never issued.** The pool is case-insensitive, so Cognito
+  hands the trigger a LOWERCASED federated username — `linkedin_mdrhj2asx8` for a real `sub` of
+  `MDRHj2Asx8` — and a link made from it fails every later sign-in with "Invalid ProviderName/Username
+  combination". Google's subs are digits, which is why Google never showed it. Every provider now
+  maps its `sub` into `custom:idp_sub` verbatim (an in-place pool change, measured), and the trigger
+  links with that; the username is only a fallback. LinkedIn-first then landed first click.
 
 - The trigger refused Google with "That provider has not verified your email address." Cognito
   hands every federated user `email_verified=false` as a placeholder when the claim is not mapped —
@@ -223,6 +230,8 @@ On the shared dev pool with Google set:
    usual. Sign out. *Forgot password* with that address → a code arrives, a password is set, password
    sign-in reaches the same account. **Passed 2026-09-21** — one sub through sign-out, a second
    Google sign-in (no trigger call: already linked), the reset and the password sign-in.
+4. **LinkedIn-first.** The generic-OIDC path. **Passed 2026-09-21** after the `custom:idp_sub` fix
+   above; the log line carries `usernameSubjectDiffers: true`, the finding kept visible.
 4. `aws logs tail /aws/lambda/humbugg-dev-auth-pre-sign-up` shows one `linked federated identity`
    line per first sign-in, naming the sub and never the email.
 

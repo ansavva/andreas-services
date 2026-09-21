@@ -64,11 +64,12 @@ resource "aws_cognito_identity_provider" "google" {
   }
 
   attribute_mapping = {
-    username       = "sub"
-    email          = "email"
-    email_verified = "email_verified"
-    given_name     = "given_name"
-    family_name    = "family_name"
+    username         = "sub"
+    "custom:idp_sub" = "sub"
+    email            = "email"
+    email_verified   = "email_verified"
+    given_name       = "given_name"
+    family_name      = "family_name"
   }
 
   # Cognito fills in the OAuth endpoints for a Google provider and reports them
@@ -102,10 +103,11 @@ resource "aws_cognito_identity_provider" "facebook" {
 
   # Facebook's Graph field names, not OIDC's.
   attribute_mapping = {
-    username    = "id"
-    email       = "email"
-    given_name  = "first_name"
-    family_name = "last_name"
+    username         = "id"
+    "custom:idp_sub" = "id"
+    email            = "email"
+    given_name       = "first_name"
+    family_name      = "last_name"
   }
 
   lifecycle {
@@ -145,11 +147,12 @@ resource "aws_cognito_identity_provider" "apple" {
   }
 
   attribute_mapping = {
-    username       = "sub"
-    email          = "email"
-    email_verified = "email_verified"
-    given_name     = "firstName"
-    family_name    = "lastName"
+    username         = "sub"
+    "custom:idp_sub" = "sub"
+    email            = "email"
+    email_verified   = "email_verified"
+    given_name       = "firstName"
+    family_name      = "lastName"
   }
 
   lifecycle {
@@ -188,11 +191,12 @@ resource "aws_cognito_identity_provider" "linkedin" {
   }
 
   attribute_mapping = {
-    username       = "sub"
-    email          = "email"
-    email_verified = "email_verified"
-    given_name     = "given_name"
-    family_name    = "family_name"
+    username         = "sub"
+    "custom:idp_sub" = "sub"
+    email            = "email"
+    email_verified   = "email_verified"
+    given_name       = "given_name"
+    family_name      = "family_name"
   }
 
   lifecycle {

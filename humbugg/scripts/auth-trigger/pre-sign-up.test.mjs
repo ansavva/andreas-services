@@ -149,3 +149,15 @@ test('refuses a username from a provider the pool does not declare', async () =>
   await assert.rejects(createHandler(cognito)(externalEvent('twitter_1', { email: 'a@b.c' })), /Unrecognised/);
   assert.deepEqual(cognito.calls, []);
 });
+
+test('links with the mapped custom:idp_sub, not the lowercased username', async () => {
+  // Case-insensitive pool: Cognito hands the trigger `linkedin_mdrhj2asx8`
+  // for a LinkedIn sub that is really `mDRhj2ASx8`.
+  const cognito = fakeCognito();
+  await createHandler(cognito)(
+    externalEvent('linkedin_mdrhj2asx8', { email: 'a@b.c', email_verified: 'true', 'custom:idp_sub': 'mDRhj2ASx8' }),
+  );
+  const link = cognito.calls.find((c) => c.name === 'adminLinkProviderForUser').input;
+  assert.equal(link.SourceUser.ProviderName, 'LinkedIn');
+  assert.equal(link.SourceUser.ProviderAttributeValue, 'mDRhj2ASx8');
+});

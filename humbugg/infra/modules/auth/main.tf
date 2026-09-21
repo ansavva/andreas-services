@@ -89,6 +89,25 @@ resource "aws_cognito_user_pool" "main" {
     }
   }
 
+  # The identity provider's `sub`, verbatim. The pool is case-insensitive
+  # (above), so the federated username Cognito hands the pre-sign-up trigger —
+  # `linkedin_<sub>` — arrives LOWERCASED, and a link made from it names an id
+  # LinkedIn never issued: "Invalid ProviderName/Username combination" on
+  # every sign-in after, measured 2026-09-21. Google's subs are digits and
+  # never showed it. Every provider maps `sub` here; the trigger links with
+  # this and falls back to the username only if it is absent.
+  schema {
+    name                = "idp_sub"
+    attribute_data_type = "String"
+    required            = false
+    mutable             = true
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 256
+    }
+  }
+
   account_recovery_setting {
     recovery_mechanism {
       name     = "verified_email"

@@ -55,6 +55,13 @@ function emailVerifiedProviderNames() {
  * `google_1234` → `{ providerName: 'Google', providerUserId: '1234' }`.
  * Split at the FIRST underscore only: an Apple id has dots, a LinkedIn id is
  * opaque, and neither is promised to be underscore-free.
+ *
+ * **The id half is a fallback, not the truth.** The pool is case-insensitive,
+ * so Cognito LOWERCASES this username before the trigger sees it, and a
+ * LinkedIn `sub` is mixed-case: a link made from the username named an id
+ * LinkedIn never issued, and every sign-in after failed "Invalid
+ * ProviderName/Username combination". Terraform maps each provider's `sub`
+ * into `custom:idp_sub` verbatim; the handler links with that when present.
  */
 export function parseFederatedUsername(userName, names = providerNames()) {
   const separator = userName.indexOf('_');
@@ -131,6 +138,8 @@ export function createHandler(cognito) {
       throw new Error('That provider has not verified your email address. Sign in another way.');
     }
 
+    const providerUserId = attribute(attributes, 'custom:idp_sub') ?? federated.providerUserId;
+
     const email = normaliseEmail(rawEmail);
     const userPoolId = event.userPoolId;
     const givenName = attribute(attributes, 'given_name');
@@ -188,7 +197,7 @@ export function createHandler(cognito) {
       SourceUser: {
         ProviderName: federated.providerName,
         ProviderAttributeName: 'Cognito_Subject',
-        ProviderAttributeValue: federated.providerUserId,
+        ProviderAttributeValue: providerUserId,
       },
     });
 
@@ -199,6 +208,10 @@ export function createHandler(cognito) {
         // The sub, never the email: this log group is read casually.
         nativeUser: user.Username,
         createdNativeUser: !existing,
+        // Whether the mapped sub was there, and whether the username's copy
+        // would have been wrong — the LinkedIn finding, kept visible.
+        subjectFromAttribute: Boolean(attribute(attributes, 'custom:idp_sub')),
+        usernameSubjectDiffers: providerUserId !== federated.providerUserId,
       }),
     );
 
