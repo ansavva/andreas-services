@@ -119,6 +119,66 @@ export function CharacterChipToggle({
 }
 
 /**
+ * A location's avatar — `CharacterAvatar` with a room's corner: square, not
+ * a pill, and a pin where the silhouette is, so a chip row mixing the two
+ * kinds still tells them apart at a glance.
+ */
+export function LocationAvatar({ hero, name }: { hero: HeroImage | null; name: string }) {
+  if (hero) {
+    return (
+      <MediaThumb
+        nodeId={hero.node}
+        url={hero.url}
+        poster={hero.poster}
+        name={name}
+        isVideo={false}
+        aspect="square"
+        className="size-[22px] shrink-0 rounded-sm border border-line"
+      />
+    );
+  }
+  return (
+    <span
+      aria-hidden="true"
+      className="flex size-[22px] shrink-0 items-center justify-center rounded-sm border border-dashed border-line text-muted"
+    >
+      <PinIcon className="size-3 fill-none stroke-current stroke-[1.5]" />
+    </span>
+  );
+}
+
+/**
+ * The location as a TOGGLE — `CharacterChipToggle` one prefix over, for the
+ * project's shot-in editor and the run's.
+ */
+export function LocationChipToggle({
+  name,
+  hero,
+  pressed,
+  disabled,
+  onClick,
+}: {
+  name: string;
+  hero: HeroImage | null;
+  pressed: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Chip
+      pressed={pressed}
+      size="sm"
+      disabled={disabled}
+      onClick={onClick}
+      className="pl-1.5 disabled:opacity-60"
+    >
+      <LocationAvatar hero={hero} name={name} />
+      <span className="truncate">{name}</span>
+    </Chip>
+  );
+}
+
+/**
  * The character as a TAG — the shape `ParamChips` draws a parameter in, for
  * the run's line of facts.
  *

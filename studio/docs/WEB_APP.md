@@ -1026,6 +1026,18 @@ page and a plain textarea over its literal bytes, and never offers fields.
   records where it was shot without anyone typing it. `PromotePanel` copies a
   rendered view into a location the way it copies a face into a character —
   hard rule #2b, one prefix over.
+- **Both subjects are editable after the fact, on the project and on the run.**
+  The project's Settings tab has a `Locations` chip row under `Characters`
+  (`ProjectDetails.ShotIn`, `PATCH /api/projects/<id>/locations`), and the
+  opened run's first two facts — who, where — carry a pencil
+  (`run/RunSubjects.tsx`, `PATCH /api/runs/<id>` with `characters` or
+  `locations`). Each press is a whole-set replace, followed by a re-read of
+  the run and an invalidation of every feed, because `cast` is derived — the
+  named characters when there are any, else the owners of the bound images —
+  and a merge would leave it stale. The chips toggle what the run NAMES; the
+  read row shows the derived cast, and the editor says so when they differ.
+  `RunCast`, the cast editor from before the shell rewrite, was never
+  re-mounted; this replaces it.
 - **Destructive confirmation for ONE file is in the button, not in a dialog.**
   `ConfirmDeleteButton` arms on the first press, names what it will destroy,
   and disarms on a timeout, on blur, or on Escape — a dialog in a fixed

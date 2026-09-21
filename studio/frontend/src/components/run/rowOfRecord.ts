@@ -43,6 +43,7 @@ export function rowOfRecord(
     ...(record.fingerprint ? { fingerprint: record.fingerprint } : {}),
     plan: record.plan,
     characters: record.characters,
+    locations: record.locations ?? [],
     cast: (record.cast ?? record.characters).map((id) => ({
       id,
       name: characters.find((each) => each.id === id)?.name ?? null,

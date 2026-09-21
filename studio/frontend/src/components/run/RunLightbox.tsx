@@ -18,7 +18,7 @@ import {
   Text,
 } from "@ansavva/design-system";
 
-import { getLocations, getRun } from "../../apis/studio";
+import { getRun } from "../../apis/studio";
 import { useKeyboardNav } from "../../hooks/useKeyboardNav";
 import { useNow } from "../../hooks/useNow";
 import { useResource } from "../../hooks/useResource";
@@ -59,9 +59,9 @@ import { MediaPlayer, type MediaPlayerControls } from "../media/MediaPlayer";
 import { MediaThumb } from "../media/MediaThumb";
 import { ViewerFrame } from "../viewer/ViewerFrame";
 import { RunActionRow } from "./RunActionRow";
+import { RunSubjects } from "./RunSubjects";
 import { SendThumbs } from "./SendThumbs";
-import { LocationTag } from "../character/CharacterChip";
-import { CastTags, RunPrompt, StatusBadge, useFeedFilters, useRunFeed } from "../project/RunFeed";
+import { RunPrompt, StatusBadge, useFeedFilters, useRunFeed } from "../project/RunFeed";
 import { elapsedSince, inFlight, relativeTime } from "./feedTime";
 import { scalarParams } from "./ParamChips";
 import { PayloadDocument, PayloadPreview } from "./PayloadDocument";
@@ -850,6 +850,9 @@ function RailActions({
  * row is a summary; the rail is where the run is read, and a list of
  * labelled pairs is what a person reads. Same rule as the object page: a
  * quiet label, the value beside it, whitespace doing the aligning.
+ *
+ * The first two pairs — who, where — are `RunSubjects`, the same grid cells
+ * with a pencil, because those two are the run's own to change.
  */
 function RunProperties({
   row,
@@ -862,26 +865,6 @@ function RunProperties({
 }) {
   const { price, seconds } = costParts(row.cost);
   const rows: Array<[string, ReactNode]> = [
-    ...(row.cast.length > 0
-      ? [
-          [
-            row.cast.length === 1 ? "Character" : "Characters",
-            <span key="cast" className="flex flex-wrap gap-1.5">
-              <CastTags cast={row.cast} heroes={heroes} />
-            </span>,
-          ] as [string, ReactNode],
-        ]
-      : []),
-    ...((row.locations ?? []).length > 0
-      ? [
-          [
-            (row.locations ?? []).length === 1 ? "Location" : "Locations",
-            <span key="locations" className="flex flex-wrap gap-1.5">
-              <LocationTags ids={row.locations ?? []} />
-            </span>,
-          ] as [string, ReactNode],
-        ]
-      : []),
     ["Model", mono(row.model)],
     ...scalarParams(row.plan?.params).map(([key, value]) => [key, mono(value)] as [string, ReactNode]),
     ...(price ? [["Cost", mono(price)] as [string, ReactNode]] : []),
@@ -893,6 +876,9 @@ function RunProperties({
 
   return (
     <dl aria-label="Run details" className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
+      {/* Who and where first, and editable — the two facts of a run that are
+          studio's own rather than the provider's. */}
+      <RunSubjects row={row} heroes={heroes} />
       {rows.map(([label, value]) => (
         <Fragment key={label}>
           <dt>
@@ -904,24 +890,6 @@ function RunProperties({
         </Fragment>
       ))}
     </dl>
-  );
-}
-
-/**
- * Where the run was shot, named. The row holds ids; the listing every other
- * screen already reads (`["locations"]`, cached) supplies the names and the
- * card images, so a run shot somewhere the project does not list still reads
- * as a place rather than an id.
- */
-function LocationTags({ ids }: { ids: string[] }) {
-  const listed = useResource(["locations"], useCallback(() => getLocations(), []));
-  const byId = new Map((listed.data ?? []).map((each) => [each.id, each]));
-  return (
-    <>
-      {ids.map((id) => (
-        <LocationTag key={id} id={id} name={byId.get(id)?.name ?? "deleted location"} hero={byId.get(id)?.hero ?? null} />
-      ))}
-    </>
   );
 }
 
