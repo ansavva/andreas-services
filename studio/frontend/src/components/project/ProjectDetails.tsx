@@ -5,12 +5,18 @@ import { Alert, Field, Input, Text } from "@ansavva/design-system";
 import { EmptyState } from "../common/EmptyState";
 
 import { ApiError } from "../../apis/client";
-import { getCharacters, patchProject, setProjectCharacters } from "../../apis/studio";
+import {
+  getCharacters,
+  getLocations,
+  patchProject,
+  setProjectCharacters,
+  setProjectLocations,
+} from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import type { ProjectRecord } from "../../types";
 import { AutoTextarea } from "../common/AutoTextarea";
 import { FormBar } from "../common/FormBar";
-import { CharacterChipToggle } from "../character/CharacterChip";
+import { CharacterChipToggle, LocationChipToggle } from "../character/CharacterChip";
 
 interface Props {
   record: ProjectRecord;
@@ -111,6 +117,7 @@ export function ProjectDetails({ record, onSaved }: Props) {
       />
 
       <Involvement record={record} onSaved={onSaved} />
+      <ShotIn record={record} onSaved={onSaved} />
     </div>
   );
 }
@@ -192,6 +199,71 @@ function Involvement({ record, onSaved }: Props) {
         </div>
       )}
 
+    </section>
+  );
+}
+
+/**
+ * Where this project is shot — `Involvement`, one prefix over.
+ *
+ * The same whole-set replace against `PATCH /locations`, merged the same way.
+ * Listed here rather than on the run because the create bar OFFERS the
+ * project's locations to every new run (`locationsOf`): naming the kitchen
+ * once here is what makes every run made in the project read as shot there.
+ */
+function ShotIn({ record, onSaved }: Props) {
+  const { data } = useResource(["locations"], useCallback(() => getLocations(), []));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const shotIn = new Set((record.locations ?? []).map((each) => each.id));
+
+  const toggle = async (id: string) => {
+    const next = new Set(shotIn);
+    if (!next.delete(id)) next.add(id);
+    setBusy(true);
+    setError(null);
+    try {
+      const { locations } = await setProjectLocations(record.id, [...next]);
+      onSaved({ locations });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-2 border-t border-line pt-4">
+      <Text variant="title">Locations</Text>
+      <Text variant="caption" tone="muted">
+        Where this project is shot. Every run made here is offered these, and
+        a run records where it was shot on its own.
+      </Text>
+
+      {error && (
+        <Alert.Root intent="danger">
+          <Alert.Title>Could not change the locations</Alert.Title>
+          <Alert.Description>{error}</Alert.Description>
+        </Alert.Root>
+      )}
+
+      {(data ?? []).length === 0 ? (
+        <EmptyState title="No locations in this library yet." />
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {(data ?? []).map((location) => (
+            <LocationChipToggle
+              key={location.id}
+              name={location.name}
+              hero={location.hero}
+              pressed={shotIn.has(location.id)}
+              disabled={busy}
+              onClick={() => void toggle(location.id)}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
