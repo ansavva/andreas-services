@@ -5,10 +5,19 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { MovieRecord } from "../types";
 import { TestProviders } from "../test-providers";
 
+// `getProject` and `getCharacters` are for the project's bar above the trail.
 vi.mock("../apis/studio", () => ({
   getMovie: vi.fn(),
   deleteMovie: vi.fn(),
-  getProject: vi.fn().mockResolvedValue({ id: "proj-1", name: "A project" }),
+  deleteProject: vi.fn(),
+  getProject: vi.fn().mockResolvedValue({
+    id: "proj-1",
+    name: "A project",
+    counts: { runs: 3, scenes: 1, movies: 1 },
+    characters: [],
+    locations: [],
+  }),
+  getCharacters: vi.fn().mockResolvedValue([]),
 }));
 
 import { deleteMovie, getMovie } from "../apis/studio";
@@ -59,11 +68,22 @@ async function open() {
   await screen.findByText("Scenes");
 }
 
-it("names the project in the trail", async () => {
+/**
+ * The project's own bar sits on top, Movies selected, and the movie is a
+ * trail under the tabs — `<project> / <movie>` — the way the Files tab draws
+ * a folder. The project crumb leads back to the Movies listing, not the feed.
+ */
+it("draws the project's bar on Movies, and the movie as a trail under it", async () => {
   read.mockResolvedValue(record());
   await open();
 
-  await waitFor(() => expect(screen.getByText("A project")).toBeTruthy());
+  await screen.findByRole("heading", { name: "A project" });
+  expect(screen.getByRole("tab", { name: "Movies" }).getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByRole("tab", { name: "Scenes" }).getAttribute("aria-selected")).toBe("false");
+
+  const crumb = screen.getByRole("link", { name: "A project" }) as HTMLAnchorElement;
+  expect(crumb.getAttribute("href")).toBe("/p/proj-1?tab=movies");
+  expect(screen.getByText("A movie").getAttribute("aria-current")).toBe("page");
 });
 
 /**
@@ -113,7 +133,7 @@ it("types the name before deleting the movie, then lands on its project", async 
   read.mockResolvedValue(record());
   await open();
 
-  fireEvent.click(screen.getAllByRole("button", { name: "More actions" })[0]!);
+  fireEvent.click(screen.getAllByRole("button", { name: "Actions for A movie" })[0]!);
   fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
 
   const dialog = await screen.findByRole("alertdialog");

@@ -9,11 +9,13 @@ import { PageLoading } from "../components/common/PageLoading";
 import { deleteMovie, getMovie } from "../apis/studio";
 import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
 import { SectionHeading } from "../components/common/SectionHeading";
-import { PageBar, useCopyLinkItem } from "../components/layout/PageBar";
+import { useCopyLinkItem } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
 import { MediaThumb } from "../components/media/MediaThumb";
+import { ProjectBarOn, projectTabPath } from "../components/project/ProjectBar";
+import { SubTrail } from "../components/project/SubTrail";
+import { useProjectName } from "../hooks/useProjectName";
 import { useResource } from "../hooks/useResource";
-import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import { formatDate } from "../utils/format";
 import { objectPath, projectPath, scenePath } from "../utils/location";
 import { TrashIcon } from "../components/common/icons";
@@ -33,7 +35,7 @@ export function MoviePage() {
 
   const load = useCallback(() => getMovie(movieId), [movieId]);
   const { data, loading, error, reload } = useResource(["movie", movieId], load);
-  const crumbs = useProjectCrumb(data?.project ?? "");
+  const projectName = useProjectName(data?.project ?? "");
   /** The delete dialog, opened from the page bar's menu rather than drawn loose. */
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -52,8 +54,11 @@ export function MoviePage() {
 
   return (
     <>
-      <PageBar
-        crumbs={crumbs}
+      {/* The project's bar, Movies selected, and the movie as a trail under
+          the tabs — the same bargain `ScenePage` makes and explains. */}
+      <ProjectBarOn projectId={data.project} tab="movies" />
+      <SubTrail
+        parent={{ label: projectName, to: projectTabPath(data.project, "movies") }}
         title={data.name}
         meta={
           <>

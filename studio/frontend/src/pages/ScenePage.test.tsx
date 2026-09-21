@@ -13,13 +13,15 @@ vi.mock("../components/project/RunFeed", () => ({
   },
 }));
 
-// `getProject` is here for the breadcrumb, which reads the project's name so
-// the trail says where the scene sits rather than just "Project".
+// `getProject` and `getCharacters` are here for the project's bar, which the
+// page draws above its own trail — the name, the counts, the chips.
 vi.mock("../apis/studio", () => ({
   getScene: vi.fn(),
   setSceneRuns: vi.fn(),
   deleteScene: vi.fn(),
+  deleteProject: vi.fn(),
   getProject: vi.fn(),
+  getCharacters: vi.fn().mockResolvedValue([]),
 }));
 
 import { deleteScene, getProject, getScene, setSceneRuns } from "../apis/studio";
@@ -70,7 +72,13 @@ function Land() {
 
 function draw(scene: SceneRecord) {
   read.mockResolvedValue(scene);
-  project.mockResolvedValue({ id: "proj-0001", name: "A project" } as never);
+  project.mockResolvedValue({
+    id: "proj-0001",
+    name: "A project",
+    counts: { runs: 3, scenes: 1, movies: 0 },
+    characters: [],
+    locations: [],
+  } as never);
   landed = "";
   return render(
     <MemoryRouter initialEntries={[`/s/${ID}`]}>
@@ -135,7 +143,8 @@ it("leads with the latest take, one at a time, and a tab per earlier one", async
 
   expect(await screen.findByText("Takes")).toBeTruthy();
   // Newest first, numbered from the total; the latest is the one drawn.
-  const tabs = screen.getAllByRole("tab");
+  // Scoped to the takes' own strip: the project's tabs sit above it.
+  const tabs = within(screen.getByRole("tablist", { name: "Takes" })).getAllByRole("tab");
   expect(tabs.map((tab) => tab.textContent)).toEqual(["Take 2latest", "Take 1"]);
   expect(screen.queryByText("earlier")).toBeNull();
   // The tile opens the viewer over the scene's takes, as a real link.
@@ -153,7 +162,35 @@ it("draws a single take with no strip", async () => {
   draw(record({ output: asset("node-take"), status: "assembled" }));
 
   expect(await screen.findByText("The take")).toBeTruthy();
-  expect(screen.queryAllByRole("tab")).toHaveLength(0);
+  expect(screen.queryByRole("tablist", { name: "Takes" })).toBeNull();
+});
+
+/**
+ * The scene was opened from the project's Scenes tab, and the page used to
+ * drop the bar — a different title, no strip — so it read as leaving the
+ * project. Now it is the project's bar with Scenes selected, and the scene
+ * is a trail under the tabs, the way the Files tab draws a folder.
+ */
+it("draws the project's bar on Scenes, and the scene as a trail under it", async () => {
+  draw(record());
+
+  await screen.findByRole("heading", { name: "A project" });
+  expect(screen.getByRole("tab", { name: "Scenes" }).getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByRole("tab", { name: "Runs" }).getAttribute("aria-selected")).toBe("false");
+
+  const crumb = screen.getByRole("link", { name: "A project" }) as HTMLAnchorElement;
+  expect(crumb.getAttribute("href")).toBe("/p/proj-0001?tab=scenes");
+  expect(screen.getByText("Light flex").getAttribute("aria-current")).toBe("page");
+});
+
+/** The other tabs are the project's own, so picking one goes there. */
+it("leaves for the project on the tab picked", async () => {
+  draw(record());
+
+  fireEvent.click(await screen.findByRole("tab", { name: "Movies" }));
+
+  await screen.findByText("landed");
+  expect(landed).toBe("/p/proj-0001?tab=movies");
 });
 
 it("deletes from the page bar and lands on the project", async () => {
@@ -161,7 +198,7 @@ it("deletes from the page bar and lands on the project", async () => {
   destroy.mockResolvedValue({ id: ID, files: "delete" } as never);
 
   await screen.findByText("Light flex");
-  fireEvent.click(screen.getAllByRole("button", { name: "More actions" })[0]!);
+  fireEvent.click(screen.getAllByRole("button", { name: "Actions for Light flex" })[0]!);
   fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
   const dialog = await screen.findByRole("alertdialog");
   const action = within(dialog).getByRole("button", { name: "Delete" }) as HTMLButtonElement;
