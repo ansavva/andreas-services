@@ -116,10 +116,13 @@ at, and the video model only has to carry motion. Every later clip opens on the
 previous clip's last frame, so the seed is the look the whole scene inherits.
 
 Write the motion prompt for each clip with `studio prompt` and paste what it
-returns — the app draws a compiled document as subject / action / camera /
-style / avoid, and a paragraph as one undifferentiated block. Prose renders;
-what it costs is every authoring check and the locked template, which is the
-only reproducibility lever Kling has (it has no seed).
+returns. On Kling that is prose in Kuaishou's own formula — subject and
+movement, scene, camera, lighting, style, then `Shot N (Ns):` lines and a
+closing `Avoid …` — built from the object you authored, so a hand-written
+paragraph looks no different in the app. What the object buys is every
+authoring check and the locked template, which is the only reproducibility
+lever Kling has (it has no seed): hold the object byte-identical and the prose
+is byte-identical.
 
 ### Two ways to chain, and the choice is per scene
 

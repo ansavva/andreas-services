@@ -2954,7 +2954,7 @@
         "flags": [
           "--compact"
         ],
-        "help": "Single-line prompt JSON (no indent).",
+        "help": "Single-line prompt JSON (no indent). No effect on Kling, which is compiled to prose.",
         "hidden": false,
         "multiple": false,
         "nargs": 0,

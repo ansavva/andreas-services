@@ -178,7 +178,7 @@ prompt inside the payload double-escapes it into one unreadable line:
 
 ```
 ===== 1/2  PROMPT — serialized into the `prompt` string at submit time =====
-"Use the FIRST image as the base and keep it otherwise unchanged: …"
+Use the FIRST image as the base and keep it otherwise unchanged: …
 
 ===== 2/2  INPUT — the parameters this model receives =====
 {
@@ -197,9 +197,9 @@ prompt inside the payload double-escapes it into one unreadable line:
 machines. The payload renderer is shared by every engine, so
 image and video submissions review identically.
 
-**Image prompts are prose, not structured JSON.** `studio-media-prompt`'s schema is
-camera/action/scene shaped and targets the video engines only
-(`--engine seedance|kling-replicate`), so document 1/2 is a plain string here.
+**Image prompts are prose, not a structured object.** `studio-media-prompt`'s
+schema is camera/action/scene shaped and targets the video engines only
+(`--engine seedance|kling-replicate`), so document 1/2 is the text verbatim here.
 
 **Retrying an identical payload needs no second look — a changed payload does.** A transient
 `E003 ModelRateLimitError` (Replicate capacity) can be retried with the identical

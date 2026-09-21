@@ -557,6 +557,7 @@
       "video": {
         "negative": "prompt",
         "technical": "replicate_kling",
+        "prompt_format": "kling",
         "max_cuts": 6,
         "image_tokens": false,
         "resolution_field": "mode",
@@ -1176,6 +1177,7 @@
       "video": {
         "negative": "prompt",
         "technical": "api",
+        "prompt_format": "kling",
         "max_cuts": null,
         "image_tokens": false,
         "resolution_field": "mode",

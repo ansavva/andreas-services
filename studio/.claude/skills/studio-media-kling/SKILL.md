@@ -19,9 +19,11 @@ kling-replicate`), which reuses the Replicate token, upload helper and S3 flow
 > from git history if a package is ever purchased.
 
 The family:
-- **`studio-media-prompt`** — authors the prompt. `--engine kling-replicate` compiles a
-  `shots` timeline into the model's `multi_prompt` array and emits a ready
-  Replicate `input`.
+- **`studio-media-prompt`** — authors the prompt. `--engine kling-replicate`
+  compiles the object into the prose Kuaishou documents (see
+  [below](#prose-not-json-what-kuaishou-actually-documents)), a `shots`
+  timeline into the model's `multi_prompt` array, and emits a ready Replicate
+  `input`.
 - **`studio-media-character`** — `reference_images` here behaves like Seedance's, so a
   character's existing S3 reference set carries over. `studio character textblock`
   gives a pasteable identity anchor when driving from a start frame instead.
@@ -181,7 +183,7 @@ Re-describing them makes the model fight the image and drift — the most common
 image-to-video failure, and it reads as a model problem when it is a prompt
 problem.
 
-Set `"start_image": true` in the JSON and:
+Set `"start_image": true` in the object and:
 
 - **Cut `scene` and `lighting`.** The frame owns them.
 - **Shrink `subject`** to an identity anchor — `"The man from the source image,
@@ -323,17 +325,169 @@ Third-party Kling guides are overwhelmingly written against API 1.x:
 | `negative_prompt` field | Not present |
 | A `seed` | Not present |
 
-## Open question: prose vs. serialized JSON
+## Prose, not JSON: what Kuaishou actually documents
 
-`studio-media-prompt`'s JSON serialization is validated against **Seedance**, following
-ByteDance's own guidance. It is **not** validated on Kling, where Kuaishou's
-material uses prose. The structural rules (subject-and-action lead, one camera
-move, concrete verbs) hold either way, and the JSON form is what makes the
-locked-template discipline mechanical — so it stays the default.
+**Kling receives the prompt as prose.** `studio prompt --engine kling-replicate`
+takes the same object as every engine and serialises it in the form
+Kuaishou's own material uses, not as JSON. Until 2026-09-20 it sent the
+object as indented JSON — a form validated on Seedance, per ByteDance's
+guidance, and never on Kling. The braces, quotes and key names were reaching
+a 2,500-character text field as literal characters. Researched and settled
+that day; what was found:
 
-Settle it when convenient: same beat, same start frame, once as serialized JSON
-and once as prose, and keep whichever tracks better. Note that with `multi_prompt`
-the per-shot text is already plain prose, so this only concerns the lead-in block.
+- **Kuaishou's prompt guide** gives one formula — *Subject (description) +
+  Subject Movement + Scene (description) + (Camera Language + Lighting +
+  Atmosphere)* — and says "use simple words and sentence structures". No JSON,
+  no key:value form, anywhere in the text-to-video guide, the 3.0 Omni user
+  guide or the prompt blog.
+- **The 3.0 Omni guide writes multi-shot as lines** — `Shot 1 (2s): …` or
+  `[00:00–00:02] wide shot: …` — with characters as `@Name` and dialogue in
+  quotes under a speaker label.
+- **The only JSON the model parses is `multi_prompt`**, a typed Replicate
+  field taking `[{"prompt", "duration"}]`. Each shot's `prompt` inside it is
+  prose. Confirmed against the live schema, which also has no `negative_prompt`
+  and no `seed`, whatever the README says.
+- **fal's Kling 3.0 guide** says the same in different words: think in shots,
+  label each, anchor characters early, use filmmaking vocabulary. No
+  benchmark between formats.
+- **Every source claiming Kling "prefers JSON"** was selling a JSON prompt
+  generator, cited no Kuaishou document and showed no side-by-side.
+- **What the evidence does support** is structure over an undifferentiated
+  paragraph — explicit shot boundaries, one named camera move, subject first.
+  Those are content rules and the validator enforces them regardless of form.
+
+So the wire text is now:
+
+```
+<subject> <action>. <scene>. <Shot type>, <movement>, <lens>mm lens. <lighting>. <style>. <audio>.
+
+Shot 1 (3s): Wide shot, static. <description>.
+Shot 2 (3s): Medium shot, slow dolly in. <description>.
+
+Speaker: "line"
+
+Avoid <negative>.
+```
+
+The lead paragraph follows the formula's order; the shot lines carry the same
+durations `multi_prompt` does; the negative closes because Kling has nowhere
+else to put it. **Nothing about the locked template changes**: the object is
+still what you author, diff and hold byte-identical across a scene, and it is
+still what `prompt.json` records beside the run. Only the string built from it
+differs — and a byte-identical object serialises to a byte-identical string.
+
+Not yet measured: whether the prose form tracks the brief better than the JSON
+did. It is the vendor's documented form, which is the reason to default to it;
+a same-beat, same-start-frame pair would show the size of the difference.
+
+## Kuaishou's prompt guide, applied
+
+Source: [Kling AI Prompt Guide: The Secret to Cinematic Video Prompts](https://kling.ai/blog/kling-ai-prompt-guide)
+(kling.ai, 2026-08-07). Its opening line: "strong cinematic prompts are built
+from clear scene direction rather than secret formulas." Read against what
+`studio prompt` does, rule by rule.
+
+### Its five elements are the object's keys
+
+| Kuaishou | Object key | Its example direction |
+|---|---|---|
+| Subject | `subject` | "A woman in a striped shirt, a perfume bottle on a velvet pedestal" |
+| Action | `action` / `shots[].description` | "Walks toward camera, swirls juice in glass, turns and smiles" |
+| Scene | `scene` | "Outdoor terrace, old street in Madrid, studio product set" |
+| Camera | `camera` | "Close-up, wide shot, low angle, slow push-in, tracking shot" |
+| Lighting and mood | `lighting` + `style` | "Natural sunlight, golden hour, cold blue night, soft haze" |
+
+Nothing to translate: the prose the compiler emits is these five, in this
+order.
+
+### Describe what is visible, never the effect you want
+
+Kuaishou's own words: avoid "magic"; write "swirling blue energy particles
+with an ethereal glow". Movement is visible things — "smoke drifting upward,
+flames bending in wind, runner leaning forward". Atmosphere is visible things —
+"haze, rim light, long shadows, reflections on wet pavement". This is the
+vague-adjective warning, from the vendor. **Their examples do end on a
+quality tail** — "Photorealistic, 8K detail, masterpiece cinematography";
+"High consistency, cinematic lighting, 4K, realistic textures" — so a short
+tail in `style` is not filler here. The validator does not flag those words.
+
+### Camera: plain sentences, and the vendor stacks moves
+
+The guide's camera table is written as sentences, not tags — "The camera slowly
+pushes toward the subject", "Camera follows beside the runner", "Camera pans
+across the room or tilts up to the sign". Write `camera.movement` that way.
+Shot sizes it defines: **extreme close-up** (an eye, a small object), **medium
+close-up** (upper torso up — dialogue and expression), **full body** (subject
+plus some surroundings — action and clothing), **establishing wide** (location
+and scale). Composition words it accepts: *centered*, *rule of thirds*,
+*off-center*.
+
+**Kuaishou's own showcase prompt composes three moves in one shot** — a
+dolly-in that "simultaneously performs a subtle pan right and a gentle tilt
+upward", described as one continuous, controlled motion. `studio prompt` warns
+on a stacked move. On Kling read that warning as *"is this one described
+motion, or two competing ones?"* — a dolly with a drift written as a single
+gesture is what the vendor shows; "dolly in and orbit" is still chaos. The
+warning is advisory and stays.
+
+### Pacing has words
+
+| Cue | Write it as | For |
+|---|---|---|
+| Slow | "a slow push-in as the character thinks" | calm, intimacy, suspense |
+| Steady | "a steady tracking shot following the subject" | readable action, continuity |
+| Quick | "a quick cut to a close-up reaction" | energy, surprise, a transition |
+| A defined length | a `shots[].dur` — Custom Multi-Shot | structured scenes, dialogue beats |
+
+Bare "fast" is not on their list either.
+
+### Native audio and dialogue
+
+- **Keep the speaker's name, line and delivery together.** The compiler puts a
+  `delivery` on the label — `Mom (fast, urgent): "Shoes. Now."` — from
+  `dialogue: [{"speaker", "line", "delivery"}]`.
+- **Label every speaker plainly** in a multi-speaker scene.
+- **Describe ambience as a place with an acoustic detail** — "an indoor living
+  room with a subtle air-conditioner hum" — in `audio`. Dialogue, SFX and
+  ambience are one generation with the picture under `generate_audio: true`.
+- Five languages: Chinese, English, Japanese, Korean, Spanish; accents and
+  dialects; mixed languages in one scene, with lip movement following.
+
+### Consistency is a held description — the locked template, from the vendor
+
+"Reference workflows are most useful when the prompt keeps the character,
+product, or prop description steady while the scene, camera angle, or action
+changes." And what that description holds: "clothing, hairstyle, props, and
+the role the character plays in the scene." That is
+[the locked template](#consistency-across-clips-lock-the-template-add-only-deltas)
+stated by Kuaishou. Pair it with clean references — `reference_images` here,
+a video reference on Omni when the same subject crosses angles.
+
+### Multi-shot: setting first, then shots in order
+
+"A strong Multi-Shot prompt should define the setting first, then organize the
+scene by shot order so each beat has a clear purpose." The compiler's lead
+paragraph then `Shot N (Ns):` lines is exactly that. The guide's own example
+uses a third bracketed spelling — `[Shot 1: Wide shot] … [Shot 2: Medium shot]
+… [Shot 3: Close-up shot] …` with the style tail after the last shot — so any
+of the three documented spellings is read; ours carries the duration the
+Custom mode wants. Custom Multi-Shot controls per shot: content, duration,
+size and perspective, camera movement — the four things a `shots[]` entry has.
+
+### Text in frame
+
+Kling 3.0 renders lettering. For a label, sign, caption or packaging: "write
+the exact words, placement, surface, and camera distance. Keep the text short
+when readability matters", and frame and light for it. Treat it as
+composition — where, how large, what around it stays clear.
+
+### Their workflow is the phrasebook
+
+"Start with a simple base prompt and then experiment with different speeds,
+movements, and variations in framing. Record which combinations are most
+effective … a personal library of proven prompts." Vary one thing per run
+against a held base, and write what held into `studio phrasebook` and the
+locked template.
 
 ## Verified runs
 

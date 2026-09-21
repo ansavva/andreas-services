@@ -466,8 +466,8 @@ what the editor decided, because the bar inherits every one of those rules.
   remove, and the model input it binds to. `MediaPicker` — the file-shaped twin
   of `DestinationPicker` — adds one by browsing the library, numbering each tile
   as it is picked because the order is what is being built.
-- **A structured prompt stays JSON and a written one stays prose**, decided once
-  from the run as it arrived rather than from what is in the box. `origin`
+- **A structured prompt stays structured and a written one stays prose**,
+  decided once from the run as it arrived rather than from what is in the box. `origin`
   survives a save: a reconstructed plan that quietly became an authored one would
   claim somebody wrote words that were read off a request document.
 - **The field a new image binds is offered from what the run already binds**, as

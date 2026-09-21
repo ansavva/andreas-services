@@ -34,6 +34,10 @@ Author the object like:
 For a multi-shot piece, supply `shots` instead of one `action`; the API budgets
 the beats across the duration and refuses more cuts than the engine takes.
 
+The API also decides what the engine's `prompt` string looks like: the object
+as JSON for Seedance, Kuaishou's prose formula for Kling. The object is what
+you author and what the run records either way.
+
   studio prompt prompt.json
   studio prompt prompt.json --engine kling-replicate --duration 8
   studio prompt - < prompt.json
@@ -104,7 +108,7 @@ def load_object(source: str | None = None, json_text: str | None = None) -> dict
 @click.option("--audio")
 @click.option("--camera-movement")
 @click.option("--camera-shot")
-@click.option("--compact", is_flag=True, help="Single-line prompt JSON (no indent).")
+@click.option("--compact", is_flag=True, help="Single-line prompt JSON (no indent). No effect on Kling, which is compiled to prose.")
 @click.option("--duration", type=int)
 @click.option("--emit", type=click.Choice(["both", "input", "prompt"]), default='both')
 @click.option("--engine", type=click.Choice(["kling", "kling-replicate", "seedance"]), default='seedance', help=("Target engine (default: seedance). Changes negative-prompt "
