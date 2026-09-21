@@ -474,6 +474,17 @@ describe("the giver's purchase claims", () => {
  * from.
  */
 describe('filling a wish from a link', () => {
+  // The feature is switched off (linkPreviewEnabled in wishlist.tsx); the behaviour it had is kept
+  // below for when it comes back, and one test pins that the switch holds.
+  it('is not offered while switched off', async () => {
+    render(<WishListPanel groupId="g1" />);
+    await waitFor(() => expect(screen.getByText('Add a wish')).toBeTruthy());
+    fireEvent.press(screen.getByText('Add a wish'));
+
+    expect(screen.queryByText('Fill from the link')).toBeNull();
+    expect(mocks.previewWishUrl).not.toHaveBeenCalled();
+  });
+
   async function openAddForm() {
     render(<WishListPanel groupId="g1" />);
     await waitFor(() => expect(screen.getByText('Add a wish')).toBeTruthy());
@@ -481,7 +492,7 @@ describe('filling a wish from a link', () => {
     return screen.getByLabelText('Link (optional)');
   }
 
-  it('fills the empty fields and names the source', async () => {
+  it.skip('fills the empty fields and names the source', async () => {
     mocks.previewWishUrl.mockResolvedValue({
       host: 'shop.example.com',
       fetched: true,
@@ -506,7 +517,7 @@ describe('filling a wish from a link', () => {
   });
 
   /** A preview that overwrites what somebody typed is a preview that loses their work. */
-  it('never overwrites a field the owner already filled', async () => {
+  it.skip('never overwrites a field the owner already filled', async () => {
     mocks.previewWishUrl.mockResolvedValue({
       host: 'shop.example.com',
       fetched: true,
@@ -530,7 +541,7 @@ describe('filling a wish from a link', () => {
   });
 
   /** A page that offered nothing leaves a manual form, which is what it already was. */
-  it('leaves the form alone when the page offered nothing', async () => {
+  it.skip('leaves the form alone when the page offered nothing', async () => {
     mocks.previewWishUrl.mockResolvedValue({
       host: 'shop.example.com',
       fetched: false,
@@ -552,7 +563,7 @@ describe('filling a wish from a link', () => {
     expect(screen.getByText('Add to my list')).toBeTruthy();
   });
 
-  it('shows a refusal the server could decide from the URL alone', async () => {
+  it.skip('shows a refusal the server could decide from the URL alone', async () => {
     mocks.previewWishUrl.mockRejectedValue(
       new Error('That link points somewhere private rather than at a public web page.'),
     );
