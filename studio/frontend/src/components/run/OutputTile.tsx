@@ -91,7 +91,7 @@ export function outputMenu(
       ? [
           {
             key: "promote",
-            label: "Copy into a character…",
+            label: "Copy into a character or location…",
             icon: <PromoteIcon className={GLYPH} />,
             onSelect: onPromote,
           },

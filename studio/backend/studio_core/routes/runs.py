@@ -346,11 +346,9 @@ def create_draft(body: dict, held) -> dict:
     if not isinstance(model, str) or not model:
         raise ValidationError("model is required")
 
-    characters = body.get("characters") or []
-    if not isinstance(characters, list):
-        raise ValidationError("characters must be a list")
-    for char_id in characters:
-        support.entity_at(catalog.ENTITY_CHARACTER, g.library, char_id, held)
+    characters = _subject_ids(body, "characters", catalog.ENTITY_CHARACTER, held)
+    # Where the run is shot — the same shape as who is in it, one prefix over.
+    locations = _subject_ids(body, "locations", catalog.ENTITY_LOCATION, held)
 
     # `sends` is what a caller that knows about roles supplies; `bindings` is the
     # older spelling and is read as sends with the WHY left null. Both go through
@@ -403,6 +401,7 @@ def create_draft(body: dict, held) -> dict:
             "submitted": None,
             "completed": None,
             "characters": characters,
+            "locations": locations,
             # **The scene this run is made for, or nothing.** A field on the
             # run — a run belongs to at most one scene — with an edge beside
             # it (`_edge_targets`), so "every run in this scene" is one
@@ -514,8 +513,8 @@ def _write_payload(record: dict, body: dict) -> dict:
 def list_runs():
     """The query that replaces `runs find`.
 
-    `?character=` is one `by-sk` query. `?project=` is one range query on the
-    project's listing rows. Neither given walks the library's projects and asks
+    `?character=` is one `by-sk` query, and `?location=` the same query one
+    prefix over. `?project=` is one range query on the project's listing rows. Neither given walks the library's projects and asks
     each — which is what `runs find` did for *every* query, reading three JSON
     documents per run on the way.
 
@@ -557,7 +556,12 @@ def list_runs():
         character = support.entity_at(
             catalog.ENTITY_CHARACTER, g.library, args["character"], held
         )
-        runs = catalog.runs_for_character(character["id"])
+        runs = catalog.runs_using(character["id"])
+    elif args.get("location"):
+        location = support.entity_at(
+            catalog.ENTITY_LOCATION, g.library, args["location"], held
+        )
+        runs = catalog.runs_using(location["id"])
     elif args.get("project"):
         project = project_routes.project_at(args["project"], held)
         runs = catalog.project_entities(project["id"], KIND)
@@ -800,6 +804,7 @@ def _feed_row(row: dict, record: dict, send_entries: list[dict], nodes: dict) ->
         **({"fingerprint": fingerprint} if fingerprint else {}),
         "plan": record.get("plan"),
         "characters": record.get("characters") or [],
+        "locations": record.get("locations") or [],
         "cast": cast,
         "sends": sends,
         "outputs": outputs,
@@ -955,6 +960,9 @@ def view(record: dict, send_entries: list[dict] | None = None) -> dict:
             # plan and one whose plan was cleared. There is no difference.
             "plan": None,
             "scene": None,
+            # Runs written before locations existed carry no key at all; a
+            # client reads a list either way.
+            "locations": [],
             **record,
             # **Who this run is ABOUT, which `characters` alone does not answer.**
             # That field is written at creation and nowhere else, so a run built
@@ -1079,6 +1087,21 @@ def update_plan(run_id: str):
     send_entries = catalog.sends(record["id"])
     updated = _revised(record, {"plan": plan}, send_entries)
     return jsonify(view(updated, send_entries)), 200
+
+
+def _subject_ids(body: dict, field: str, kind: str, held: dict) -> list:
+    """`body[field]` as a list of ids of one subject kind, each proved to exist.
+
+    Read to prove it exists and is in this library: a run naming a character
+    or a location the caller cannot see would be a record presigning bytes its
+    own library does not hold. A missing field is an empty list.
+    """
+    ids = body.get(field) or []
+    if not isinstance(ids, list):
+        raise ValidationError(f"{field} must be a list")
+    for each in ids:
+        support.entity_at(kind, g.library, each, held)
+    return ids
 
 
 def _cast(record: dict) -> list:
@@ -1246,11 +1269,7 @@ def update_run(run_id: str):
     # class of write as the rest of this route.
     edges = None
     if "characters" in body:
-        cast = body["characters"] or []
-        if not isinstance(cast, list):
-            raise ValidationError("characters must be a list")
-        for char_id in cast:
-            support.entity_at(catalog.ENTITY_CHARACTER, g.library, char_id, held)
+        cast = _subject_ids(body, "characters", catalog.ENTITY_CHARACTER, held)
         # **Both halves, in one transaction.** The cast is a field on the record
         # — what a run reports and what `@character.N` counts — AND a set of
         # `RUN#<id>` / `CHAR#<id>` edges, which is what makes "every run that
@@ -1259,6 +1278,11 @@ def update_run(run_id: str):
         # the argument that keeps them together.
         assignments["characters"] = cast
         edges = {catalog.ENTITY_CHARACTER: cast}
+    if "locations" in body:
+        # Where it was shot: the same pair of writes, one prefix over.
+        shot_in = _subject_ids(body, "locations", catalog.ENTITY_LOCATION, held)
+        assignments["locations"] = shot_in
+        edges = {**(edges or {}), catalog.ENTITY_LOCATION: shot_in}
 
     # **Which scene this run is for — settable after creation, and clearable.**
     # A run made from the project feed can be put into a scene later, and one

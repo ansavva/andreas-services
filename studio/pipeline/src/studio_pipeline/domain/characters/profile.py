@@ -1,569 +1,75 @@
-"""The bible: its schema, the record field it lives in, and the local round trip.
+"""The character bible — `domain/subjects.py`'s round trip, bound to `SUBJECT`.
 
-THE BIBLE IS A FIELD ON A ROW, NOT A DOCUMENT IN A BUCKET
----------------------------------------------------------
-The bible is `profile` on the character record — a validated map the API owns
-— and one of its keys lives outside it as a real field, because it is not
-description, it is identity:
-
-    name          -> the record's `name`, a free-text label
-
-The record has one label, so this document's `name:` key is it and there is no
-second label to keep in step.
-
-Nothing in the bible names a file: which images are identity is a tag on each
-image, so a rename cannot strand a description.
-
-**`load_profile` merges the promoted field back in**, and that is a
-compatibility seam with a reason rather than a courtesy: `domain/prompt.py`
-reads a bible as one map and indexes it by key — `profile["wardrobe"]`,
-`profile["consistency"]`, and `name` where a prompt has to write the character
-into prose. Handing it a map with a key silently missing would not fail; it
-would render slightly worse prompts, which is the failure that does not get
-noticed.
-
-`rev` IS THE CONFLICT CHECK, AND IT HAPPENS WHERE THE WRITE HAPPENS
--------------------------------------------------------------------
-Comparing a version here and then writing is check-then-write, with a window
-in between where somebody else's write lands and is lost. `rev` closes it:
-`PATCH /api/characters/<id>/profile` takes `{profile, rev}` and the API refuses
-a stale one with a `ConditionExpression`, so there is no gap at all. A `409`
-arrives as `api.Conflict` and means exactly one thing: somebody wrote since you
-read.
-
-The local sidecar holds the `rev` observed at pull time, and `edit --push`
-sends *that* rather than whatever the record says today — so a push of a copy
-pulled an hour ago is refused by the API rather than quietly reverting every
-description written since.
+Everything about how a bible is stored, checked, pulled, pushed and written
+back under a `rev` is in `subjects.py`, once, for a character and a location
+alike. This module keeps the names the rest of the pipeline and its tests
+were written against, each one the generic function with the character
+subject already supplied.
 """
 from __future__ import annotations
 
-import difflib
-import json
-import os
-import sys
+from studio_pipeline.domain import subjects as S
+from studio_pipeline.domain.characters.base import COMMANDS, PROFILE_KEYS, SUBJECT
 
-import click
-import yaml
+PROMOTED = S.PROMOTED
 
-from studio_pipeline.adapters import api, entities
-from studio_pipeline.adapters import store
-from studio_pipeline.domain.characters.base import (
-    LOCAL_DIR,
-    POOLS,
-    TEMPLATE,
-    die,
-    read_text,
-    resolve,
-    write_text,
-)
-
-# The keys of the DOCUMENT a person edits — the bible as one map, which is the
-# shape `load_profile` returns and the shape `edit` round-trips. It is the
-# record's `profile` plus the two promoted fields; `references` and
-# `default_set` are deliberately absent, because they are rows and a document
-# that carried them would invite someone to edit a copy of them.
-PROFILE_KEYS = (
-    "name",
-    "identity",
-    "face",
-    "body",
-    "wardrobe",
-    "voice",
-    "rendering",
-    "consistency",
-    "text_identity_block",
-)
-#: The one that lives on the record rather than inside `profile`.
-PROMOTED = ("name",)
-
-
-def parse_profile(text: str, where: str) -> dict:
-    """Parse a bible, or die with the YAML error and where it came from."""
-    try:
-        data = yaml.safe_load(text)
-    except yaml.YAMLError as exc:
-        die(f"{where} is not valid YAML:\n  {exc}")
-    if not isinstance(data, dict):
-        die(f"{where} must be a YAML mapping (got {type(data).__name__}).")
-    return data
+parse_profile = S.parse_profile
+document = S.document
+split_document = S.split_document
+unified = S.unified
 
 
 def check_profile(data: dict, where: str, name: str | None = None) -> None:
-    """Refuse a bible that has drifted off the shared schema.
-
-    `references:` and `default_set:` are now rows, so a bible carrying them is
-    warned about rather than refused: an old document should still be editable
-    into a new one, and the warning is what says the keys will be ignored.
-    """
-    missing = [k for k in PROFILE_KEYS if k not in data]
-    if missing:
-        die(
-            f"{where} is missing required key(s): {', '.join(missing)}\n"
-            "  every character carries the same schema — see templates/profile.yaml."
-        )
-    stale = [k for k in ("references", "default_set") if k in data]
-    if stale:
-        print(
-            f"warning: {where} still carries {', '.join(stale)}; both are rows now and "
-            "this copy is ignored. Use `studio character refs` / `default-set`.",
-            file=sys.stderr,
-        )
-    extra = [k for k in data if k not in PROFILE_KEYS and k not in ("references", "default_set")]
-    if extra:
-        print(
-            f"warning: {where} has key(s) outside the schema: {', '.join(extra)}",
-            file=sys.stderr,
-        )
-    if name and data.get("name") != name:
-        die(f"{where} declares name: {data.get('name')!r}, but this is character {name!r}.")
-
-
-def document(record: dict) -> dict:
-    """The record as the one map every reader of a bible expects.
-
-    `name` is the record's `name`, the only label it has; every downstream
-    reader spells it `name`. See the module docstring.
-    """
-    profile = dict(record.get("profile") or {})
-    merged = {"name": record["name"]}
-    merged.update(profile)
-    return merged
+    """Refuse a bible that has drifted off the character schema."""
+    S.check_profile(SUBJECT, data, where, name)
 
 
 def load_profile(name: str) -> dict:
-    """The bible of one character, as one map. **The reader every engine uses.**
-
-    Returns the record's `profile` with `name` merged back in — see the module
-    docstring for why it is a field and why it is put back here. One API call;
-    there is no document to fetch and no YAML to parse.
-    """
-    try:
-        return document(resolve(name))
-    except api.NotFound:
-        die(f"no character {name!r} (see `studio character list`).")
-
-
-def split_document(data: dict) -> tuple[dict, str]:
-    """A document -> the `profile` map.
-
-    The inverse of `document`. `name` is dropped rather than written: a rename
-    is `PATCH /api/characters/<id>`, so a bible that disagrees with the record
-    cannot rename anything and must not look as though it could.
-    """
-    return {k: v for k, v in data.items()
-            if k not in PROMOTED
-            and k not in ("references", "default_set")}
+    """The bible of one character, as one map. **The reader every engine uses.**"""
+    return S.load_profile(SUBJECT, name)
 
 
 def save_profile(record: dict, data: dict, rev: int | None = None) -> dict:
-    """Write a document back. **One compare-and-swap, not a check then a write.**
-
-    `rev` is the revision the caller last saw — the sidecar's for `edit --push`,
-    the record's own for an explicit file. The API refuses a stale one, which is
-    the whole of the conflict story; nothing here re-reads and compares.
-
-    **One write.** There is no second label on the record, so there is no
-    second call and no half-state to recover from.
-    """
-    try:
-        return entities.put_profile(record["id"], split_document(data),
-                                    record["rev"] if rev is None else rev)
-    except api.Conflict as exc:
-        die(f"{exc}\n       {record['name']}'s bible was written by someone else since "
-            "you read it — re-run `edit` to pick it up rather than overwriting.")
+    """Write a document back. One compare-and-swap on `rev`."""
+    return S.save_profile(SUBJECT, record, data, rev)
 
 
 def remote_rev(name: str) -> int | None:
-    """The record's current `rev`, or None if there is no such character.
-
-    **Only a 404 is None.** Its ancestor caught every exception, which made a
-    refusal indistinguishable from a missing bible — and a missing version
-    disabled the conflict check, so a 403 turned the guard off rather than
-    reporting it.
-    """
-    try:
-        return int(resolve(name)["rev"])
-    except api.NotFound:
-        return None
-
-
-# --- commands: the record --------------------------------------------------
-
-@click.command("list")
-@click.option("--json", "json_", is_flag=True)
-def cmd_list(json_):
-    """Every character in the library. **One query.**
-
-    This listed the bucket's `characters/` prefix and called each folder a
-    character. It is `query(pk = LIB#…, begins_with(sk, "CHARSLUG#"))` plus a
-    batch read — so a folder somebody made by hand is a folder, and a character
-    with no folder at all would still be listed.
-    """
-    found = entities.list_characters()
-    if json_:
-        print(json.dumps(found, indent=2))
-    elif found:
-        for record in found:
-            counts = record.get("counts") or {}
-            print(f"{record['name']:<20} "
-                  f"refs {counts.get('references', 0):<5} files {counts.get('files', 0):<5} "
-                  f"updated {str(record.get('updated', ''))[:10]}")
-    else:
-        print("(no characters yet — create one with `studio character create <name>`)",
-              file=sys.stderr)
-
-
-@click.command("show")
-@click.argument("name", required=True)
-@click.option("--json", "json_", is_flag=True)
-@click.option("--profile", "profile_", is_flag=True, help="Print the bible as YAML.")
-def cmd_show(name, json_, profile_):
-    """A character's record: its id, its counts and the folders it actually has.
-
-    The folder list is read off the root's children rather than printed from
-    `POOLS`, because the four are a starting layout and a person may have
-    renamed, deleted or added to them. Printing the convention would describe a
-    character nobody has.
-    """
-    record = _require(name)
-    if profile_:
-        sys.stdout.write(yaml.safe_dump(document(record), sort_keys=False,
-                                        allow_unicode=True, width=100))
-        return
-    if json_:
-        print(json.dumps(record, indent=2))
-        return
-    # **There is no drift to report here.** Which images a turnaround sends is
-    # one tag on one file, not two records with an invariant between them, so
-    # "an image somebody chose that would not be sent" has no way to happen.
-    images = entities.character_images(record["id"])
-    counts: dict[str, int] = {}
-    for entry in images:
-        for tag in entry.get("tags") or []:
-            counts[tag] = counts.get(tag, 0) + 1
-    folders = [f"{n['name']}/" for n in store.children_of(record["root"])
-               if n.get("kind") == "folder"]
-    print(f"{record['name']}  ({record['id']})  rev {record.get('rev')}")
-    print(f"  images    {len(images)}"
-          f"      sent by default: {counts.get('default', 0)}")
-    print(f"  tags      {' · '.join(f'{t} {n}' for t, n in sorted(counts.items())) or '—'}")
-    print(f"  root      {record['root']}   {' '.join(folders) or '(no folders)'}")
-
-
-@click.command("create")
-@click.argument("name", required=True)
-@click.option("--from-profile", help="Local profile.yaml to seed with (default: blank template).")
-def cmd_create(name, from_profile):
-    """Create a character: the record, its library index row and its root.
-
-    **One transaction, and no starting pools.** Either the whole character
-    exists or none of it does. `reference/`, `corpus/`, `seed/` and `archive/`
-    used to be part of it; they no longer are, and the first write that needs
-    one makes it — the printed names below are a suggestion, not a promise
-    that they already exist.
-
-    **It creates the record and stops.** `--turnaround` used to go straight
-    into the standard reference set from here; that set is made from templates
-    in the app now, the engine module it imported is gone, and the option group
-    that carried it (`--turnaround`, `--dry-run`, `--model`, `--project`) went
-    with it.
-    """
-    src = from_profile or TEMPLATE
-    if not os.path.isfile(src):
-        die(f"profile source not found: {src}")
-    data = parse_profile(read_text(src), src)
-    if src != TEMPLATE:  # the template is deliberately unfilled; anything else must be real
-        check_profile(data, src, name)
-
-    # **No conflict to catch.** A name is a label and two characters may share
-    # one.
-    record = entities.create_character(name, profile=split_document(data))
-    made = [f"{n['name']}/" for n in store.children_of(record["root"])
-            if n.get("kind") == "folder"]
-    print(f"created character {record['name']}  ({record['id']})")
-    print("  " + "  ".join(made or [f"{p}/" for p in POOLS]))
-    if src == TEMPLATE:
-        print("  (blank template — fill it in with `edit`, then `set-profile`.)",
-              file=sys.stderr)
-    print(f"  next: seed photos with `studio character add-to {name} seed <img>...`",
-          file=sys.stderr)
-    return 0
-
-
-@click.command("delete")
-@click.argument("name", required=True)
-@click.option("--files", type=click.Choice(["keep", "delete"]), default="keep",
-              help="What to do with the character's folder (default: keep it).")
-@click.option("--force", is_flag=True,
-              help="Delete even while projects or runs still name it.")
-def cmd_delete(name, files, force):
-    """Delete a character.
-
-    **`--files keep` is the default deliberately.** The reverse default loses a
-    reference library to a typo, and an orphaned folder in the library root is
-    visible and recoverable; nothing this service does to S3 is undoable.
-
-    **The refusal is the interesting half, and `--force` is right here** — which
-    is not true of `projects delete --force`. A project or a run that names this
-    character holds a link row, and those rows are what make "every run of this
-    subject" answerable. But a run is HISTORY: it really did use this character,
-    and deleting the character is not a reason to delete the work. So force
-    drops the links and leaves the runs, where the same flag on a project would
-    leave children naming a parent that no longer exists.
-    """
-    record = _require(name)
-    try:
-        entities.delete_character(record["id"], files=files, force=force)
-    except api.Conflict as exc:
-        die(f"{exc}\n       pass --force to drop those links and delete it anyway")
-    print(f"deleted character {record['name']} (files: {files})")
-
-
-@click.command("rename")
-@click.argument("name", required=True)
-@click.argument("new", required=True)
-def cmd_rename(name, new):
-    """Give a character a new name. **ONE conditional write.**
-
-    Four operations inside one transaction: the old claim goes, the new one is
-    written under `attribute_not_exists`, the record updates, and the root
-    folder node is renamed. Nothing else in the library is touched.
-
-    This was the worst command in the pipeline and it is worth saying what it
-    did. `rename.py` listed all four pools, `PATCH`ed every basename that
-    carried the name, rewrote the bible's `references:` map to match the new
-    basenames, then swept every run document in every project rewriting the
-    paths they had recorded — and was a dry run by default because getting it
-    wrong stranded records. `domain/rewrite.py` existed for that sweep. Every
-    line of it is deleted: a record names a **node id**, and a node id survives a
-    rename by construction.
-    """
-    record = _require(name)
-    try:
-        after = entities.patch_character(record["id"], record["rev"], name=new)
-    except api.Conflict as exc:
-        die(str(exc))
-    images = len(entities.character_images(record["id"]))
-    print(f"renamed {record['name']} → {after['name']}")
-    print(f"  0 objects copied · 0 records rewritten · {images} image(s) untouched")
-
-
-@click.command("textblock")
-@click.argument("name", required=True)
-def cmd_textblock(name):
-    """A pasteable identity paragraph, for engines driven from a start frame.
-
-    Seedance and Kling-on-Replicate both carry identity through
-    `reference_images`; when driving from a start frame instead, the character
-    has to survive as PROSE in the prompt. `GET /api/characters/<id>/textblock`
-    answers with the authored block when the bible has one, and with the
-    identity-bearing sections as raw material when it does not — the API
-    decides which, so the CLI and the SPA cannot paste different paragraphs
-    into the same model.
-    """
-    record = _require(name)
-    found = entities.textblock(record["id"])
-    authored = (found.get("text") or "").strip()
-    # No `<`-check here: the route empties an unfilled `<>` before it answers,
-    # so the branch is `text` or nothing.
-    if authored:
-        print(authored)
-        print(f"\n(authored block from {record['name']}'s bible)", file=sys.stderr)
-        return
-
-    sys.stdout.write(yaml.safe_dump(found.get("raw") or {}, sort_keys=False,
-                                    allow_unicode=True, width=88))
-    print(
-        f"\nNo authored `text_identity_block` in {record['name']}'s bible — the above is raw "
-        "material.\nCompress it into ONE paragraph of ~50-70 words covering only what a "
-        "text-only engine\ncannot infer: build proportion, hair, face landmarks, skin, and "
-        "signature accessories.\nThen save it back into the bible under `text_identity_block:` "
-        f"(`studio character edit {record['name']}`)\nso it is written once and reused.\n"
-        "\nNOTE: with a start frame supplied, keep the pasted block SHORT — the frame carries\n"
-        "appearance better than prose, and a long block fights it (see studio-media-kling).",
-        file=sys.stderr,
-    )
-
-
-@click.command("set-profile")
-@click.argument("name", required=True)
-@click.argument("file", required=False)
-def cmd_set_profile(name, file):
-    """Replace the bible. With no FILE, pushes the local working copy.
-
-    `PATCH /api/characters/<id>/profile` with the `rev` last seen. FILE omitted is
-    the `edit` round trip's second half and uses the `rev` recorded at pull
-    time, so a stale copy is refused; FILE given is an assertion and uses the
-    record's current `rev`, which the API still compare-and-swaps against.
-    """
-    record = _require(name)
-    if file is None:
-        local, base, revf = local_paths(record["name"])
-        do_push(record["name"], False, local, base, revf)
-        return
-    if not os.path.isfile(file):
-        die(f"profile file not found: {file}")
-    data = parse_profile(read_text(file), file)
-    check_profile(data, file, record["name"])
-    after = save_profile(record, data)
-    print(f"profile updated (rev {record['rev']} → {after['rev']})", file=sys.stderr)
-
-
-# --- local round-trip editing (`edit`) ------------------------------------
-#
-# Three files per character under local/characters/ (all git-ignored):
-#   <name>.yaml         the working copy you edit
-#   .<name>.base.yaml   pristine copy as pulled — used to detect your edits + diff
-#   .<name>.rev         the record's `rev` at pull time — sent back as the CAS
-#                       value, so a push of a stale copy is refused by the API
-#                       rather than compared here.
-
-def local_paths(name: str, override: str | None = None) -> tuple[str, str, str]:
-    """(working copy, base copy, rev file) for a character."""
-    path = os.path.abspath(override) if override else os.path.join(LOCAL_DIR, f"{name}.yaml")
-    d, stem = os.path.dirname(path), os.path.splitext(os.path.basename(path))[0]
-    return path, os.path.join(d, f".{stem}.base.yaml"), os.path.join(d, f".{stem}.rev")
+    """The record's current `rev`, or None if there is no such character."""
+    return S.remote_rev(SUBJECT, name)
 
 
 def fetch_profile(name: str) -> tuple[str, str]:
-    """(the bible as YAML text, the `rev` it was read at).
-
-    **One call, and the two cannot disagree.** This was two — the bytes from a
-    presigned URL and the version off the node record — with a careful argument
-    about which to read first so that a write landing between them produced a
-    refusal rather than an overwrite. The record carries both, so the ordering
-    problem does not exist.
-    """
-    record = _require(name)
-    text = yaml.safe_dump(document(record), sort_keys=False, allow_unicode=True,
-                          default_flow_style=False, width=100)
-    return text, str(record["rev"])
+    """(the bible as YAML text, the `rev` it was read at)."""
+    return S.fetch_profile(SUBJECT, name)
 
 
-def unified(before: str, after: str, name: str) -> str:
-    return "".join(
-        difflib.unified_diff(
-            before.splitlines(keepends=True),
-            after.splitlines(keepends=True),
-            fromfile=f"{name} (stored bible)",
-            tofile=f"local/{name}.yaml",
-        )
-    )
+def local_paths(name: str, override: str | None = None) -> tuple[str, str, str]:
+    """(working copy, base copy, rev file) for a character."""
+    return S.local_paths(SUBJECT, name, override)
 
 
 def do_pull(name: str, force: bool, local: str, base: str, revf: str) -> None:
-    text, rev = fetch_profile(name)
-    if os.path.exists(local) and not force:
-        current = read_text(local)
-        prior = read_text(base) if os.path.exists(base) else None
-        if current != (prior if prior is not None else text):
-            die(
-                f"local copy has unsaved edits: {local}\n"
-                "  push them first (re-run without --pull), or discard them with --discard."
-            )
-    write_text(local, text)
-    write_text(base, text)
-    write_text(revf, rev)
-    print(local)  # stdout: pipeable, e.g. `code "$(... edit <name>)"`
-    print(
-        f"wrote {local} (rev {rev})\n"
-        f"  edit the file above, then: studio character set-profile {name}",
-        file=sys.stderr,
-    )
+    S.do_pull(SUBJECT, name, force, local, base, revf)
 
 
 def do_push(name: str, force: bool, local: str, base: str, revf: str) -> None:
-    if not os.path.isfile(local):
-        die(f"no local copy at {local} — run `edit {name}` first to pull it.")
-    text = read_text(local)
-    prior = read_text(base) if os.path.exists(base) else None
-
-    if prior is None and not force:
-        die(
-            f"no pull record for {local} (missing {os.path.basename(base)}), so the revision\n"
-            "  it was taken at is unknown. Re-run with --force to write at the current one."
-        )
-    if prior is not None and text == prior:
-        print(f"no local changes in {local} — nothing to upload.", file=sys.stderr)
-        return
-
-    # A bible that no longer parses, or has lost a schema key, is worse than no
-    # write at all — every downstream reader breaks on it. Check before the write.
-    data = parse_profile(text, local)
-    check_profile(data, local, name)
-
-    record = _require(name)
-    recorded = read_text(revf).strip() if os.path.exists(revf) else ""
-    # The recorded rev is the point of the sidecar: sending it makes the API
-    # refuse a push built on a copy someone else has since written over. `--force`
-    # sends the record's own rev instead, which always succeeds.
-    rev = record["rev"] if (force or not recorded) else int(recorded)
-
-    if prior is not None:
-        sys.stderr.write(unified(prior, text, name))
-    after = save_profile(record, data, rev)
-    write_text(base, text)
-    write_text(revf, str(after["rev"]))
-    print(f"profile updated (rev {rev} → {after['rev']})", file=sys.stderr)
+    S.do_push(SUBJECT, name, force, local, base, revf)
 
 
-@click.command("edit")
-@click.argument("name", required=True)
-@click.option("--diff", is_flag=True, help="Show local-vs-stored differences and exit.")
-@click.option("--discard", is_flag=True, help="Throw away local edits and re-pull.")
-@click.option("--force", is_flag=True, help="Proceed despite unsaved edits or a changed record.")
-# **Relative, not `LOCAL_DIR`.** Interpolating the absolute path put the
-# author's home directory into the help string, and from there into
-# `cli_surface_reference.json` — a contract that then only matched on the
-# machine it was captured on, and failed in CI with a diff of two absolute
-# paths. Help text is documentation; it should read the same everywhere.
-@click.option("--path",
-              help="Working-copy path (default: studio/local/characters/<name>.yaml).")
-@click.option("--pull", is_flag=True, help="Force the download direction.")
-@click.option("--push", is_flag=True, help="Force the upload direction.")
-def cmd_edit(name, diff, discard, force, path, pull, push):
-    """Round-trip the bible through local/characters/<name>.yaml.
+_COMMANDS = COMMANDS
+cmd_list = _COMMANDS["list"]
+cmd_show = _COMMANDS["show"]
+cmd_create = _COMMANDS["create"]
+cmd_edit = _COMMANDS["edit"]
+cmd_set_profile = _COMMANDS["set-profile"]
+cmd_delete = _COMMANDS["delete"]
+cmd_rename = _COMMANDS["rename"]
+cmd_textblock = _COMMANDS["textblock"]
 
-    The document is assembled from the record, not downloaded — there is no
-    `profile.yaml` in the bucket any more — and pushed back as
-    `PATCH …/profile {profile, rev}`.
-    """
-    local, base, revf = local_paths(name, path)
-
-    if discard:
-        force = True
-        do_pull(name, force, local, base, revf)
-        return
-
-    if diff:
-        if not os.path.isfile(local):
-            die(f"no local copy at {local} — run `edit {name}` first to pull it.")
-        remote, _rev = fetch_profile(name)
-        # `text`, not `diff`. The flag was rebound to the diff itself, so the
-        # `if not diff` below asked about the text while reading as though it
-        # asked about the option. Harmless here — inside this branch the flag is
-        # already known true — but it is the `--keys` bug's exact shape, and
-        # `test_cli_shadowing` refuses it rather than judging each case.
-        text = unified(remote, read_text(local), name)
-        sys.stdout.write(text)
-        if not text:
-            print(f"{local} matches the stored bible.", file=sys.stderr)
-        return
-
-    # Direction: explicit flags win; otherwise pull when there is no working copy
-    # yet, push once there is one. That makes the flow "run, edit, run again".
-    if pull:
-        do_pull(name, force, local, base, revf)
-    elif push or os.path.isfile(local):
-        do_push(name, force, local, base, revf)
-    else:
-        do_pull(name, force, local, base, revf)
-
-
-def _require(name: str) -> dict:
-    """The record, or a message naming the command that lists the real options."""
-    try:
-        return resolve(name)
-    except api.NotFound:
-        die(f"no character {name!r} (see `studio character list`)")
+__all__ = [
+    "PROFILE_KEYS", "PROMOTED", "check_profile", "cmd_create", "cmd_delete", "cmd_edit",
+    "cmd_list", "cmd_rename", "cmd_set_profile", "cmd_show", "cmd_textblock",
+    "do_pull", "do_push", "document", "fetch_profile", "load_profile", "local_paths",
+    "parse_profile", "remote_rev", "save_profile", "split_document", "unified",
+]

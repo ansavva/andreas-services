@@ -1,0 +1,84 @@
+# Location profile — the SOURCE OF TRUTH for one location: a room, a set, a
+# street, a stage. Same shape for every location.
+#
+# Rules this schema enforces by its shape:
+#   * It describes WHERE the frame is — never how this record was assembled.
+#     No "built from N photos", no notes about the archive.
+#   * The space is style-agnostic. Rendering is a per-render choice (`rendering:`).
+#   * Prose goes in the value, not in headings. Lists are lists, so prompts and
+#     checks can iterate them.
+#
+# A location has no face and no wardrobe. What holds it on-model across renders
+# is its GEOGRAPHY — what is fixed, where the light comes from, what the camera
+# can stand — so that is what the sections are.
+
+name: <name>                    # what the location is called; free text
+
+# --- the card: short phrases, one line each -----------------------------------
+identity:
+  kind: <e.g. interior — a kitchen; exterior — a back alley; a stage set>
+  scale: <how big it reads — a cupboard, a room, a hall, a street>
+  era_and_place: <when and where it belongs — a 1970s London bedsit>
+  signature_features:           # 2-4 cues; the recognition core
+    - <cue>
+  register: <what it feels like in a few words — cramped, grand, clinical>
+
+# --- the space: what is FIXED and cannot move between renders ------------------
+space:
+  layout: <the plan — where the walls, doors and windows are relative to each other>
+  floor: <material, colour, condition>
+  walls: <material, colour, finish, what hangs on them>
+  ceiling: <height, material, anything hanging from it>
+  openings: <every door and window — where it is, what is seen through it>
+  fixed_furniture: <what is built in or too big to move — the counter, the bed, the bar>
+  materials: <the three or four surfaces that dominate>
+  condition: <new, worn, derelict — and how it shows>
+
+# --- the dressing: what is IN the space and could be moved -------------------
+dressing:
+  props:                        # ordered by how much each one carries recognition
+    - item: <the object>
+      placement: <where it sits, and against what>
+      detail: <colour, make, wear — what a render must get right>
+  signage_text: <any legible text in the space, verbatim — or none>
+  clutter: <how full the space is, honestly — bare, lived-in, hoarded>
+
+# --- the light: where it comes from, and its states ---------------------------
+lighting:
+  sources: <every practical and every window — where it is, what it throws>
+  states:                       # the looks this location is shot in
+    - name: <e.g. day, night, dusk, practicals only>
+      description: <what the light does in this state — direction, colour, contrast>
+  colour_temperature: <warm, cool, mixed — and which source is which>
+  mood: <the atmosphere the light makes>
+
+# --- the palette: what the frame is made of -----------------------------------
+palette:
+  dominant: <the two or three colours that fill the frame>
+  accents: <the colours that punctuate it>
+  textures: <what the surfaces feel like to the eye>
+
+rendering:
+  default_style: Realistic      # a preset name from studio-media-prompt `## Style presets`
+  optional_styles: []           # other presets this location may opt into
+  framing: <shot sizes that suit it>
+  lens: <the focal lengths it holds together at — a small room wants wide>
+  vantages:                     # named camera positions, so a shot can be called for by name
+    - name: <e.g. wide from the door, reverse to the window, over the counter>
+      description: <where the camera stands, what it sees, what is at frame edge>
+
+consistency:
+  must:                         # hard cues — verify every render against these
+    - <one cue every render must show — the checklist, one line each>
+  never:                        # what must be absent, or must not drift
+    - <one thing that must never appear, or must never change>
+  drift_modes:                  # how models get this location wrong
+    - failure: <what the model does>
+      fix: <what to state in the prompt instead>
+
+# ~50-70 words, written once. Pasted into engines with no reference system, or
+# alongside a start frame. Covers only what a text-only engine cannot infer.
+# Folded (`>-`), so it reaches a prompt as ONE paragraph with no hard newlines.
+text_identity_block: >-
+  <the ~50-70 word compression described above; `studio location textblock
+  <name>` prints the raw material to write it from>

@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { getNodeOwner } from "../../apis/studio";
 import { linkButtonClass } from "../common/linkButtonClass";
 import { useResource } from "../../hooks/useResource";
-import { characterPath, moviePath, projectPath, scenePath } from "../../utils/location";
+import { characterPath, locationPath, moviePath, projectPath, scenePath } from "../../utils/location";
 
 /**
  * What a file belongs to, for a link that arrived with no context.
@@ -56,6 +56,7 @@ export function OwnerLink({ nodeId }: { nodeId: string }) {
  */
 function pathFor(kind: string, id: string): string | null {
   if (kind === "character") return characterPath(id);
+  if (kind === "location") return locationPath(id);
   if (kind === "project") return projectPath(id);
   if (kind === "scene") return scenePath(id);
   if (kind === "movie") return moviePath(id);

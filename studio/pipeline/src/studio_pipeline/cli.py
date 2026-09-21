@@ -17,6 +17,7 @@ import click
 
 from studio_pipeline import profiles
 from studio_pipeline.domain import characters as _character
+from studio_pipeline.domain import locations as _location
 from studio_pipeline.domain import contact_sheet as _contact_sheet
 from studio_pipeline.domain import curate as _curate
 from studio_pipeline.domain import frames as _frames
@@ -56,7 +57,7 @@ class _Grouped(click.Group):
         ("session",     ["profile", "signup", "login", "logout", "whoami"]),
         ("generate",    ["run", "models", "add-model"]),
         ("records",     ["runs", "scenes", "movies", "frames", "projects"]),
-        ("characters",  ["character", "curate", "contact-sheet"]),
+        ("subjects",    ["character", "location", "curate", "contact-sheet"]),
         ("authoring",   ["prompt", "phrasebook", "templates"]),
         ("objects",     ["upload", "download", "describe", "presign", "posters", "faststart",
                          "convert", "crop", "config"]),
@@ -87,6 +88,7 @@ SHORT_HELP = {
     "runs": "query the run store: list, find, show, outputs, adopt",
     # Its docstring's first line wraps mid-sentence, which truncates badly.
     "character": "manage on-model characters: profile, references, pools",
+    "location": "manage the places a frame is shot in: profile, references, pools",
     # Its docstring's first line is the group's, which reads as a definition.
     "profile": "named environments: list, show, use, sync",
 }
@@ -156,6 +158,7 @@ for _name, _cmd in [
     ("frames", _frames.main),
     ("projects", _projects.main),
     ("character", _character.main),
+    ("location", _location.main),
     ("curate", _curate.main),
     ("contact-sheet", _contact_sheet.contact_sheet),
     ("prompt", _prompt.prompt),

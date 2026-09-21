@@ -106,7 +106,7 @@ export interface NodeRecord {
  * whichever entity is nearest; the union now says what is actually returned.
  */
 export interface NodeOwner {
-  kind: "character" | "project" | "run" | "scene" | "movie";
+  kind: "character" | "location" | "project" | "run" | "scene" | "movie";
   id: string;
   name: string | null;
   /**
@@ -430,7 +430,11 @@ export interface Poster {
   url: string | null;
 }
 
-/** One row of `GET /api/characters`. */
+/**
+ * One row of `GET /api/characters` — and of `GET /api/locations`, which answers
+ * with the same shape. A character and a location are the two SUBJECT kinds:
+ * the same rows, the same `default`-tagged selection, a different bible.
+ */
 export interface CharacterSummary {
   id: string;
   name: string;
@@ -521,6 +525,18 @@ export interface CharacterRecord {
   hero: string | null;
   profile: CharacterProfile;
 }
+
+/**
+ * A location — a room, a set, a street — is the same record as a character
+ * with a different bible: `space`, `dressing`, `lighting`, `palette` in place
+ * of `face`, `body`, `wardrobe`, `voice`. The API serves it under
+ * `/api/locations` with the character's shapes, so these are aliases rather
+ * than second declarations that would have to be kept in step.
+ */
+export type LocationSummary = CharacterSummary;
+export type LocationRecord = CharacterRecord;
+export type LocationIdentity = CharacterIdentity;
+export type LocationProfile = CharacterProfile;
 
 /**
  * One reference image's entry — the row that replaced filename magic.
@@ -653,6 +669,8 @@ export interface ProjectRecord {
   hero: string | null;
   counts: ProjectCounts;
   characters: Array<{ id: string; name: string }>;
+  /** Where it is shot — `PROJ#…/LOC#…` rows, expanded like `characters`. */
+  locations: Array<{ id: string; name: string }>;
 }
 
 /**
@@ -909,6 +927,12 @@ export interface RunRecord {
    */
   output_name?: string | null;
   characters: string[];
+  /**
+   * Where it was shot. The API always answers a list — a run from before
+   * locations existed gets `[]` — and it is optional here only so a fixture
+   * captured before the field existed still types as a run.
+   */
+  locations?: string[];
   folder: string;
   outputs: RunAsset[];
   /**
@@ -939,8 +963,9 @@ export interface RunSend extends RunAsset {
 }
 
 interface RunSendSource {
-  kind: "character" | "run" | "input-pool" | "project" | "object";
+  kind: "character" | "location" | "run" | "input-pool" | "project" | "object";
   character?: string;
+  location?: string;
   /** The reference group a character's image was filed under, e.g. `face`. */
   group?: string;
   order?: number;
@@ -1009,6 +1034,8 @@ export interface RunFeedRow extends RunSummary {
   error: string | null;
   plan: RunPlan | null;
   characters: string[];
+  /** Where it was shot. Always on the row; optional here for the fixtures' sake — see `RunRecord`. */
+  locations?: string[];
   /**
    * Who the run is about, NAMED. The record's own `characters`, else the
    * owners of what it bound. `name` is null for a character since deleted.
@@ -1049,6 +1076,7 @@ export interface CreateRunBody {
   /** The output filename. Lands on the record as `output_name`. */
   name?: string;
   characters?: string[];
+  locations?: string[];
   sends?: RunSendInput[];
   /** The older spelling: `{field: [nodeId, …]}`, read as sends with a null role. */
   bindings?: Record<string, string[]>;

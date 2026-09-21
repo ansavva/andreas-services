@@ -48,11 +48,13 @@ export interface AttachRef {
    */
   url?: string | null;
   name?: string;
-  kind: "run" | "character" | "input-pool" | "object";
+  kind: "run" | "character" | "location" | "input-pool" | "object";
   run?: string;
   /** 1-based, matching what a runref's `#2` means. */
   output?: number;
   character?: string;
+  /** The location whose tree the picture sits in — the run records it as shot there. */
+  location?: string;
   /**
    * Set while the thing this ref names is still being MADE — a clip's first
    * frame the worker has not handed back yet. The sentence is what the tile

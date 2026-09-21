@@ -76,7 +76,7 @@ def _listed(api, **params):
 # from each other, so the contract is asserted here rather than shared.
 RUN_FEED_REQUIRED = {
     "id", "project", "status", "kind", "model", "engine", "created", "updated",
-    "submitted", "completed", "cost", "error", "plan", "characters", "cast",
+    "submitted", "completed", "cost", "error", "plan", "characters", "locations", "cast",
     "sends", "outputs", "thumb",
 }
 

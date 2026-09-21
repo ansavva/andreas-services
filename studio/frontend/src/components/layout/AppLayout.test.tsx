@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 
 vi.mock("../../apis/studio", () => ({
   getCharacters: vi.fn().mockResolvedValue([]),
+  getLocations: vi.fn().mockResolvedValue([]),
   getProjects: vi.fn().mockResolvedValue([]),
   // The account menu reads this. See `AccountMenu.test.tsx`.
   getAccount: vi.fn().mockResolvedValue({ name: null, avatar_url: null, updated_at: null }),

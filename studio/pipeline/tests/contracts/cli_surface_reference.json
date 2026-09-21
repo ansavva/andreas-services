@@ -455,7 +455,7 @@
             "flags": [
               "--unreferenced"
             ],
-            "help": "Only files no REF# row names — what is sitting in a folder without being identity.",
+            "help": "Only files not tagged `default` — what is sitting in a folder without being identity.",
             "hidden": false,
             "multiple": false,
             "nargs": 0,
@@ -1829,6 +1829,661 @@
             "type": "str"
           }
         }
+      }
+    },
+    "options": {}
+  },
+  "location": {
+    "arguments": {},
+    "commands": {
+      "add-to": {
+        "arguments": {
+          "files": {
+            "choices": null,
+            "default": null,
+            "dest": "files",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": "+",
+            "required": true,
+            "type": "str"
+          },
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "pool": {
+            "choices": null,
+            "default": null,
+            "dest": "pool",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {}
+      },
+      "create": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "from_profile": {
+            "choices": null,
+            "default": null,
+            "dest": "from_profile",
+            "flag": false,
+            "flags": [
+              "--from-profile"
+            ],
+            "help": "Local profile.yaml to seed with (default: blank template).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "delete": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "files": {
+            "choices": [
+              "delete",
+              "keep"
+            ],
+            "default": "keep",
+            "dest": "files",
+            "flag": false,
+            "flags": [
+              "--files"
+            ],
+            "help": "What to do with the location's folder (default: keep it).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "force": {
+            "choices": null,
+            "default": false,
+            "dest": "force",
+            "flag": true,
+            "flags": [
+              "--force"
+            ],
+            "help": "Delete even while projects or runs still name it.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
+      "edit": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "diff": {
+            "choices": null,
+            "default": false,
+            "dest": "diff",
+            "flag": true,
+            "flags": [
+              "--diff"
+            ],
+            "help": "Show local-vs-stored differences and exit.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "discard": {
+            "choices": null,
+            "default": false,
+            "dest": "discard",
+            "flag": true,
+            "flags": [
+              "--discard"
+            ],
+            "help": "Throw away local edits and re-pull.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "force": {
+            "choices": null,
+            "default": false,
+            "dest": "force",
+            "flag": true,
+            "flags": [
+              "--force"
+            ],
+            "help": "Proceed despite unsaved edits or a changed record.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "path": {
+            "choices": null,
+            "default": null,
+            "dest": "path",
+            "flag": false,
+            "flags": [
+              "--path"
+            ],
+            "help": "Working-copy path (default: studio/local/locations/<name>.yaml).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "pull": {
+            "choices": null,
+            "default": false,
+            "dest": "pull",
+            "flag": true,
+            "flags": [
+              "--pull"
+            ],
+            "help": "Force the download direction.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "push": {
+            "choices": null,
+            "default": false,
+            "dest": "push",
+            "flag": true,
+            "flags": [
+              "--push"
+            ],
+            "help": "Force the upload direction.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
+      "images": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json_",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "tag": {
+            "choices": null,
+            "default": null,
+            "dest": "tags",
+            "flag": false,
+            "flags": [
+              "--tag"
+            ],
+            "help": "Comma-separated; an image must carry ALL of them.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "list": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json_",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
+      "pool": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "pool": {
+            "choices": null,
+            "default": null,
+            "dest": "pool",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "group": {
+            "choices": null,
+            "default": null,
+            "dest": "group",
+            "flag": false,
+            "flags": [
+              "--group"
+            ],
+            "help": "A subfolder of the pool (e.g. seed/current, reference/face).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json_",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "presign": {
+            "choices": null,
+            "default": false,
+            "dest": "presign",
+            "flag": true,
+            "flags": [
+              "--presign"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "unreferenced": {
+            "choices": null,
+            "default": false,
+            "dest": "unreferenced",
+            "flag": true,
+            "flags": [
+              "--unreferenced"
+            ],
+            "help": "Only files not tagged `default` — what is sitting in a folder without being identity.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
+      "rename": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "new": {
+            "choices": null,
+            "default": null,
+            "dest": "new",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {}
+      },
+      "selection": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "Download the selection to this dir instead of printing it.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json_",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "limit": {
+            "choices": null,
+            "default": null,
+            "dest": "limit",
+            "flag": false,
+            "flags": [
+              "--limit"
+            ],
+            "help": "The model's cap. Over it is REFUSED, never truncated.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "pick": {
+            "choices": null,
+            "default": null,
+            "dest": "pick",
+            "flag": false,
+            "flags": [
+              "--pick"
+            ],
+            "help": "Comma-separated node ids or filenames.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "presign": {
+            "choices": null,
+            "default": false,
+            "dest": "presign",
+            "flag": true,
+            "flags": [
+              "--presign"
+            ],
+            "help": "Print ordered presigned HTTPS URLs.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "slots": {
+            "choices": null,
+            "default": null,
+            "dest": "slots",
+            "flag": false,
+            "flags": [
+              "--slots"
+            ],
+            "help": "Comma-separated 1-based positions WITHIN the resolved selection.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "tag": {
+            "choices": null,
+            "default": null,
+            "dest": "tags",
+            "flag": false,
+            "flags": [
+              "--tag"
+            ],
+            "help": "Comma-separated tags; an image must carry ALL of them.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "set-profile": {
+        "arguments": {
+          "file": {
+            "choices": null,
+            "default": null,
+            "dest": "file",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {}
+      },
+      "show": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json_",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "profile": {
+            "choices": null,
+            "default": false,
+            "dest": "profile_",
+            "flag": true,
+            "flags": [
+              "--profile"
+            ],
+            "help": "Print the bible as YAML.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
+      "textblock": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {}
       }
     },
     "options": {}
@@ -3440,6 +4095,36 @@
         "required": false,
         "type": "str"
       },
+      "location": {
+        "choices": null,
+        "default": null,
+        "dest": "location",
+        "flag": false,
+        "flags": [
+          "--location"
+        ],
+        "help": "A location supplying the setting: its `default` images join the reference list after the characters'. Repeatable.",
+        "hidden": false,
+        "multiple": true,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "location_tag": {
+        "choices": null,
+        "default": null,
+        "dest": "location_tag",
+        "flag": false,
+        "flags": [
+          "--location-tag"
+        ],
+        "help": "Comma-separated tags narrowing every --location's images (e.g. wide).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
       "lora_high_key": {
         "choices": null,
         "default": null,
@@ -3978,11 +4663,11 @@
             "flags": [
               "--character"
             ],
-            "help": "",
+            "help": "Every run that used this character.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
-            "required": true,
+            "required": false,
             "type": "str"
           },
           "json": {
@@ -3999,6 +4684,21 @@
             "nargs": 0,
             "required": false,
             "type": "bool"
+          },
+          "location": {
+            "choices": null,
+            "default": null,
+            "dest": "location",
+            "flag": false,
+            "flags": [
+              "--location"
+            ],
+            "help": "Every run shot in this location.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
           },
           "project": {
             "choices": null,
@@ -4063,6 +4763,21 @@
             "nargs": 0,
             "required": false,
             "type": "bool"
+          },
+          "location": {
+            "choices": null,
+            "default": null,
+            "dest": "location",
+            "flag": false,
+            "flags": [
+              "--location"
+            ],
+            "help": "Only runs shot in this location.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
           },
           "model": {
             "choices": null,

@@ -60,19 +60,22 @@ WIRE_SURFACE = {
     "/api/nodes/<id>/upload-url",
     "/api/nodes/<id>/confirm-upload",
     "/api/nodes/<id>/text",
-    # characters
-    "/api/characters",
-    "/api/characters/<id>",
-    "/api/characters/<id>/profile",
-    "/api/characters/<id>/selection",
-    "/api/characters/<id>/textblock",
-    # NOT `/api/characters/<id>/runs` or `/api/characters/<id>/projects`.
+    # subjects — `<segment>` is `characters` or `locations`. One set of
+    # wrappers takes the segment as an argument, so the two kinds are one
+    # route shape here as they are one blueprint builder in the backend.
+    "/api/<segment>",
+    "/api/<segment>/<id>",
+    "/api/<segment>/<id>/profile",
+    "/api/<segment>/<id>/selection",
+    "/api/<segment>/<id>/textblock",
+    # NOT `/api/<segment>/<id>/runs` or `/api/<segment>/<id>/projects`.
     # `GET /api/runs?character=` answers the first, and nothing at a terminal
     # asks the second; both wrappers outlived their last caller.
     # projects
     "/api/projects",
     "/api/projects/<id>",
     "/api/projects/<id>/characters",
+    "/api/projects/<id>/locations",
     "/api/projects/<id>/inputs",
     # NOT `/api/projects/<id>/runs`. The spec lists it, and the pipeline does
     # not call it: `GET /api/runs?project=` answers the same question with the
@@ -163,7 +166,8 @@ def _routes_in(path: pathlib.Path) -> set[str]:
     catch a route that exists and is never exercised, which a runtime probe by
     definition cannot see. F-string parts are joined and each substitution
     becomes `<id>`, so `f"/api/runs/{run_id}/outputs"` reads as
-    `/api/runs/<id>/outputs`.
+    `/api/runs/<id>/outputs` — except a substitution named `segment`, which
+    is a subject kind's plural and reads as `<segment>`.
     """
     found: set[str] = set()
     tree = ast.parse(path.read_text())
@@ -181,9 +185,16 @@ def _routes_in(path: pathlib.Path) -> set[str]:
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
             return None if id(node) in inside_fstrings else node.value
         if isinstance(node, ast.JoinedStr):
-            return "".join(str(part.value) if isinstance(part, ast.Constant) else "<id>"
+            return "".join(str(part.value) if isinstance(part, ast.Constant)
+                           else placeholder(part)
                            for part in node.values)
         return None
+
+    def placeholder(part) -> str:
+        inner = getattr(part, "value", None)
+        if isinstance(inner, ast.Name) and inner.id == "segment":
+            return "<segment>"
+        return "<id>"
 
     for node in ast.walk(tree):
         text = literal(node)

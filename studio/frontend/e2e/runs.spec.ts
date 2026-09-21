@@ -394,7 +394,7 @@ test("copying an output puts the COPY in the chosen folder, and tags that", asyn
 
   await expect(submit).toHaveCount(0);
   await lightbox(page).getByRole("button", { name: "More actions for this run" }).first().click();
-  await page.getByRole("menuitem", { name: "Copy into a character…" }).click();
+  await page.getByRole("menuitem", { name: "Copy into a character or location…" }).click();
   await expect(page.getByRole("heading", { name: /^Copy into / })).toBeVisible();
 
   // The run names one character, so it is preselected — two would be a choice
@@ -402,7 +402,7 @@ test("copying an output puts the COPY in the chosen folder, and tags that", asyn
   // to the drawer: the feed's filter under it has a Character select too.
   const drawer = page.getByRole("dialog").filter({ has: submit });
   await expect(
-    drawer.getByRole("combobox", { name: "Character", exact: true }),
+    drawer.getByRole("combobox", { name: "Character or location", exact: true }),
   ).toContainText("jason");
 
   // **The folder is chosen, not conventional.** There is no group and no pool
@@ -459,7 +459,7 @@ test("only an image output offers to be copied into a character", async ({ page 
   stubOnly("the run fixtures are what put an image and a clip side by side");
   // The line is on the rail's `⋯`, so the menu is opened to look, and closed
   // again with Escape.
-  const promote = () => page.getByRole("menuitem", { name: "Copy into a character…" });
+  const promote = () => page.getByRole("menuitem", { name: "Copy into a character or location…" });
   const open = () =>
     lightbox(page).getByRole("button", { name: "More actions for this run" }).first().click();
 

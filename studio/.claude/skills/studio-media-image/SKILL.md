@@ -96,6 +96,14 @@ where the run lands — every run belongs to a project, which is why
 `--project` is required and never inferred. It is repeatable: one piece of work
 can involve several characters.
 
+`--location <place>` does the same for **where the frame is**: the location's
+`default` views join the reference list after every character's, narrowed by
+`--location-tag wide` (or `reverse`, `detail` — the vantages its images are
+tagged with), and the run records `locations` so `studio runs find --location
+<place>` can answer later. A set that has been built and housed as a location
+([`studio-media-location`](../studio-media-location/SKILL.md)) is bound this
+way rather than described again in the prompt.
+
 Add `--slots 1,2,4` to use part of the resolved selection. `--extra '{"…"}'`
 passes model-specific inputs. `--dry-run` prints the exact payload and submits
 nothing.

@@ -87,8 +87,9 @@ studio/
 │   ├── pyproject.toml
 │   ├── studio_core/          # routes → services → clients
 │   │   ├── routes/           # one blueprint per resource: nodes, libraries, browse,
-│   │   │                     #   characters, projects, runs, scenes, movies, renders,
-│   │   │                     #   images, models, templates, tags, phrasebook, prompt
+│   │   │                     #   characters + locations (both built by subjects.py),
+│   │   │                     #   projects, runs, scenes, movies, renders, images,
+│   │   │                     #   models, templates, tags, phrasebook, prompt
 │   │   ├── services/         # catalog.py owns the item shapes; browse.py, manage.py,
 │   │   │                     #   identity.py (JWT), keys.py (classification + naming),
 │   │   │                     #   generate.py + callbacks.py (the paid call and its webhook),
@@ -236,7 +237,7 @@ There is **no second copy of this bucket anywhere.** Versioning and
 the parents and the shape; the bucket carries bytes under whatever key a row
 happens to point at. Read the diagram as the folder tree a person sees.
 
-**A `blob_key` is `<characters|projects|libraries>/<entity id>/<node id>.<ext>`**,
+**A `blob_key` is `<characters|locations|projects|libraries>/<entity id>/<node id>.<ext>`**,
 stamped once when the node is created from the owner its parent already
 resolves to; `catalog.blob_key_for` is the single definition. It carries an id
 and never a name, so a bucket listing does not spell out any character in the
@@ -1013,8 +1014,18 @@ page and a plain textarea over its literal bytes, and never offers fields.
   stores, and `studio projects inputs <project>` prints those positions. The
   viewer still plays a feed: opening any tile from the library's Media view
   scrolls the recursive walk (`/o/<id>?in=recursive`). Home lists no media —
-  it is characters and projects, and the Recent grid it used to carry walked
-  the whole library for twelve tiles.
+  it is characters, locations and projects, and the Recent grid it used to
+  carry walked the whole library for twelve tiles.
+- **A location page is the character page with a room's bible.** `/l/<id>`
+  renders `ProfileForm` with `LOCATION_SCHEMA` — the section hints, the
+  grouping and the noun in every sentence come from `profileSchemas.ts`, one
+  schema per subject kind — over the location wrappers in `apis/studio.ts`.
+  The attach picker offers a `Locations` chip beside `Characters`, a picture
+  picked out of a subject's tree is attached AS that subject's, and the create
+  bar sends `locations` beside `characters` (`roles.locationsOf`), so a run
+  records where it was shot without anyone typing it. `PromotePanel` copies a
+  rendered view into a location the way it copies a face into a character —
+  hard rule #2b, one prefix over.
 - **Destructive confirmation for ONE file is in the button, not in a dialog.**
   `ConfirmDeleteButton` arms on the first press, names what it will destroy,
   and disarms on a timeout, on blur, or on Escape — a dialog in a fixed
@@ -1262,11 +1273,13 @@ fan-out write this trade avoids.
 | `PATCH /api/characters/<id>/profile` | `{profile, rev}` — the bible, validated **by section only**: what is inside `face` is a person's to add to and take from, and `ProfileForm` lets them (an × per field, "Add field" under every group, "Remove section" and "Add a section" for the schema's list) |
 | `GET /api/characters/<id>/selection` | `?pick=&tag=&limit=` → the ordered nodes a model would be shown. **Refuses** an over-cap selection with the index in the body |
 | `GET /api/characters/<id>/textblock` · `/runs` · `/projects` | The identity paragraph; the runs that used it; the projects that involve it |
-| `GET \| POST /api/projects` | List, or create |
+| `… /api/locations …` | **Every character route, one segment over.** A location — a room, a set, a street — is the same record with a bible of `space`, `dressing`, `lighting`, `palette`, `rendering` (named camera `vantages`) and `consistency`; `routes/subjects.py` builds both blueprints from one function, so the shapes above hold verbatim. `profile-template` answers `location_template.json`; `textblock` hands back what is fixed rather than what to shoot it on |
+| `GET \| POST /api/projects` | List, or create — `characters` and `locations` both accepted, both expanded to `{id, name}` on read |
 | `GET \| PATCH \| DELETE /api/projects/<id>` | One project, `rev`-guarded like a character |
 | `PATCH /api/projects/<id>/characters` | `{characters: [...]}` → replaces the involvement links |
+| `PATCH /api/projects/<id>/locations` | `{locations: [...]}` → replaces where it is shot, the same way |
 | `GET /api/projects/<id>/inputs` · `/runs` · `/scenes` · `/movies` | The working pool, and the three tiers |
-| `GET \| POST /api/runs` | Query by `project`, `character`, `scene`, `status`, `model`, `kind`, `since`, `fingerprint`, `q`; or create a draft. **Refuses a URL-shaped binding.** `?view=feed` expands each row for the feed — see below |
+| `GET \| POST /api/runs` | Query by `project`, `character`, `location`, `scene`, `status`, `model`, `kind`, `since`, `fingerprint`, `q`; or create a draft (`characters` and `locations` are each a field plus a set of edges). **Refuses a URL-shaped binding.** `?view=feed` expands each row for the feed — see below |
 | `GET /api/runs/resolve` | A run by `ref` |
 | `GET \| PATCH \| DELETE /api/runs/<id>` | The envelope, with outputs and bindings expanded |
 | `GET /api/runs/<id>/payload` | The payload a submit would send, assembled from the plan |
@@ -1478,7 +1491,7 @@ covered: the route table (`routes.test.tsx`), the id↔URL mapping
 (`apis/upload.test.ts`), the run surface (`components/run/*.test.tsx`,
 `components/project/RunFeed.test.tsx`, `components/run/RunLightbox.test.tsx`), the player (`components/media/*.test.tsx`),
 and the entity pages
-(`pages/{Character,Project,Scene,Movie,Object,Templates}Page.test.tsx`).
+(`pages/{Character,Location,Project,Scene,Movie,Object,Templates}Page.test.tsx`).
 
 Two things follow for anyone adding to this. The route table lives in
 `routes.tsx` rather than `App.tsx` so it can be exercised without the auth

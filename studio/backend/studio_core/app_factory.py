@@ -19,6 +19,7 @@ from studio_core.errors import (
 from studio_core.routes.account import bp as account_bp
 from studio_core.routes.browse import bp as browse_bp
 from studio_core.routes.characters import bp as characters_bp
+from studio_core.routes.locations import bp as locations_bp
 from studio_core.routes.defaults import bp as defaults_bp
 from studio_core.routes.favorites import bp as favorites_bp
 from studio_core.routes.images import bp as images_bp
@@ -260,12 +261,14 @@ def create_app() -> Flask:
     # by name path; the entity model retired the second addressing scheme and the
     # file with it.
     app.register_blueprint(nodes_bp)
-    # The five entity kinds and the phrasebook, one blueprint each. Split by
+    # The six entity kinds and the phrasebook, one blueprint each. Split by
     # entity rather than by verb because that is how they are read: everything
     # about a character is in one file, and a route that has to know about two
     # entities (a run naming its project) imports the other module's resolver
-    # rather than growing a second copy of it.
+    # rather than growing a second copy of it. A character and a location are
+    # both built by `routes/subjects.py` — same rows, different bible.
     app.register_blueprint(characters_bp)
+    app.register_blueprint(locations_bp)
     app.register_blueprint(projects_bp)
     app.register_blueprint(runs_bp)
     app.register_blueprint(scenes_bp)

@@ -582,6 +582,55 @@ it("a node dropped anywhere on the sheet attaches as a reference", async () => {
   expect(within(reference).getByTitle(/^Image refs · face-01\.png/)).toBeTruthy();
 });
 
+it("a picture out of a location's tree records where the run is shot, after who is in it", async () => {
+  // A room's wide dropped beside a face: the draft names the character AND
+  // the location, each as its own edge, so "every run in this room" is one
+  // query — and the project's own location follows the attached one, the
+  // same order `castOf` gives the cast.
+  vi.mocked(getProject).mockResolvedValue({
+    id: PROJECT,
+    name: "A project",
+    characters: [],
+    locations: [{ id: "loc-project", name: "the porch" }],
+  } as never);
+  await open();
+  const sheet = document.querySelector("[data-create-bar]")!;
+  const carrying = (payload: AttachRef) => ({
+    dataTransfer: {
+      types: ["application/x-studio-node"],
+      getData: () => JSON.stringify(payload),
+      dropEffect: "none",
+    },
+  });
+  const drop = (payload: AttachRef) => {
+    fireEvent.dragOver(sheet, carrying(payload));
+    fireEvent.drop(sheet, carrying(payload));
+  };
+  // The prompt first: `fill` seeds the bar the way a feed row does, and a
+  // seed replaces whatever was attached.
+  fill("At the counter.");
+  await waitFor(() => expect(editor().textContent).toContain("At the counter."));
+  drop(FACE);
+  drop({
+    node: "node-wide",
+    url: "https://example.invalid/wide.png",
+    name: "wide-from-door.png",
+    kind: "location",
+    location: "loc-kitchen",
+  });
+  await waitFor(() =>
+    expect(within(strip()).getByTitle(/^Image refs · wide-from-door\.png/)).toBeTruthy(),
+  );
+
+  fireEvent.keyDown(editor(), { key: "Enter", metaKey: true });
+  await waitFor(() => expect(createRun).toHaveBeenCalled());
+
+  expect(vi.mocked(createRun).mock.calls[0]![0]).toMatchObject({
+    characters: ["char-1"],
+    locations: ["loc-kitchen", "loc-project"],
+  });
+});
+
 it("off a project page, the bar asks which project and lands there after sending", async () => {
   await open("/");
   fill("A portrait.");

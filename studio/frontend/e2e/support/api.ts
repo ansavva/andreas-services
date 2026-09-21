@@ -642,6 +642,10 @@ export async function stubApi(page: Page): Promise<void> {
     // next to the listings it is a sibling of.
     if (path.endsWith("/api/templates")) return json(route, templates);
     if (path.endsWith("/api/characters")) return json(route, characters);
+    // No fixture yet: the seed stack holds no location, and home, the header
+    // search and the attach picker all list them. An empty list is what the
+    // real API answers for that stack, so it is not a stand-in.
+    if (path.endsWith("/api/locations")) return json(route, []);
     // Before the character itself, which would otherwise swallow it — the old
     // dispatch answered a reference library with a character record.
     if (path.includes("/api/characters/")) return json(route, character);

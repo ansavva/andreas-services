@@ -516,10 +516,15 @@ _DOC_PATH = re.compile(
 _SOURCE_SUFFIX = (".py", ".ts", ".tsx", ".sh", ".tf", ".yml", ".yaml")
 _API_PATH = re.compile(r"`(?:(?:GET|POST|PUT|PATCH|DELETE) )?(/api/[A-Za-z0-9_\-/<>:.]*)")
 _ROUTE_DECORATOR = re.compile(
-    r'@\w+\.(?:route|get|post|put|patch|delete)\(\s*"([^"]+)"'
+    r'@\w+\.(?:route|get|post|put|patch|delete)\(\s*f?"([^"]+)"'
 )
 _URL_PREFIX = re.compile(r'url_prefix\s*=\s*"([^"]*)"')
 _PLACEHOLDER_SEGMENT = re.compile(r"<[^>]+>")
+#: An f-string substitution in a route decorator. `routes/subjects.py` builds
+#: one blueprint per subject kind from `f"{prefix}/<addressed>"`, where
+#: `prefix` is `/characters` or `/locations`; both are registered.
+_FSTRING_SUBSTITUTION = re.compile(r"\{[^}]+\}")
+_SUBJECT_PREFIXES = ("/characters", "/locations")
 
 
 @functools.lru_cache(maxsize=1)
@@ -560,7 +565,12 @@ def _routes() -> frozenset[str]:
         prefix = _URL_PREFIX.search(text)
         pre = prefix.group(1) if prefix else ""
         for m in _ROUTE_DECORATOR.finditer(text):
-            found.add(_PLACEHOLDER_SEGMENT.sub("<x>", pre + m.group(1)).rstrip("/"))
+            rule = m.group(1)
+            spelled = ([rule.replace("{prefix}", each) for each in _SUBJECT_PREFIXES]
+                       if "{prefix}" in rule else [rule])
+            for each in spelled:
+                each = _FSTRING_SUBSTITUTION.sub("<x>", each)
+                found.add(_PLACEHOLDER_SEGMENT.sub("<x>", pre + each).rstrip("/"))
     return frozenset(found)
 
 

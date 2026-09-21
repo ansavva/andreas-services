@@ -10,7 +10,13 @@ import {
   ToggleGroup,
 } from "@ansavva/design-system";
 
-import { getAsset, getCharacters, getFolder, getProjects } from "../../apis/studio";
+import {
+  getAsset,
+  getCharacters,
+  getFolder,
+  getLocations,
+  getProjects,
+} from "../../apis/studio";
 import { holdsOne, type AttachRef, type AttachRole } from "../../context/CreateBarContext";
 import { useUploads } from "../../hooks/useUploads";
 import {
@@ -42,9 +48,9 @@ const VIEW_FOLDERS = "folders";
 const VIEW_MEDIA = "media";
 type View = typeof VIEW_FOLDERS | typeof VIEW_MEDIA;
 
-type EntityKind = "character" | "project";
+type EntityKind = "character" | "location" | "project";
 
-/** A character or a project, as much of it as the picker needs to open it. */
+/** A character, a location or a project, as much of it as the picker needs to open it. */
 export interface PickerEntity {
   kind: EntityKind;
   id: string;
@@ -64,6 +70,7 @@ export interface PickerEntity {
  */
 type Place =
   | { kind: "characters" }
+  | { kind: "locations" }
   | { kind: "projects" }
   | { kind: "entity"; entity: PickerEntity; folder: string };
 
@@ -268,10 +275,20 @@ function PickerBody({
   // stays open — the count in the title is the confirmation.
   const attach = useCallback(
     (file: Pick<FileEntry, "id" | "url" | "name">) => {
-      onAttach({ node: file.id, url: file.url, name: file.name, kind: "object" });
+      // A picture picked out of a character's or a location's own tree is
+      // attached AS that subject's, so the draft records who it is of and
+      // where it is shot (`castOf`, `locationsOf`) without a second lookup.
+      // A project's picture is an object: the project is already the run's.
+      const provenance =
+        entity?.kind === "character"
+          ? { kind: "character" as const, character: entity.id }
+          : entity?.kind === "location"
+            ? { kind: "location" as const, location: entity.id }
+            : { kind: "object" as const };
+      onAttach({ node: file.id, url: file.url, name: file.name, ...provenance });
       if (holdsOne(role)) onClose();
     },
-    [onAttach, onClose, role],
+    [entity, onAttach, onClose, role],
   );
 
   /**
@@ -353,6 +370,13 @@ function PickerBody({
         </Chip>
         <Chip
           size="sm"
+          pressed={place.kind === "locations"}
+          onClick={() => setPlace({ kind: "locations" })}
+        >
+          Locations
+        </Chip>
+        <Chip
+          size="sm"
           pressed={place.kind === "projects"}
           onClick={() => setPlace({ kind: "projects" })}
         >
@@ -411,6 +435,7 @@ function PickerBody({
         {place.kind === "characters" && (
           <EntityList kind="character" onOpen={open} />
         )}
+        {place.kind === "locations" && <EntityList kind="location" onOpen={open} />}
         {place.kind === "projects" && <EntityList kind="project" onOpen={open} />}
         {entity &&
           (error ? (
@@ -499,7 +524,7 @@ function PickerBody({
 const ROW_GLYPH = "size-5 shrink-0 fill-none stroke-muted stroke-[1.5]";
 
 /**
- * Every character, or every project, by name — the picker's top level.
+ * Every character, every location, or every project, by name — the picker's top level.
  *
  * Fetched when the list is shown rather than when the picker opens: the
  * picker opens inside the project it was raised from, and most picks never
@@ -522,7 +547,8 @@ function EntityList({
     let cancelled = false;
     setRows(null);
     setError(null);
-    const list = kind === "character" ? getCharacters() : getProjects();
+    const list =
+      kind === "character" ? getCharacters() : kind === "location" ? getLocations() : getProjects();
     list
       .then((listed) => {
         if (cancelled) return;
@@ -544,7 +570,7 @@ function EntityList({
     };
   }, [kind, attempt]);
 
-  const noun = kind === "character" ? "characters" : "projects";
+  const noun = `${kind}s`;
   if (error)
     return <LoadError what={noun} message={error} onRetry={() => setAttempt((n) => n + 1)} />;
   if (rows === null) return <SectionLoading label={`Loading ${noun}`} />;

@@ -20,6 +20,7 @@ from studio_pipeline.domain.characters.base import (
     LOCAL_DIR,
     NAME_RE,
     POOLS,
+    SUBJECT,
     TEMPLATE,
     die,
     pool_folder,
@@ -56,7 +57,7 @@ from studio_pipeline.domain.characters.refs import (
 
 __all__ = [
     "DEFAULT_TAG", "IMG_EXTS", "LOCAL_DIR", "NAME_RE", "POOLS", "PROFILE_KEYS",
-    "REFERENCE_POOL", "TEMPLATE", "check_profile", "die", "do_pull",
+    "REFERENCE_POOL", "SUBJECT", "TEMPLATE", "check_profile", "die", "do_pull",
     "do_push", "document", "fetch_profile", "load_profile", "local_paths", "main",
     "parse_profile", "pool_folder", "pool_names", "pool_nodes", "pool_tree_nodes",
     "read_text", "remote_rev", "require_pool", "resolve", "save_profile", "selection_nodes", "split_document",

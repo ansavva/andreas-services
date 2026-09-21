@@ -123,6 +123,29 @@ export function castOf(
   return cast;
 }
 
+/**
+ * Where the run is shot, in the order the pictures were attached.
+ *
+ * The same rule as `castOf`, one prefix over: the locations whose images are
+ * attached first, then the project's own, no duplicates. A run records where
+ * it was shot as `RUN#…/LOC#…` edges, so "every run in this room" is one query.
+ */
+export function locationsOf(
+  attachments: readonly Attachment[],
+  projectLocations: ReadonlyArray<{ id: string }>,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const add = (id: string | undefined) => {
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    out.push(id);
+  };
+  for (const { ref } of attachments) add(ref.location);
+  for (const each of projectLocations) add(each.id);
+  return out;
+}
+
 /** The first registry entry of a kind, in the order the registry lists them. */
 export function defaultEntry(
   models: Record<string, ModelEntry> | null | undefined,

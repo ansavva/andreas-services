@@ -174,7 +174,9 @@ def test_a_refusal_is_not_a_missing_character(library, monkeypatch):
     def refused(_name):
         raise api.Forbidden("not a member of this library", 403)
 
-    monkeypatch.setattr(PROFILE, "resolve", refused)
+    # `resolve` is the generic subject's; the character module binds it.
+    from studio_pipeline.domain import subjects as S
+    monkeypatch.setattr(S, "resolve", lambda _subject, name: refused(name))
     with pytest.raises(api.Forbidden):
         PROFILE.remote_rev("subject-a")
 
@@ -344,10 +346,10 @@ def test_a_pool_is_any_folder_name(library, tmp_image):
 
 def test_add_to_still_refuses_the_reference_pool(library, tmp_image):
     """Hard rule #2b: a file in `reference/` is not identity, a tag is. The
-    refusal survives the choice list's removal, and points at `add-refs`."""
+    refusal survives the choice list's removal, and names the tag."""
     result = _run("add-to", "subject-a", "reference", str(tmp_image))
     assert result.exit_code == 1
-    assert "add-refs" in result.output
+    assert "--tag default" in result.output
     record = CHARACTER.resolve("subject-a")
     assert "plate.png" not in {n["name"] for n in CHARACTER.pool_nodes(record, "reference")}
 

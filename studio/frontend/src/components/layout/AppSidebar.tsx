@@ -9,6 +9,7 @@ import { useInFlightRuns } from "../../hooks/useInFlightRuns";
 import { useResource } from "../../hooks/useResource";
 import {
   CHARACTERS_PATH,
+  LOCATIONS_PATH,
   FAVORITES_PATH,
   HOME_PATH,
   PROJECTS_PATH,
@@ -23,6 +24,7 @@ import {
   FolderIcon,
   HeartIcon,
   HomeIcon,
+  PinIcon,
   ProjectsIcon,
   SidebarIcon,
   TemplateIcon,
@@ -39,7 +41,7 @@ import { AccountMenu } from "./AccountMenu";
  * Files lit while you browse; an open file is a file, so `/o` is Files as well.
  * Home is exact, because every path starts with `/`.
  *
- * Exported for the phone's bottom tab bar, which draws the same five.
+ * Exported for the phone's bottom tab bar, which draws the same seven.
  */
 export const DESTINATIONS: ReadonlyArray<{
   to: string;
@@ -52,6 +54,7 @@ export const DESTINATIONS: ReadonlyArray<{
   // opens at `/o/<id>`, which is Files, because that is where a file lives.
   { to: FAVORITES_PATH, label: "Favorites", icon: <HeartIcon />, under: [] },
   { to: CHARACTERS_PATH, label: "Characters", icon: <AccountIcon />, under: ["/c/"] },
+  { to: LOCATIONS_PATH, label: "Locations", icon: <PinIcon />, under: ["/l/"] },
   { to: PROJECTS_PATH, label: "Projects", icon: <ProjectsIcon />, under: ["/p/", "/s/", "/m/"] },
   { to: folderPath(null), label: "Files", icon: <FolderIcon />, under: ["/f/", "/o/", "/o"] },
   { to: TEMPLATES_PATH, label: "Templates", icon: <TemplateIcon />, under: [] },

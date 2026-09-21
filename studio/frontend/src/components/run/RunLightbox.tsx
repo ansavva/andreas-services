@@ -18,7 +18,7 @@ import {
   Text,
 } from "@ansavva/design-system";
 
-import { getRun } from "../../apis/studio";
+import { getLocations, getRun } from "../../apis/studio";
 import { useKeyboardNav } from "../../hooks/useKeyboardNav";
 import { useNow } from "../../hooks/useNow";
 import { useResource } from "../../hooks/useResource";
@@ -60,6 +60,7 @@ import { MediaThumb } from "../media/MediaThumb";
 import { ViewerFrame } from "../viewer/ViewerFrame";
 import { RunActionRow } from "./RunActionRow";
 import { SendThumbs } from "./SendThumbs";
+import { LocationTag } from "../character/CharacterChip";
 import { CastTags, RunPrompt, StatusBadge, useFeedFilters, useRunFeed } from "../project/RunFeed";
 import { elapsedSince, inFlight, relativeTime } from "./feedTime";
 import { scalarParams } from "./ParamChips";
@@ -723,6 +724,7 @@ function Opened({
         <PromoteDrawer
           asset={promoting}
           runCharacters={row.characters}
+          runLocations={row.locations ?? []}
           onClose={() => onPromote(null)}
         />
       )}
@@ -809,7 +811,7 @@ function RailActions({
           ? [
               {
                 key: "promote",
-                label: "Copy into a character…",
+                label: "Copy into a character or location…",
                 icon: <PromoteIcon className={GLYPH} />,
                 onSelect: onPromote,
               },
@@ -870,6 +872,16 @@ function RunProperties({
           ] as [string, ReactNode],
         ]
       : []),
+    ...((row.locations ?? []).length > 0
+      ? [
+          [
+            (row.locations ?? []).length === 1 ? "Location" : "Locations",
+            <span key="locations" className="flex flex-wrap gap-1.5">
+              <LocationTags ids={row.locations ?? []} />
+            </span>,
+          ] as [string, ReactNode],
+        ]
+      : []),
     ["Model", mono(row.model)],
     ...scalarParams(row.plan?.params).map(([key, value]) => [key, mono(value)] as [string, ReactNode]),
     ...(price ? [["Cost", mono(price)] as [string, ReactNode]] : []),
@@ -892,6 +904,24 @@ function RunProperties({
         </Fragment>
       ))}
     </dl>
+  );
+}
+
+/**
+ * Where the run was shot, named. The row holds ids; the listing every other
+ * screen already reads (`["locations"]`, cached) supplies the names and the
+ * card images, so a run shot somewhere the project does not list still reads
+ * as a place rather than an id.
+ */
+function LocationTags({ ids }: { ids: string[] }) {
+  const listed = useResource(["locations"], useCallback(() => getLocations(), []));
+  const byId = new Map((listed.data ?? []).map((each) => [each.id, each]));
+  return (
+    <>
+      {ids.map((id) => (
+        <LocationTag key={id} id={id} name={byId.get(id)?.name ?? "deleted location"} hero={byId.get(id)?.hero ?? null} />
+      ))}
+    </>
   );
 }
 

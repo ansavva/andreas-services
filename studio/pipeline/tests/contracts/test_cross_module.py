@@ -152,9 +152,8 @@ def test_editing_a_bible_writes_it_back_onto_the_record(library, tmp_path, monke
 
     from studio_pipeline import cli
 
-    monkeypatch.setattr(CHARACTER, "LOCAL_DIR", str(tmp_path))
-    monkeypatch.setattr("studio_pipeline.domain.characters.profile.LOCAL_DIR",
-                        str(tmp_path))
+    # The working-copy directory is on the SUBJECT now, one per kind.
+    monkeypatch.setattr(CHARACTER.SUBJECT, "local_dir", str(tmp_path))
 
     pulled = CliRunner().invoke(cli.main, ["character", "edit", "subject-a"])
     assert pulled.exit_code == 0, f"{pulled.output}\n{pulled.exception!r}"
@@ -183,8 +182,7 @@ def test_pushing_a_stale_bible_is_refused(library, tmp_path, monkeypatch):
 
     from studio_pipeline import cli
 
-    monkeypatch.setattr("studio_pipeline.domain.characters.profile.LOCAL_DIR",
-                        str(tmp_path))
+    monkeypatch.setattr(CHARACTER.SUBJECT, "local_dir", str(tmp_path))
 
     pulled = CliRunner().invoke(cli.main, ["character", "edit", "subject-a"])
     assert pulled.exit_code == 0, pulled.output

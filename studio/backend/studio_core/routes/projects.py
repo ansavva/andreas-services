@@ -100,13 +100,12 @@ def create_project():
     held = support.memberships()
     support.member_of(g.library, held)
 
-    characters = body.get("characters") or []
-    if not isinstance(characters, list):
-        raise ValidationError("characters must be a list")
-    for char_id in characters:
-        # Read to prove it exists and is in this library. A link to a character
-        # that is not there would answer "which projects involve it" forever.
-        support.entity_at(catalog.ENTITY_CHARACTER, g.library, char_id, held)
+    # Read to prove each exists and is in this library. A link to a character
+    # that is not there would answer "which projects involve it" forever.
+    characters = _subject_ids(body.get("characters") or [], "characters",
+                              catalog.ENTITY_CHARACTER, held)
+    locations = _subject_ids(body.get("locations") or [], "locations",
+                             catalog.ENTITY_LOCATION, held)
 
     root = catalog.library(g.library)["root_node"]
     record = catalog.create_project(
@@ -115,28 +114,46 @@ def create_project():
         name=keys.clean_label(body.get("name")),
         description=body.get("description"),
         characters=characters,
+        locations=locations,
         layout=layout.PROJECT_LAYOUT,
     )
-    return jsonify({**record, "characters": _characters(record)}), 201, {
+    return jsonify(_involved(record)), 201, {
         "Location": f"/api/projects/{record['id']}"
     }
 
 
 @bp.get("/projects/<addressed>")
 def get_project(addressed: str):
-    """The record, with the characters it involves resolved to names."""
+    """The record, with the characters and locations it involves resolved to names."""
     held = support.memberships()
     record = project_at(addressed, held)
-    return jsonify({**record, "characters": _characters(record)}), 200
+    return jsonify(_involved(record)), 200
+
+
+def _subject_ids(ids, field: str, kind: str, held: dict) -> list:
+    """A list of subject ids, each proved to exist in this library."""
+    if not isinstance(ids, list):
+        raise ValidationError(f"{field} must be a list")
+    for each in ids:
+        support.entity_at(kind, g.library, each, held)
+    return ids
+
+
+def _involved(record: dict) -> dict:
+    """The record with both involvement lists expanded to `{id, name}`."""
+    return {**record,
+            "characters": _linked(record, catalog.ENTITY_CHARACTER),
+            "locations": _linked(record, catalog.ENTITY_LOCATION)}
+
+
+def _linked(record: dict, kind: str) -> list[dict]:
+    ids = catalog.links(record["id"], kind)
+    found = catalog.entities_by_id(kind, ids)
+    return [{"id": each["id"], "name": each.get("name")} for each in found.values()]
 
 
 def _characters(record: dict) -> list[dict]:
-    ids = catalog.links(record["id"], catalog.ENTITY_CHARACTER)
-    found = catalog.entities_by_id(catalog.ENTITY_CHARACTER, ids)
-    return [
-        {"id": character["id"], "name": character.get("name")}
-        for character in found.values()
-    ]
+    return _linked(record, catalog.ENTITY_CHARACTER)
 
 
 @bp.patch("/projects/<addressed>")
@@ -249,14 +266,26 @@ def set_characters(addressed: str):
     held = support.memberships()
     record = project_at(addressed, held)
 
-    characters = body.get("characters")
-    if not isinstance(characters, list):
-        raise ValidationError("characters must be a list")
-    for char_id in characters:
-        support.entity_at(catalog.ENTITY_CHARACTER, g.library, char_id, held)
+    characters = _subject_ids(body.get("characters"), "characters",
+                              catalog.ENTITY_CHARACTER, held)
 
     catalog.set_project_characters(record["id"], record["lib"], characters)
     return jsonify({"id": record["id"], "characters": _characters(record)}), 200
+
+
+@bp.patch("/projects/<addressed>/locations")
+def set_locations(addressed: str):
+    """Replace which locations a project is shot in. Same route as `characters`, one prefix over."""
+    body = support.body()
+    held = support.memberships()
+    record = project_at(addressed, held)
+
+    locations = _subject_ids(body.get("locations"), "locations",
+                             catalog.ENTITY_LOCATION, held)
+
+    catalog.set_project_locations(record["id"], record["lib"], locations)
+    return jsonify({"id": record["id"],
+                    "locations": _linked(record, catalog.ENTITY_LOCATION)}), 200
 
 
 @bp.get("/projects/<addressed>/inputs")

@@ -2,11 +2,12 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 
-// The three lists are their own components with their own tests; what home
+// The four lists are their own components with their own tests; what home
 // decides is which of them it stacks, in which order, and that nothing else is
 // fetched.
 vi.mock("../components/entity/EntitySections", () => ({
   CharactersSection: () => <section aria-label="Characters" />,
+  LocationsSection: () => <section aria-label="Locations" />,
   ProjectsSection: () => <section aria-label="Projects" />,
 }));
 vi.mock("../components/favorites/FavoritesSection", () => ({
@@ -25,7 +26,7 @@ import { HomePage } from "./HomePage";
 
 afterEach(cleanup);
 
-it("leads with favorites, then characters and projects, and walks no media", () => {
+it("leads with favorites, then characters, locations and projects, and walks no media", () => {
   render(
     <TestProviders>
       <MemoryRouter>
@@ -41,7 +42,7 @@ it("leads with favorites, then characters and projects, and walks no media", () 
     .map((region) => region.getAttribute("aria-label"))
     // The toast viewport is a region too, and it is the providers', not home's.
     .filter((label) => label !== "Notifications");
-  expect(sections).toEqual(["Favorites", "Characters", "Projects"]);
+  expect(sections).toEqual(["Favorites", "Characters", "Locations", "Projects"]);
 
   // Home shows the first rows and links to the rest — not the whole grid.
   expect(

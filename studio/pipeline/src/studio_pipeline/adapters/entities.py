@@ -1,4 +1,4 @@
-"""The entity routes: characters, projects, runs, scenes, movies, phrasebook.
+"""The entity routes: characters, locations, projects, runs, scenes, movies, phrasebook.
 
 **This module is the only place in the pipeline that knows an entity route's
 spelling.** Not a style preference — a coordination requirement. The API half of
@@ -71,36 +71,42 @@ def _clean(**fields) -> dict:
     return {name: value for name, value in fields.items() if value is not None}
 
 
-# ── characters ──────────────────────────────────────────────────────────────
+# ── subjects: characters and locations ───────────────────────────────────────
+#
+# A character and a location are the same routes under two segments —
+# `/api/characters` and `/api/locations` — so every call below takes the
+# SEGMENT first. The character-named wrappers that follow are the spelling the
+# rest of the pipeline was written against; they bind the segment and nothing
+# else.
 
-def list_characters(query: str | None = None) -> list[dict]:
-    """Every character in the library: id, name, hero, counts."""
-    found = api.get("/api/characters", q=query)
+def list_subjects(segment: str, query: str | None = None) -> list[dict]:
+    """Every subject of one kind in the library: id, name, hero, counts."""
+    found = api.get(f"/api/{segment}", q=query)
     return found if isinstance(found, list) else []
 
 
-def create_character(name: str, profile: dict | None = None) -> dict:
-    """Create a character: the record, its library index row and its root.
+def create_subject(segment: str, name: str, profile: dict | None = None) -> dict:
+    """Create a character or a location: the record, its index row and its root.
 
     **No pool folders come back made.** `reference/`, `corpus/`, `seed/` and
-    `archive/` used to be part of the create; nothing ever required them to
-    exist, so they are gone from it and left for the first write that needs
-    one — `base.pool_folder` resolves-or-creates by name. **There is no
-    conflict to raise**: a name is a label, so two characters may share one.
+    `archive/` used to be part of a character's create; nothing ever required
+    them to exist, so they are gone from it and left for the first write that
+    needs one — `base.pool_folder` resolves-or-creates by name. **There is no
+    conflict to raise**: a name is a label, so two subjects may share one.
     """
     body = {"name": name}
     if profile is not None:
         body["profile"] = profile
-    return api.post("/api/characters", body)
+    return api.post(f"/api/{segment}", body)
 
 
-def get_character(char_id: str) -> dict:
-    """One character's full record, `profile` included."""
-    return api.get(f"/api/characters/{char_id}")
+def get_subject(segment: str, entity_id: str) -> dict:
+    """One subject's full record, `profile` included."""
+    return api.get(f"/api/{segment}/{entity_id}")
 
 
-def patch_character(char_id: str, rev: int, *, name: str | None = None,
-                    hero: str | None = None) -> dict:
+def patch_subject(segment: str, entity_id: str, rev: int, *, name: str | None = None,
+                  hero: str | None = None) -> dict:
     """Change the record. **This is what a rename is** — one conditional write.
 
     `rev` is compare-and-swap, not check-then-write: a stale value is refused by
@@ -109,52 +115,51 @@ def patch_character(char_id: str, rev: int, *, name: str | None = None,
     """
     body = _clean(name=name, hero=hero)
     body["rev"] = rev
-    return api.patch(f"/api/characters/{char_id}", body)
+    return api.patch(f"/api/{segment}/{entity_id}", body)
 
 
-def put_profile(char_id: str, profile: dict, rev: int) -> dict:
+def put_subject_profile(segment: str, entity_id: str, profile: dict, rev: int) -> dict:
     """Replace the whole bible. The `edit` round trip's write half.
 
     **`PATCH`, despite replacing.** Replace and merge share one address and are
     told apart by which key the body carries — `{profile}` against `{patch}` —
     so one verb serves both. This sent `PUT`, which the route does not register,
-    and `edit --push` has therefore never reached the API.
+    and `edit --push` had therefore never reached the API.
     """
-    return api.request("PATCH", f"/api/characters/{char_id}/profile",
+    return api.request("PATCH", f"/api/{segment}/{entity_id}/profile",
                        {"profile": profile, "rev": rev})
 
 
-def delete_character(char_id: str, *, files: str = "keep", force: bool = False) -> dict:
-    """Delete a character. `files='keep'` orphans the folder rather than the media.
+def delete_subject(segment: str, entity_id: str, *, files: str = "keep",
+                   force: bool = False) -> dict:
+    """Delete a subject. `files='keep'` orphans the folder rather than the media.
 
     The default is the safe one on purpose: the reverse default loses media to a
     typo, and a folder left in the library root is visible and recoverable.
     """
-    return api.delete(f"/api/characters/{char_id}", files=files,
+    return api.delete(f"/api/{segment}/{entity_id}", files=files,
                       force=1 if force else None)
 
 
-# ── identity, which is tags on the files ────────────────────────────────────
-
-def character_images(char_id: str, tags: list[str] | None = None) -> list[dict]:
-    """Every image under a character, with what each one says about itself.
+def subject_images(segment: str, entity_id: str, tags: list[str] | None = None) -> list[dict]:
+    """Every image under a subject, with what each one says about itself.
 
     **There is no reference index.** An index would list only the pictures
     somebody had filed a row for, so an image dropped into the tree by hand
-    would be invisible. This is the character's whole branch, filtered to
+    would be invisible. This is the subject's whole branch, filtered to
     images, and the tags on each say which are identity.
 
     One listing call: `?under=<root>&depth=all&kind=image`, which is the same
     route the file browser and the picker use.
     """
-    record = get_character(char_id)
+    record = get_subject(segment, entity_id)
     found = api.get("/api/nodes", under=record["root"], depth="all", kind="image",
                     sort="name", tag=",".join(tags) if tags else None)
     return found.get("entries") or []
 
 
-def selection(char_id: str, *, pick: list[str] | None = None,
-              tag: list[str] | None = None, limit: int | None = None) -> dict:
+def subject_selection(segment: str, entity_id: str, *, pick: list[str] | None = None,
+                      tag: list[str] | None = None, limit: int | None = None) -> dict:
     """**The ordered nodes a model would actually be shown.**
 
     The one route both halves of studio must agree on, which is why it is a
@@ -164,15 +169,68 @@ def selection(char_id: str, *, pick: list[str] | None = None,
     Over-cap is refused with the index in the body rather than truncated. That
     refusal arrives as `api.Conflict`.
     """
-    return api.get(f"/api/characters/{char_id}/selection",
+    return api.get(f"/api/{segment}/{entity_id}/selection",
                    pick=",".join(pick) if pick else None,
                    tag=",".join(tag) if tag else None,
                    limit=limit)
 
 
-def textblock(char_id: str) -> dict:
+def subject_textblock(segment: str, entity_id: str) -> dict:
     """The pasteable identity paragraph, for engines driven from a start frame."""
-    return api.get(f"/api/characters/{char_id}/textblock")
+    return api.get(f"/api/{segment}/{entity_id}/textblock")
+
+
+# ── characters, as the rest of the pipeline spells them ─────────────────────
+
+CHARACTERS = "characters"
+LOCATIONS = "locations"
+
+
+def list_characters(query: str | None = None) -> list[dict]:
+    """Every character in the library: id, name, hero, counts."""
+    return list_subjects(CHARACTERS, query)
+
+
+def create_character(name: str, profile: dict | None = None) -> dict:
+    """Create a character — see `create_subject`."""
+    return create_subject(CHARACTERS, name, profile)
+
+
+def get_character(char_id: str) -> dict:
+    """One character's full record, `profile` included."""
+    return get_subject(CHARACTERS, char_id)
+
+
+def patch_character(char_id: str, rev: int, *, name: str | None = None,
+                    hero: str | None = None) -> dict:
+    """Rename or re-hero a character — see `patch_subject`."""
+    return patch_subject(CHARACTERS, char_id, rev, name=name, hero=hero)
+
+
+def put_profile(char_id: str, profile: dict, rev: int) -> dict:
+    """Replace a character's whole bible — see `put_subject_profile`."""
+    return put_subject_profile(CHARACTERS, char_id, profile, rev)
+
+
+def delete_character(char_id: str, *, files: str = "keep", force: bool = False) -> dict:
+    """Delete a character — see `delete_subject`."""
+    return delete_subject(CHARACTERS, char_id, files=files, force=force)
+
+
+def character_images(char_id: str, tags: list[str] | None = None) -> list[dict]:
+    """Every image under a character — see `subject_images`."""
+    return subject_images(CHARACTERS, char_id, tags)
+
+
+def selection(char_id: str, *, pick: list[str] | None = None,
+              tag: list[str] | None = None, limit: int | None = None) -> dict:
+    """A character's resolved selection — see `subject_selection`."""
+    return subject_selection(CHARACTERS, char_id, pick=pick, tag=tag, limit=limit)
+
+
+def textblock(char_id: str) -> dict:
+    """A character's identity paragraph — see `subject_textblock`."""
+    return subject_textblock(CHARACTERS, char_id)
 
 
 # ── projects ────────────────────────────────────────────────────────────────
@@ -182,11 +240,14 @@ def list_projects() -> list[dict]:
 
 
 def create_project(name: str, *, description: str = "",
-                   characters: list[str] | None = None) -> dict:
+                   characters: list[str] | None = None,
+                   locations: list[str] | None = None) -> dict:
     """Create a project, its root and its five starting subfolders."""
     body = {"name": name, "description": description}
     if characters:
         body["characters"] = list(characters)
+    if locations:
+        body["locations"] = list(locations)
     return api.post("/api/projects", body)
 
 
@@ -226,6 +287,12 @@ def put_project_characters(proj_id: str, characters: list[str]) -> dict:
                        {"characters": list(characters)})
 
 
+def put_project_locations(proj_id: str, locations: list[str]) -> dict:
+    """Replace where a project is shot. The same replace as `put_project_characters`."""
+    return api.request("PATCH", f"/api/projects/{proj_id}/locations",
+                       {"locations": list(locations)})
+
+
 def project_inputs(proj_id: str) -> list[dict]:
     """The working pool, in the order that defines `--input N`.
 
@@ -250,6 +317,7 @@ def project_inputs(proj_id: str) -> list[dict]:
 def create_run(*, project: str, kind: str, engine: str, model: str,
                input: dict, bindings: dict | None = None,
                characters: list[str] | None = None,
+               locations: list[str] | None = None,
                prompt: dict | None = None, plan: dict | None = None,
                sends: list[dict] | None = None, name: str | None = None,
                scene: str | None = None) -> dict:
@@ -286,8 +354,8 @@ def create_run(*, project: str, kind: str, engine: str, model: str,
     """
     body = {"project": project, "kind": kind, "engine": engine, "model": model,
             "input": input, "bindings": bindings or {}}
-    body.update(_clean(characters=characters, prompt=prompt, plan=plan, sends=sends,
-                       name=name, scene=scene))
+    body.update(_clean(characters=characters, locations=locations, prompt=prompt,
+                       plan=plan, sends=sends, name=name, scene=scene))
     return api.post("/api/runs", body)
 
 
@@ -305,7 +373,8 @@ def query_runs(*, project: str | None = None, character: str | None = None,
                model: str | None = None, status: str | None = None,
                since: str | None = None, limit: int | None = None,
                cursor: str | None = None, fingerprint: str | None = None,
-               include: str | None = None, scene: str | None = None) -> dict:
+               include: str | None = None, scene: str | None = None,
+               location: str | None = None) -> dict:
     """`{"runs": [...], "cursor": …}` — one query against a row.
 
     `fingerprint` is the duplicate-submission guard: it asks whether this exact
@@ -319,7 +388,8 @@ def query_runs(*, project: str | None = None, character: str | None = None,
     """
     return api.get("/api/runs", project=project, character=character, model=model,
                    status=status, since=since, limit=limit, cursor=cursor,
-                   fingerprint=fingerprint, include=include, scene=scene)
+                   fingerprint=fingerprint, include=include, scene=scene,
+                   location=location)
 
 
 def resolve_run(ref: str, project: str | None = None,

@@ -42,6 +42,7 @@ export const HOME_PATH = "/";
  * sections home does, unabridged.
  */
 export const CHARACTERS_PATH = "/characters";
+export const LOCATIONS_PATH = "/locations";
 export const PROJECTS_PATH = "/projects";
 /**
  * The favorites screen — every image and video this person picked out.
@@ -180,6 +181,11 @@ export function objectPath(id: string, from?: ViewerSource | null): string {
 
 export function characterPath(id: string): string {
   return `/c/${id}`;
+}
+
+/** `/l/<id>` — a location, the way `/c/` is a character. */
+export function locationPath(id: string): string {
+  return `/l/${id}`;
 }
 
 export function projectPath(id: string): string {

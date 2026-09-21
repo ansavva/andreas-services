@@ -72,7 +72,7 @@ import {
 } from "./CreateChips";
 import { AttachPicker } from "./AttachPicker";
 import { SettingsPanel } from "./CreateSettings";
-import { anyPending, castOf, defaultEntry, findEntry, sendsOf } from "./roles";
+import { anyPending, castOf, defaultEntry, findEntry, locationsOf, sendsOf } from "./roles";
 import { seedPlan } from "./seedPlan";
 import { runPath, projectPath } from "../../utils/location";
 
@@ -248,6 +248,14 @@ export function CreateBar() {
     () => castOf(attachments, projectCast),
     [attachments, projectCast],
   );
+  const projectLocations = useMemo(
+    () => project.data?.locations ?? [],
+    [project.data],
+  );
+  const shotIn = useMemo(
+    () => locationsOf(attachments, projectLocations),
+    [attachments, projectLocations],
+  );
 
   const tokens = useMemo<PromptToken[]>(() => {
     const blocks = Object.entries(templates.data?.blocks ?? {}).sort(
@@ -373,6 +381,7 @@ export function CreateBar() {
             model: entry.model,
             engine: entry.skill,
             ...(cast.length ? { characters: cast } : {}),
+            ...(shotIn.length ? { locations: shotIn } : {}),
             plan: { version: 1, origin: "authored", prompt, params },
             sends: sendsOf(attachments, entry),
           });
@@ -437,6 +446,7 @@ export function CreateBar() {
       project.data?.name,
       prompt,
       queryClient,
+      shotIn,
       target,
       toast,
     ],

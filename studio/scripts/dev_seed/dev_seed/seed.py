@@ -168,9 +168,9 @@ def read_library(ddb, library: str | None = None) -> dict:
     nothing on top of reading the tree:
 
         nodes      node_id -> `NODE#<id>` / `META`
-        records    `CHAR#<id>` or `PROJ#<id>` -> its `META`, tagged with `kind`
+        records    `CHAR#<id>`, `LOC#<id>` or `PROJ#<id>` -> its `META`, tagged with `kind`
         refs       `CHAR#<id>` -> its `REF#<node>` rows, each carrying `node`
-        involves   `PROJ#<id>` -> the `CHAR#<id>` sort keys it is linked to
+        involves   `PROJ#<id>` -> the `CHAR#<id>` and `LOC#<id>` sort keys it is linked to
 
     **The entity rows used not to be read at all**, and the fixture `build`
     wrote was `{"version": 1, nodes}` with no `entities` key while
@@ -190,12 +190,11 @@ def read_library(ddb, library: str | None = None) -> dict:
             libraries[pk.removeprefix("LIB#")] = item
         elif sk == "META" and pk.startswith("NODE#") and item.get("node_id"):
             metas[item["node_id"]] = item
-        elif sk == "META" and pk.startswith(("CHAR#", "PROJ#")):
-            kind = "character" if pk.startswith("CHAR#") else "project"
-            records[pk] = dict(item, kind=kind)
+        elif sk == "META" and pk.startswith(tuple(KIND_OF_PREFIX)):
+            records[pk] = dict(item, kind=KIND_OF_PREFIX[pk.split("#", 1)[0] + "#"])
         elif pk.startswith("CHAR#") and sk.startswith("REF#"):
             refs[pk].append(dict(item, node=sk.removeprefix("REF#")))
-        elif pk.startswith("PROJ#") and sk.startswith("CHAR#"):
+        elif pk.startswith("PROJ#") and sk.startswith(("CHAR#", "LOC#")):
             involves[pk].append(sk)
         elif pk.startswith("LIB#") and sk.startswith(SETTINGS_PREFIXES):
             settings[pk.removeprefix("LIB#")].append(item)
@@ -328,6 +327,13 @@ SHARED_ROOTS = frozenset({"config", "phrasebook"})
 #: which refuses to read a bucket or table whose name contains `prod` before
 #: anything else happens — so a fixture is dev-origin by construction and this
 #: list only decides WHICH dev subjects are publishable.
+#: The three entity kinds a fixture carries and the partition prefix each is
+#: filed under. A character and a location are SUBJECTS — a bible and a tree —
+#: and a project involves any number of each.
+KIND_PREFIX = {"character": "CHAR#", "location": "LOC#", "project": "PROJ#"}
+KIND_OF_PREFIX = {prefix: kind for kind, prefix in KIND_PREFIX.items()}
+SUBJECT_KINDS = ("character", "location")
+
 DEV_SUBJECTS = frozenset({
     "jason",                                  # the seed fixture's subject
     "subject-a", "subject-b",                 # what the test fixtures use
@@ -564,23 +570,27 @@ def entities(library: dict, paths: dict[str, str],
         # writes it.
         entity = {"kind": row["kind"], "name": row.get("name") or "", "root": root}
 
-        if row["kind"] == "character":
+        if row["kind"] in SUBJECT_KINDS:
             entity.update(
                 hero=path_of(row.get("hero")),
                 profile=row.get("profile") or {},
             )
         else:
+            # By ROOT PATH, because a name is a label two characters may share
+            # and a fixture carries no ids. One list per subject kind, read off
+            # the edge's prefix.
+            def involved(prefix: str) -> list[str]:
+                return sorted(
+                    path_of(library["records"][sk].get("root"))
+                    for sk in library["involves"].get(pk, [])
+                    if sk.startswith(prefix) and sk in library["records"]
+                    and path_of(library["records"][sk].get("root")))
             entity.update(
                 description=row.get("description") or "",
                 hero=path_of(row.get("hero")),
                 counts=row.get("counts") or {},
-                # By ROOT PATH, because a name is a label two characters may
-                # share and a fixture carries no ids.
-                characters=sorted(
-                    path_of(library["records"][sk].get("root"))
-                    for sk in library["involves"].get(pk, [])
-                    if sk in library["records"]
-                    and path_of(library["records"][sk].get("root"))),
+                characters=involved("CHAR#"),
+                locations=involved("LOC#") or None,
             )
         out.append({k: v for k, v in entity.items() if v is not None})
     return out
@@ -856,12 +866,13 @@ def problems(catalog: dict, manifest: dict) -> list[str]:
     # Keyed on the ROOT, not the name: a name is a label and two characters may
     # share one, so a fixture that named an involvement by it could not say
     # which. A root is a path, and a path is unique.
-    character_roots = {entity.get("root") for entity in entities
-                       if entity.get("kind") == "character"}
+    roots_of = {kind: {entity.get("root") for entity in entities
+                       if entity.get("kind") == kind} for kind in SUBJECT_KINDS}
     for entity in entities:
         name, root = entity.get("name"), entity.get("root")
-        if entity.get("kind") not in ("character", "project"):
-            found.append(f"entity {json.dumps(name)}: kind must be `character` or `project`")
+        if entity.get("kind") not in KIND_PREFIX:
+            found.append(f"entity {json.dumps(name)}: kind must be `character`, "
+                         "`location` or `project`")
         if not name or "#" in name:
             found.append(f"entity root {json.dumps(root)}: name is required and "
                          "may not contain '#'")
@@ -875,10 +886,11 @@ def problems(catalog: dict, manifest: dict) -> list[str]:
             found.append(f"entity {json.dumps(name)}: its root must be a folder at "
                          f"the library root, not {json.dumps(root)}")
         if entity.get("kind") == "project":
-            for involved in entity.get("characters") or []:
-                if involved not in character_roots:
-                    found.append(f"{name}: involves {json.dumps(involved)}, which is "
-                                 "not a character in this fixture")
+            for kind, field in (("character", "characters"), ("location", "locations")):
+                for involved in entity.get(field) or []:
+                    if involved not in roots_of[kind]:
+                        found.append(f"{name}: involves {json.dumps(involved)}, which is "
+                                     f"not a {kind} in this fixture")
 
     # **The version-2 halves are still checked, on the RAW document.** They are
     # folded away by `_modernise` and so are invisible above — but a fixture
@@ -989,12 +1001,12 @@ def rows(catalog: dict, manifest: dict, bucket: str, lib: str,
         kind, name = entity["kind"], entity["name"]
         root_node = node_id(bucket, entity["root"])
         eid = CM.entity_id(kind, root_node)
-        prefix = "CHAR" if kind == "character" else "PROJ"
+        prefix = KIND_PREFIX[kind]
         stamp = min(node["created_at"] for node in catalog["nodes"])
-        record = {"pk": f"{prefix}#{eid}", "sk": "META", "id": eid, "lib": lib,
+        record = {"pk": f"{prefix}{eid}", "sk": "META", "id": eid, "lib": lib,
                   "name": name, "rev": 1,
                   "created": stamp, "updated": stamp, "root": root_node}
-        if kind == "character":
+        if kind in SUBJECT_KINDS:
             # **No `REF#` rows and no `default_set`.** Both said which of a
             # character's pictures a generation is shown, in a second place, with
             # an invariant between them that drifted. `_modernise` folded them
@@ -1007,10 +1019,23 @@ def rows(catalog: dict, manifest: dict, bucket: str, lib: str,
                 description=entity.get("description") or "",
                 hero=node_id(bucket, entity["hero"]) if entity.get("hero") else None,
                 counts=entity.get("counts") or {})
+            # **The involvement edges, `PROJ#<id>` / `<KIND>#<id>`.** A
+            # fixture names them by root path; the id is derived from the root
+            # node exactly as the subject's own record's is, so the edge lands
+            # on the row the subject is loaded under. Written here rather than
+            # left to a later `projects link`, because "which projects involve
+            # this character" is answered off these rows and nothing else.
+            for kind_involved, field in (("character", "characters"),
+                                         ("location", "locations")):
+                for involved_root in entity.get(field) or []:
+                    involved = CM.entity_id(kind_involved, node_id(bucket, involved_root))
+                    items.append({"pk": f"{prefix}{eid}",
+                                  "sk": f"{KIND_PREFIX[kind_involved]}{involved}",
+                                  "lib": lib, "created": stamp})
         items.append({k: v for k, v in record.items() if v is not None})
         # **The library index row, keyed on the ID.** A name is a label, so this
         # is a pure list index; the listing queries `begins_with(sk, "CHAR#")`.
-        items.append({"pk": f"LIB#{lib}", "sk": f"{prefix}#{eid}",
+        items.append({"pk": f"LIB#{lib}", "sk": f"{prefix}{eid}",
                       "entity": eid, "created": stamp})
 
     # The library-scoped rows, re-keyed onto the destination library and

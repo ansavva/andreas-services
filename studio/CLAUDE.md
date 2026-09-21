@@ -7,8 +7,10 @@ identity. Everything else in this file is an index.
 **The data model is [docs/ENTITY_MODEL.md](docs/ENTITY_MODEL.md)**, worked
 through one character and one project in
 [docs/ENTITY_MODEL_EXAMPLE.md](docs/ENTITY_MODEL_EXAMPLE.md). Characters,
-projects, runs, scenes and movies are rows with UUIDs; the folder tree hangs off
-them; S3 keys and entity root folders carry ids, never names. Read it before
+locations, projects, runs, scenes and movies are rows with UUIDs; the folder
+tree hangs off them; S3 keys and entity root folders carry ids, never names. A
+character and a location are the two **subjects** — same rows, different bible
+— and a run binds both (`--character`, `--location`). Read it before
 assuming a name is an address or that a document defines anything.
 
 **A run has an authored half — [docs/RUN_PLAN.md](docs/RUN_PLAN.md).** It is a
@@ -234,13 +236,13 @@ same library.
 
 ## Which skill
 
-**Load one before doing anything else in `studio/`.** Thirty-nine skills in **two
-families** — thirty-eight `studio-media-*` and one `studio-code-*`; route by what
+**Load one before doing anything else in `studio/`.** Forty skills in **two
+families** — thirty-nine `studio-media-*` and one `studio-code-*`; route by what
 the task *changes*, not by what it mentions.
 
 | If the task changes… | Load | Examples |
 |---|---|---|
-| **media, or a catalog record** — an image, a clip, a character, a project, a run | a **`studio-media-*`** skill | "make a shot of…", "add a reference", "what characters do we have", "cut these scenes together" |
+| **media, or a catalog record** — an image, a clip, a character, a location, a project, a run | a **`studio-media-*`** skill | "make a shot of…", "add a reference", "what characters do we have", "build a set", "cut these scenes together" |
 | **studio's own code** — anything under `pipeline/`, `backend/`, `frontend/`, `infra/` | **`studio-code-pipeline`** | "add a subcommand", "fix this import", "why does this test fail", "move this module" |
 
 The families differ in what they may say: a `studio-media-*` skill describes
@@ -267,6 +269,7 @@ The app half (`backend/`, `frontend/`) has no skill of its own; read
 | Continue past a model's duration ceiling | `studio-media-scene` |
 | Cut finished scenes into one piece | `studio-media-movie` |
 | Work with a recurring character | `studio-media-character` |
+| House a set — a room, a street, a stage — and shoot in it | `studio-media-location` |
 | Train a character LoRA for video | `studio-media-lora-train` (Wan 2.2) · `studio-media-ltx-2-3-lora-train` (LTX-2.3) · `studio-media-hunyuan-video-lora-train` (HunyuanVideo; nothing serves its LoRA yet) |
 | Write a tight, repeatable video prompt | `studio-media-prompt` |
 | Invoke a model generically, or inspect its schema | `studio-media-core` |

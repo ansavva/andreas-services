@@ -1,6 +1,6 @@
-"""Resolve a character's or a project's images to NODE IDS.
+"""Resolve a character's, a location's or a project's images to NODE IDS.
 
-Lifted from the two identical copies in the image and video submitters. Three
+Lifted from the two identical copies in the image and video submitters. Four
 pools are addressed here, and the distinction between them is the point:
 
   a character's reference index   generated identity imagery — body positions,
@@ -10,6 +10,9 @@ pools are addressed here, and the distinction between them is the point:
               location, so this asks the record and not the tree.
   a character's corpus/seed/archive pools   material about the character, not
               identity. Named explicitly, never pulled in automatically.
+  a location's reference index   the views of a place a generation is shown —
+              the same tag-resolved selection a character has, one segment
+              over, narrowed by vantage (`wide`, `reverse`, `detail`).
   a project's input pool          uploads and frames to drive a specific
               generation from. Picked from by POSITION.
 
@@ -51,6 +54,7 @@ import io
 
 from studio_pipeline.adapters import api
 from studio_pipeline.domain import characters as CHARACTER
+from studio_pipeline.domain import locations as LOCATION
 from studio_pipeline.domain import projects as PROJECTS
 
 
@@ -167,6 +171,44 @@ def character_ref_nodes(character: str, slots: list[int] | None = None,
     """The reference images this generation should send, as node ids, in slot order."""
     return [entry["node"] for entry in
             character_selection(character, slots, pick, tags, cap, cap_name)]
+
+
+def location_record(location: str) -> dict:
+    """A location name (or id) -> its record, with `die`/404 turned into RefError."""
+    with _reason(f"location {location}"):
+        return LOCATION.resolve(location)
+
+
+def location_ids(names) -> list[str]:
+    """Location names a person typed -> the ids a run record stores."""
+    return [location_record(name)["id"] for name in names]
+
+
+def location_ref_nodes(location: str, tags: list[str] | None = None,
+                       cap: int | None = None) -> list[str]:
+    """The images of a location this generation should send, as node ids, in slot order.
+
+    The same route a character's selection comes from, one segment over: the
+    location's `default` images unless `tags` narrows them (`wide`,
+    `reverse`, `detail` are the conventional vantages), refused rather than
+    truncated when over `cap`. No `slots` and no `pick` — a location is
+    bound whole or by vantage; picking single files out of a room is
+    `--key`.
+    """
+    record = location_record(location)
+    try:
+        with _reason(f"{location}'s reference set"):
+            return [entry["node"] for entry in
+                    LOCATION.selection_nodes(record, tags=tags, limit=cap)]
+    except api.Conflict as exc:
+        raise RefError(
+            f"{exc}\n"
+            f"  a location's references are a library, not a set to send whole. "
+            f"Narrow it:\n"
+            f"    studio location images {location}        # what each image shows\n"
+            f"    --location-tag wide          # everything tagged wide\n"
+            f"    studio describe <node> --tag wide   # take `default` off the rest"
+        ) from exc
 
 
 def character_pool_nodes(character: str, pool: str, *,
