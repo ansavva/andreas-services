@@ -195,7 +195,7 @@ def test_a_clip_is_indexed_before_it_is_stored(empty_api, media_bucket, monkeypa
     def hands_back_the_clip(url, path, *, max_bytes):
         with open(path, "wb") as handle:
             handle.write(provider_file)
-        return len(provider_file)
+        return generate.replicate.Downloaded(len(provider_file), "video/mp4")
 
     monkeypatch.setattr(generate.replicate, "download", hands_back_the_clip)
     closed = generate.close_from_prediction(record, {
@@ -281,6 +281,41 @@ def test_the_sweep_queues_unmarked_clips_only(empty_api, queue, monkeypatch):
     for render_id in _queued(queue):
         render.run(render_id)
     assert empty_api.post("/api/faststarts").get_json()["queued"] == []
+
+
+def test_the_content_type_sweep_retypes_the_object_and_the_row(empty_api):
+    """A `.webp` stored `application/octet-stream` — what a MIME table with no
+    `.webp` did to 47 prod outputs — comes back `image/webp` on both the row
+    and the object, and a row already typed is left alone. Idempotent."""
+    from studio_core.clients.aws import s3
+    project = empty_api.post("/api/projects", json={"name": "wall"}).get_json()
+    pool = layout.folder_under(project["root"], layout.INPUT_FOLDER)
+
+    def stored(name, content_type):
+        node = catalog.create_node(pool["node_id"], name, catalog.KIND_FILE)
+        s3.put_text(node["blob_key"], b"bytes", content_type or "application/octet-stream")
+        catalog.set_blob(node["node_id"], node["blob_key"], size=5, content_type=content_type)
+        return node
+
+    untyped = stored("image.webp", "application/octet-stream")
+    blank = stored("still.png", None)
+    fine = stored("clip.mp4", "video/mp4")
+    lying = stored("frame.jpg", "image/png")  # the header said so; not ours to second-guess
+
+    resp = empty_api.post("/api/content-types")
+    assert resp.status_code == 200, resp.get_json()
+    report = resp.get_json()
+    assert sorted(report["retyped"]) == sorted([untyped["node_id"], blank["node_id"]])
+    assert report["skipped"] == 2 and report["truncated"] is False
+
+    assert catalog.node(untyped["node_id"])["content_type"] == "image/webp"
+    assert s3.head(untyped["blob_key"])["ContentType"] == "image/webp"
+    assert s3.head(untyped["blob_key"])["ContentLength"] == 5, "same bytes"
+    assert catalog.node(blank["node_id"])["content_type"] == "image/png"
+    assert catalog.node(fine["node_id"])["content_type"] == "video/mp4"
+    assert catalog.node(lying["node_id"])["content_type"] == "image/png"
+
+    assert empty_api.post("/api/content-types").get_json()["retyped"] == []
 
 
 def _queued(queue):

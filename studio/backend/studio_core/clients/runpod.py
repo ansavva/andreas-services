@@ -65,6 +65,7 @@ import urllib.error
 import urllib.request
 
 from studio_core import config
+from studio_core.clients import replicate
 from studio_core.clients.aws import ssm
 from studio_core.errors import ConfigError, UpstreamError
 
@@ -312,22 +313,25 @@ def verify_callback(run_id: str, signature: str) -> None:
         raise ValueError("the callback's signature does not match")
 
 
-def download(url: str, path: str, *, max_bytes: int) -> int:
+def download(url: str, path: str, *, max_bytes: int) -> replicate.Downloaded:
     """Stream one output file to `path`. Same contract as `replicate.download`."""
     if mode() == FAKE:
-        from studio_core.clients.replicate import placeholder_png
         logger.info("[runpod:FAKE] download %s — a placeholder image", url)
-        body = placeholder_png()
+        body = replicate.placeholder_png()
         with open(path, "wb") as handle:
             handle.write(body)
-        return len(body)
+        # No served type: the placeholder is a PNG whatever the test named
+        # the output, and the name is what the test meant.
+        return replicate.Downloaded(len(body), None)
 
     request = urllib.request.Request(url)
     request.add_header("User-Agent", UA)
     written = 0
+    served = None
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response, \
                 open(path, "wb") as handle:
+            served = response.headers.get("Content-Type")
             while chunk := response.read(1 << 20):
                 written += len(chunk)
                 if written > max_bytes:
@@ -342,4 +346,4 @@ def download(url: str, path: str, *, max_bytes: int) -> int:
         raise RunpodError(f"GET {url} -> {exc.code}") from exc
     except OSError as exc:
         raise RunpodError(f"GET {url} failed: {exc}") from exc
-    return written
+    return replicate.Downloaded(written, served)

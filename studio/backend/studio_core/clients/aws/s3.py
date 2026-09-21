@@ -96,6 +96,35 @@ def copy(source_key: str, dest_key: str) -> None:
         raise UpstreamError("Could not copy the object") from exc
 
 
+def retype(key: str, content_type: str) -> None:
+    """Rewrite one object's `Content-Type` in place. Same bytes, same key.
+
+    S3 has no way to change an object's metadata but to copy it onto itself
+    with `MetadataDirective=REPLACE`, and that is what this is. Server-side,
+    so the bytes never travel; the ETag survives, because a single-PUT
+    object copied server-side keeps the MD5 of its bytes as its ETag, so a
+    `checksum` recorded off the original still describes the copy. On a
+    versioned bucket the copy is a new version over the old one.
+
+    The one caller is `render.sweep_content_types`, the backfill for files
+    stored under `application/octet-stream` when the platform's MIME table
+    lacked their extension — `media/mime.py` says which and why.
+    """
+    try:
+        client().copy_object(
+            Bucket=config.media_bucket(),
+            Key=key,
+            CopySource={"Bucket": config.media_bucket(), "Key": key},
+            MetadataDirective="REPLACE",
+            ContentType=content_type,
+        )
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NoSuchKeyError"):
+            raise NotFoundError(key) from exc
+        logger.warning("CopyObject %s onto itself failed: %s", key, exc)
+        raise UpstreamError("Could not retype the object") from exc
+
+
 def delete(keys: list[str]) -> None:
     """Delete objects, in batches of the 1000 `DeleteObjects` accepts.
 

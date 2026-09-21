@@ -24,7 +24,6 @@ recorded on the response, and the source is left alone.
 """
 
 import logging
-import mimetypes
 import os
 
 from flask import Blueprint, g, jsonify
@@ -32,7 +31,7 @@ from flask import Blueprint, g, jsonify
 from studio_core import config
 from studio_core.clients.aws import s3
 from studio_core.errors import ValidationError
-from studio_core.media import imaging
+from studio_core.media import imaging, mime
 from studio_core.routes import support
 from studio_core.services import catalog
 
@@ -107,8 +106,7 @@ def _target_ext(body: dict, source: dict) -> str:
 
 def _write(folder_id: str, name: str, data: bytes, target_ext: str) -> dict:
     node = catalog.create_numbered(folder_id, name, catalog.KIND_FILE)
-    content_type = imaging.CONTENT_TYPE.get(
-        target_ext, mimetypes.guess_type(name)[0] or "application/octet-stream")
+    content_type = imaging.CONTENT_TYPE.get(target_ext) or mime.content_type_of(name)
     s3.put_text(node["blob_key"], data, content_type)
     metadata = s3.head(node["blob_key"])
     catalog.set_blob(node["node_id"], node["blob_key"],

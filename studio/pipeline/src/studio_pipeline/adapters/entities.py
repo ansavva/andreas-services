@@ -744,6 +744,12 @@ def sweep_faststart() -> dict:
     return api.post("/api/faststarts", {})
 
 
+def sweep_content_types() -> dict:
+    """`POST /api/content-types` — 200; every media file whose row said it was
+    not media retyped in place. `{retyped: [ids], skipped: n, truncated: bool}`."""
+    return api.post("/api/content-types", {})
+
+
 def get_render(render_id: str) -> dict:
     """One render job row: `queued` / `running` / `succeeded` / `failed`."""
     return api.get(f"/api/renders/{render_id}")

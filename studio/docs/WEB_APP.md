@@ -501,6 +501,20 @@ page and a plain textarea over its literal bytes, and never offers fields.
   runs faststart <project>` is the older, narrower sweep. It is the
   poster's companion, not a substitute: it makes the play fast, the poster
   makes the not-playing free.
+- **A stored file is typed by what the provider served, then by its
+  extension.** `content_type` on the row is what the app decides by — the
+  run feed offers *Copy into a character or location…* only on an
+  `image/*` (`isPromotable`) — and it used to come off the filename through
+  `mimetypes`, whose built-in table has no `.webp` before Python 3.13. On a
+  Mac `/etc/apache2/mime.types` hides that; on the Lambda nothing does, and
+  every `.webp` output landed `application/octet-stream` with the button
+  gone. `media/mime.py` holds the rule now: the download's `Content-Type`
+  when it names an image, video or audio type (each provider client's
+  `download` returns it beside the byte count as `replicate.Downloaded`),
+  else the extension with `.webp` registered, else octet-stream. `studio
+  retype` (`POST /api/content-types`, `render.sweep_content_types`) is the
+  backfill — a server-side copy of each mistyped object onto itself
+  (`s3.retype`) and a row write, synchronous, idempotent, once per library.
 - **The opened run is a lightbox over the feed, not a page.** `/p/<project>/
   r/<run>` renders `ProjectPage` with `runId` set, and `RunLightbox` sits over
   the feed with the create bar live above it: the output large (`MediaPlayer`,

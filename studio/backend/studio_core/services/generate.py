@@ -68,7 +68,6 @@ names a node, so there is nothing to sign but this bucket's own objects.
 
 import json
 import logging
-import mimetypes
 import os
 import re
 import tempfile
@@ -77,7 +76,7 @@ from studio_core import config
 from studio_core.clients import fal, openrouter, replicate, runpod, runpod_pods
 from studio_core.clients.aws import s3
 from studio_core.errors import ConflictError, NotFoundError, ValidationError
-from studio_core.media import faststart
+from studio_core.media import faststart, mime
 from studio_core.services import catalog, layout, registry, schema
 
 logger = logging.getLogger(__name__)
@@ -629,13 +628,18 @@ def _store_output(record: dict, folder_id: str, url: str, name: str) -> str:
     # first attempt: one orphan file, which is tidyable, instead of a run that
     # can never close.
     node = catalog.create_numbered(folder_id, name, catalog.KIND_FILE)
-    content_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
 
     handle, staged = tempfile.mkstemp(prefix="studio-output-")
     os.close(handle)
     try:
-        client_for(provider_of(record)).download(
-            url, staged, max_bytes=config.max_output_bytes())
+        # **Typed by what the provider served, not by the filename.** The
+        # `Content-Type` on the download is the type measured when the bytes
+        # landed; the extension is the fallback. `media/mime.py` has the rule,
+        # and the 47 `.webp` outputs stored `application/octet-stream` that
+        # made it one.
+        served = client_for(provider_of(record)).download(
+            url, staged, max_bytes=config.max_output_bytes()).content_type
+        content_type = mime.content_type_of(name, served)
         # **A clip is indexed for the browser before it is stored.** Every
         # provider writes `moov` last, which makes a tile's poster frame cost
         # the whole file; `media/faststart.py` has the measurement. Done here,

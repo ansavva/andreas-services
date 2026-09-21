@@ -63,6 +63,7 @@ import time
 import urllib.error
 import urllib.request
 import zlib
+from typing import NamedTuple
 
 from studio_core import config
 from studio_core.clients.aws import ssm
@@ -454,8 +455,18 @@ def verify_webhook(secret: str, webhook_id: str, timestamp: str,
     raise ValueError("the callback's signature does not match")
 
 
-def download(url: str, path: str, *, max_bytes: int) -> int:
-    """Stream one output file to `path`. Returns the byte count.
+class Downloaded(NamedTuple):
+    """What `download` brings back beside the file: how many bytes, and the
+    `Content-Type` they were served under — `None` when the response named
+    none. The type is passed on as the header spelled it; `media/mime.py`
+    decides what to believe of it."""
+    written: int
+    content_type: str | None
+
+
+def download(url: str, path: str, *, max_bytes: int) -> Downloaded:
+    """Stream one output file to `path`. Returns the byte count and the
+    served content type.
 
     **To disk in chunks, never into memory.** A 200 MB clip held as a `bytes` is
     200 MB of Lambda heap that the upload then has to hold a second time; going
@@ -473,14 +484,18 @@ def download(url: str, path: str, *, max_bytes: int) -> int:
         body = placeholder_png()
         with open(path, "wb") as handle:
             handle.write(body)
-        return len(body)
+        # No served type: the placeholder is a PNG whatever the test named
+        # the output, and the name is what the test meant.
+        return Downloaded(len(body), None)
 
     request = urllib.request.Request(url)
     request.add_header("User-Agent", UA)
     written = 0
+    served = None
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response, \
                 open(path, "wb") as handle:
+            served = response.headers.get("Content-Type")
             while chunk := response.read(1 << 20):
                 written += len(chunk)
                 if written > max_bytes:
@@ -498,4 +513,4 @@ def download(url: str, path: str, *, max_bytes: int) -> int:
         raise ReplicateError(f"GET {url} -> {exc.code}") from exc
     except OSError as exc:
         raise ReplicateError(f"GET {url} failed: {exc}") from exc
-    return written
+    return Downloaded(written, served)

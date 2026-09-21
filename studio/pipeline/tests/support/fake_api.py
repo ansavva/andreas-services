@@ -600,6 +600,7 @@ class FakeApi:
             (r"/api/renders/([^/]+)", self._r_render),
             (r"/api/posters", self._r_posters),
             (r"/api/faststarts", self._r_faststarts),
+            (r"/api/content-types", self._r_content_types),
             (r"/api/images/convert", self._r_image_convert),
             (r"/api/images/crop", self._r_image_crop),
             (r"/api/phrasebook", self._r_phrasebook),
@@ -2065,6 +2066,23 @@ class FakeApi:
             record["faststart"] = True
             queued.append(record["id"])
         return {"queued": queued, "skipped": skipped, "truncated": False}
+
+    def _r_content_types(self, method, body, params):
+        """`POST /api/content-types` — every image and clip whose row does not
+        say so is retyped off its extension, at once. The bytes are left
+        alone here; the service copies the object onto itself."""
+        if method != "POST":
+            raise FakeError(405, method)
+        retyped, skipped = [], 0
+        for record in list(self.nodes.values()):
+            wanted = mimetypes.guess_type(record["name"])[0] or ""
+            if (record.get("kind") != "file" or not wanted.startswith(REEL_TYPES)
+                    or str(record.get("content_type") or "").startswith(REEL_TYPES)):
+                skipped += 1
+                continue
+            record["content_type"] = wanted
+            retyped.append(record["id"])
+        return {"retyped": retyped, "skipped": skipped, "truncated": False}
 
     def _r_render(self, method, body, params, render_id):
         if method != "GET":
