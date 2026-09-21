@@ -29,6 +29,7 @@ from botocore.exceptions import ClientError
 
 from studio_core import config
 from studio_core.clients import replicate
+from studio_core.clients.aws import s3
 from studio_core.errors import NotFoundError, ValidationError
 from studio_core.services import catalog, generate
 
@@ -521,6 +522,35 @@ def test_closing_stores_the_output_and_records_its_checksum(empty_api, media_buc
     assert node["name"] == "image.png", "named from the run, extension from the URL"
     assert node["size"] > 0
     assert node["checksum"], "a single PUT, so the ETag is the content MD5"
+
+
+def test_the_output_is_typed_by_what_the_provider_served(empty_api, media_bucket, monkeypatch):
+    """`content_type` is what the app gates *Copy into a character or
+    location…* on, and it comes off the download's `Content-Type`, not the
+    filename — the filename's table lacked `.webp` on the Lambda, and 47
+    outputs lost the button that way. A served type that is not media (a
+    bucket's `application/octet-stream`) is passed over for the extension."""
+    served = {"https://fake.invalid/x/0.webp": "image/webp",
+              "https://fake.invalid/x/1.webp": "application/octet-stream"}
+    real = replicate.download
+
+    def download(url, path, *, max_bytes):
+        got = real(url, path, max_bytes=max_bytes)
+        return replicate.Downloaded(got.written, served[url])
+    monkeypatch.setattr(replicate, "download", download)
+
+    project = _project(empty_api)
+    record = _running(empty_api, project)
+    closed = generate.close_from_prediction(record, {
+        "id": record["prediction_id"], "status": "succeeded",
+        "output": list(served),
+    })
+
+    types = [catalog.node(n)["content_type"] for n in closed["outputs"]]
+    assert types == ["image/webp", "image/webp"]
+    for node_id in closed["outputs"]:
+        head = s3.head(catalog.node(node_id)["blob_key"])
+        assert head["ContentType"] == "image/webp", "the object says the same as the row"
 
 
 def test_the_output_is_named_from_the_name_the_draft_recorded(empty_api, media_bucket):
@@ -2319,7 +2349,6 @@ def test_a_runpod_video_payload_is_refused_off_the_entry_before_pending(empty_ap
 def test_the_stored_runpod_document_carries_no_callback_signature(empty_api, media_bucket):
     """Runpod echoes the webhook URL it was told, `?sig=` included. The stored
     document keeps the URL and drops the proof."""
-    from studio_core.clients.aws import s3
     project = _project(empty_api)
     run = _runpod_draft(empty_api, project)
     empty_api.post(f"/api/runs/{run['id']}/submit")
@@ -2896,6 +2925,7 @@ def test_the_openrouter_download_sends_the_key(monkeypatch, tmp_path):
 
     class _Response(io.BytesIO):
         status = 200
+        headers = {"Content-Type": "video/mp4"}
         def __enter__(self): return self
         def __exit__(self, *a): return False
 
@@ -2907,10 +2937,11 @@ def test_the_openrouter_download_sends_the_key(monkeypatch, tmp_path):
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
     target = tmp_path / "out.mp4"
 
-    written = openrouter.download("https://openrouter.ai/api/v1/videos/g/content?index=0",
-                                  str(target), max_bytes=1 << 20)
+    got = openrouter.download("https://openrouter.ai/api/v1/videos/g/content?index=0",
+                              str(target), max_bytes=1 << 20)
 
-    assert written == 9 and target.read_bytes() == b"mp4-bytes"
+    assert got.written == 9 and target.read_bytes() == b"mp4-bytes"
+    assert got.content_type == "video/mp4", "the served type rides back with the bytes"
     assert seen["auth"] == "Bearer dud-key-the-suite-must-never-use"
 
     def gone(request, timeout=None):

@@ -88,6 +88,20 @@ def sweep_faststart():
     return jsonify(report), 202
 
 
+@bp.post("/content-types")
+def sweep_content_types():
+    """Retype every media file whose row says it is not media, in place.
+
+    The third backfill, and the one that answers 200 rather than 202: a
+    retype is a server-side copy and a row write, so it is done by the time
+    the body says which rows it touched. `render.sweep_content_types` says
+    what qualifies.
+    """
+    support.member_of(g.library, support.memberships())
+    report = render.sweep_content_types(g.library)
+    return jsonify(report), 200
+
+
 @bp.get("/renders/<render_id>")
 def get_render(render_id: str):
     """One job: `queued`, `running`, `succeeded` with a `result`, or `failed` with an `error`.

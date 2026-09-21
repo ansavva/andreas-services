@@ -65,7 +65,6 @@ from __future__ import annotations
 
 import json
 import logging
-import mimetypes
 import os
 
 from botocore.exceptions import ClientError
@@ -73,6 +72,7 @@ from botocore.exceptions import ClientError
 from studio_core import config
 from studio_core.clients.aws import s3, sqs
 from studio_core.errors import ConfigError, NotFoundError, UpstreamError, ValidationError
+from studio_core.media import mime
 from studio_core.media import sheet as sheets
 from studio_core.media import workspace
 from studio_core.services import catalog, generate, keys
@@ -385,6 +385,52 @@ def sweep_faststart(lib: str) -> dict:
     return _sweep(lib, wants_faststart, queue_faststart)
 
 
+def wants_retype(record: dict) -> str | None:
+    """The content type this media row should carry and does not — or None.
+
+    A row in `by-recent` is an image or a video by its extension (`keys.kind`
+    put it there), so a `content_type` on it that names neither is wrong,
+    however it got there: `application/octet-stream` off a MIME table
+    without `.webp`, or nothing at all. What it should say is what the
+    extension says, the same table `mime.content_type_of` uses at ingest.
+    """
+    if not record.get("blob_key"):
+        return None
+    if mime.served_type(record.get("content_type")):
+        return None
+    wanted = mime.content_type_of(record.get("name") or "")
+    return wanted if mime.served_type(wanted) else None
+
+
+def sweep_content_types(lib: str) -> dict:
+    """Retype every media file in a library whose row says it is not media.
+
+    **The backfill for `media/mime.py`**, and the one sweep that does its
+    work here rather than queueing it: a retype is one server-side copy and
+    one row write, against tens of rows, where a poster is an ffmpeg job
+    against thousands. Both the object and the row are rewritten, so a
+    reader off either — a tile's `<img>`, the run feed's `isPromotable` —
+    sees the same type. Idempotent: a row already typed is passed over.
+    """
+    records, truncated = catalog.recent(lib, config.max_poster_sweep())
+    retyped, skipped = [], 0
+    for record in records:
+        wanted = wants_retype(record)
+        if not wanted:
+            skipped += 1
+            continue
+        try:
+            s3.retype(record["blob_key"], wanted)
+        except NotFoundError:
+            # A row whose bytes are gone is a different problem, and not one
+            # a sweep over content types should fail on.
+            skipped += 1
+            continue
+        catalog.set_blob(record["node_id"], record["blob_key"], content_type=wanted)
+        retyped.append(record["node_id"])
+    return {"retyped": retyped, "skipped": skipped, "truncated": truncated}
+
+
 # ─────────────────────────────── the worker ───────────────────────────────
 
 
@@ -496,7 +542,7 @@ def _store(dest_folder: str, name: str, path: str, *, poster: bool = True) -> di
     grabbed frame, a contact grid and a sheet are all drawn in tiles. `poster=
     False` is for the one job whose output IS a poster.
     """
-    content_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
+    content_type = mime.content_type_of(name)
     node = catalog.create_numbered(dest_folder, name, catalog.KIND_FILE)
     s3.put_file(node["blob_key"], path, content_type)
     metadata = s3.head(node["blob_key"])

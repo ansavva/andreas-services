@@ -38,7 +38,7 @@ import logging
 import urllib.error
 import urllib.request
 
-from studio_core.clients import runpod
+from studio_core.clients import replicate, runpod
 from studio_core.errors import UpstreamError
 
 logger = logging.getLogger(__name__)
@@ -250,5 +250,5 @@ def cost(prediction: dict) -> dict | None:
             "predict_time": seconds}
 
 
-def download(url: str, path: str, *, max_bytes: int) -> int:
+def download(url: str, path: str, *, max_bytes: int) -> replicate.Downloaded:
     raise RunpodPodError("a training pod's outputs are adopted from the bucket, never downloaded")

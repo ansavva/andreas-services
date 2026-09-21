@@ -40,6 +40,7 @@ from studio_pipeline.objects import faststart as _faststart
 from studio_pipeline.objects import describe as _describe
 from studio_pipeline.objects import posters as _posters
 from studio_pipeline.objects import presign as _presign
+from studio_pipeline.objects import retype as _retype
 from studio_pipeline.objects import upload as _upload
 
 
@@ -60,7 +61,7 @@ class _Grouped(click.Group):
         ("subjects",    ["character", "location", "curate", "contact-sheet"]),
         ("authoring",   ["prompt", "phrasebook", "templates"]),
         ("objects",     ["upload", "download", "describe", "presign", "posters", "faststart",
-                         "convert", "crop", "config"]),
+                         "retype", "convert", "crop", "config"]),
     ]
 
     def format_commands(self, ctx, formatter):
@@ -169,6 +170,7 @@ for _name, _cmd in [
     ("presign", _presign.presign),
     ("posters", _posters.posters),
     ("faststart", _faststart.faststart),
+    ("retype", _retype.retype),
     ("convert", _convert.convert),
     ("crop", _crop.crop),
     ("config", _config_sync.main),

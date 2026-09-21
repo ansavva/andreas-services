@@ -19,7 +19,7 @@ import pytest
 from PIL import Image
 
 from studio_core.errors import ValidationError
-from studio_core.media import imaging, sheet, workspace
+from studio_core.media import imaging, mime, sheet, workspace
 
 
 def _png(width=400, height=600, mode="RGB"):
@@ -191,3 +191,35 @@ def test_a_still_job_reserves_once_over_rather_than_twice(tmp_path):
         with pytest.raises(workspace.OutOfSpace):
             space.reserve(want)
         space.reserve(want, factor=1)
+
+
+# ── mime ───────────────────────────────────────────────────────────────────
+
+
+def test_a_webp_is_an_image_on_every_platform():
+    """Python 3.11's built-in table has no `.webp`; a Mac's `/etc/apache2/
+    mime.types` hides that and the Lambda has no such file. 47 outputs in
+    prod were stored `application/octet-stream` before the type was
+    registered here."""
+    assert mime.content_type_of("image.webp") == "image/webp"
+    assert mime.content_type_of("clip.mp4") == "video/mp4"
+    assert mime.content_type_of("weights.safetensors") == "application/octet-stream"
+
+
+def test_what_the_provider_served_wins_when_it_names_a_media_type():
+    assert mime.content_type_of("image.webp", "image/webp") == "image/webp"
+    assert mime.content_type_of("tmpabc.jpg", "image/png") == "image/png", \
+        "the header is what was measured; the name is a label"
+    assert mime.content_type_of("clip.mp4", "Video/MP4; charset=binary") == "video/mp4"
+
+
+def test_a_served_type_that_is_not_media_falls_back_to_the_extension():
+    """A bucket behind a worker says `application/octet-stream` or S3's
+    `binary/octet-stream`, an expired-link page says `text/html` — none of
+    them is the file."""
+    assert mime.content_type_of("image.webp", "application/octet-stream") == "image/webp"
+    assert mime.content_type_of("clip.mp4", "binary/octet-stream") == "video/mp4"
+    assert mime.content_type_of("image.png", "text/html; charset=utf-8") == "image/png"
+    assert mime.content_type_of("image.png", "") == "image/png"
+    assert mime.content_type_of("image.png", None) == "image/png"
+    assert mime.content_type_of("blob", "application/octet-stream") == "application/octet-stream"

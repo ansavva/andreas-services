@@ -193,6 +193,8 @@ studio runs faststart <project>                  # the older sweep: one project'
 studio posters                                   # a small still per image and clip, for the tiles;
                                                   # the backfill, once per library, safe to repeat
 studio runs posters <project>                    # the older sweep: one project's clips only
+studio retype                                    # the content type each image and clip's extension
+                                                  # says, where the row says otherwise; the backfill
 
 # Frames: verify a clip, and take the handoff frame for chaining
 studio frames grid <project>/latest --count 4 --dest /tmp/check
