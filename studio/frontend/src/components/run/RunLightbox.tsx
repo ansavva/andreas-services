@@ -58,6 +58,7 @@ import { CompareStage, type ComparePicture } from "../media/CompareStage";
 import { MediaPlayer, type MediaPlayerControls } from "../media/MediaPlayer";
 import { MediaThumb } from "../media/MediaThumb";
 import { ViewerFrame } from "../viewer/ViewerFrame";
+import { ViewerRail } from "../viewer/ViewerRail";
 import { RunActionRow } from "./RunActionRow";
 import { RunSubjects } from "./RunSubjects";
 import { SendThumbs } from "./SendThumbs";
@@ -592,14 +593,11 @@ function Opened({
       </div>
 
       {/* The rail: the run this output came from, and what to do with it. */}
-      <aside
-        aria-label="Run details"
-        className="flex w-full shrink-0 flex-col gap-3 border-t border-line bg-bg p-5 md:w-[360px] md:overflow-y-auto md:border-l md:border-t-0"
-      >
+      <ViewerRail aria-label="Run details" className="gap-3">
         {/* The feed row's header: state on the left, the two buttons and
-            the menu on the right, on one line. The rail is 360px, under
-            30rem, so the time takes its own line below and Edit is its
-            pencil — the controls never wrap. */}
+            the menu on the right, on one line. The rail opens at 360px and
+            is dragged from there; under 30rem the time takes its own line
+            below and Edit is its pencil — the controls never wrap. */}
         <div className="@container flex flex-wrap items-center gap-1.5">
           <StatusBadge status={row.status} />
           {/* The kind, only where there is room: `succeeded · training` and
@@ -709,7 +707,7 @@ function Opened({
             )}
           </Collapsible.Panel>
         </Collapsible.Root>
-      </aside>
+      </ViewerRail>
 
       {/*
         **The project's runs, last in the flex — so the direction places it.**
