@@ -354,6 +354,11 @@ function WishForm({
   /** Absent on the edit form: reading a link is for turning a paste into a new wish. */
   groupId?: string;
 }) {
+  // Switched off 2026-09-21. Amazon — the link most people paste — carries no Open Graph, JSON-LD
+  // or microdata, so at best the title fills; and the page it serves a datacenter address has
+  // not even that, which left people with an empty form under "Filled from www.amazon.com".
+  // Back once there is a source that answers for the big shops. The API and the extractor stay.
+  const linkPreviewEnabled = false;
   const theme = useTheme();
   const { styles } = theme;
   const local = localStyles(theme);
@@ -412,10 +417,10 @@ function WishForm({
             value={values.url}
             onValueChange={(value) => set('url', value)}
             placeholder="https://…"
-            {...(groupId ? { onSubmitEditing: () => void readLink() } : {})}
+            {...(linkPreviewEnabled && groupId ? { onSubmitEditing: () => void readLink() } : {})}
           />
         </FieldLabel>
-        {groupId ? (
+        {linkPreviewEnabled && groupId ? (
           <View style={{ alignSelf: 'flex-start', gap: 6 }}>
             <Button
               intent="secondary"
