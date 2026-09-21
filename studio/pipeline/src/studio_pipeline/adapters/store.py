@@ -215,7 +215,7 @@ def exists(path: str) -> bool:
     return True
 
 
-def folder(path: str) -> dict:
+def folder(path: str, *, allow_new_root_folder: bool = False) -> dict:
     """Ensure a folder exists at a name path and return its node.
 
     **Folders were free in S3 and are rows now**, and that is the whole reason
@@ -233,6 +233,16 @@ def folder(path: str) -> dict:
     Refuses to hand back a file. A caller asking for a folder is about to write
     children into it, and `catalog.create_node` would refuse them one at a time
     with the parent's id rather than the path that was actually wrong.
+
+    **Refuses to create a folder directly under the library root**, unless the
+    caller says `allow_new_root_folder=True` — which only `config sync` does,
+    for the one top-level folder the pipeline owns. Every other top-level folder
+    is an entity's root, made by the API when the entity is, and a first segment
+    that resolves nothing is a misspelt address, not a folder to make: twice in
+    two days `upload --folder <name>/input` and `upload --folder
+    char-<uuid>/reference` (an id under the old `characters/` layout) each
+    built a stray tree at the root, holding files nothing would ever list,
+    and reported success.
     """
     clean = path.strip("/")
     try:
@@ -249,7 +259,14 @@ def folder(path: str) -> dict:
         raise StoreError("The library root does not exist.")
 
     parent_path, _, name = clean.rpartition("/")
-    parent = folder(parent_path)
+    if not parent_path and not allow_new_root_folder:
+        raise StoreError(
+            f"{name!r} does not exist at the library root, and a top-level folder "
+            "is not created on the way to a path. An entity's root folder is "
+            "named by its id — `studio character show <name>` and `studio "
+            "projects show <project>` print it — so the address is "
+            "char-<uuid>/…, proj-<uuid>/… or loc-<uuid>/…, never a name.")
+    parent = folder(parent_path, allow_new_root_folder=allow_new_root_folder)
     try:
         return api.post(
             "/api/nodes", {"parent": parent["id"], "name": name, "kind": "folder"}

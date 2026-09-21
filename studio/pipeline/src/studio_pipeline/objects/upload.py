@@ -1,7 +1,7 @@
 """Upload local file(s) into the media tree.
 
-  studio upload --folder <name>/output output/<name>/clip.mp4
-  studio upload --folder <name>/reference img/*.webp --presign --json
+  studio upload --folder proj-<uuid>/input frame.png
+  studio upload --folder char-<uuid>/reference/face img/*.webp --presign --json
 
 **This names no bucket, deliberately.** It used to say
 `studio-prod-media-us-east-1` in this docstring, which was two things at once: a

@@ -5,13 +5,13 @@ presigned GET URL that Replicate fetches during the job. The bucket stays
 private; no credentials are exposed.
 
   # every reference image, in <name>_1..<name>_N order -> [Image1]..[ImageN]
-  studio presign --folder <name>/reference --json
+  studio presign --folder char-<uuid>/reference --json
 
   # specific objects under a folder
-  studio presign --folder <name>/reference <name>_1.webp <name>_2.webp
+  studio presign --folder char-<uuid>/reference face_1.webp face_2.webp
 
   # one exact key
-  studio presign --key <name>/output/clip.mp4
+  studio presign --key proj-<uuid>/runs/<run>/output/clip.mp4
 """
 import json
 
