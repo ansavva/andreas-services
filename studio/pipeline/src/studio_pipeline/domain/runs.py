@@ -716,6 +716,34 @@ def do_delete(runref, files, project):
     print(f"deleted run {record['id']} (files: {files})")
 
 
+@main.command("move")
+@click.argument("runref", required=True)
+@click.option("--to", "destination", required=True,
+              help="The project to move it into — an id, or a name matched over the listing.")
+@click.option("--project", help="Default project for a bare run slug.")
+@reports(RunError, api.ApiError)
+def do_move(runref, destination, project):
+    """Move one run into another project. No bytes move.
+
+    **The runref is resolved first and the id is printed back**, for the reason
+    `runs delete` gives: `latest` names a different run tomorrow.
+
+    The run's folder goes with it, under the destination's `runs/`, and every
+    record that names the run keeps working — a binding, a chain, a movie's
+    source all hold node ids. **It leaves its scene**, and the scene's cut if
+    that named it: a scene belongs to a project, so a run in a scene of the
+    project it left would be cut into a piece it is no longer part of. The
+    scene stays. Repeat for each run of a series; a scene does not move.
+    """
+    record = resolve_run(runref, project)
+    moved = entities.move_run(record["id"], _project_id(destination))
+    if not moved.get("moved", True):
+        print(f"run {record['id']} is already in {moved['project']}")
+        return
+    print(f"moved run {record['id']} from {record['project']} to {moved['project']}"
+          + (f" (left scene {record['scene']})" if record.get("scene") else ""))
+
+
 #: The editable half of a draft, and the whole of it. `source` is absent because
 #: it is DERIVED — the API recomputes it from where each node sits and excludes it
 #: from the digest, so offering it for editing would offer a field that neither

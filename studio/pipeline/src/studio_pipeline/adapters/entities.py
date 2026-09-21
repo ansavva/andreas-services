@@ -482,6 +482,12 @@ def delete_run(run_id: str, *, files: str = "keep") -> dict:
     return api.delete(f"/api/runs/{run_id}", files=files)
 
 
+def move_run(run_id: str, project: str) -> dict:
+    """Carry a run into another project. `project` is an id; alone in the body,
+    because the API refuses it beside any other change."""
+    return api.patch(f"/api/runs/{run_id}", {"project": project})
+
+
 # ── scenes ──────────────────────────────────────────────────────────────────
 
 def create_scene(*, project: str, name: str,

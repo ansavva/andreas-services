@@ -1354,3 +1354,104 @@ def test_the_records_OWN_characters_win_when_it_has_them(api):
     run = _create(api, project, characters=[named["id"]],
                   plan={"version": 1, "origin": "authored", "prompt": "x", "params": {}})
     assert api.get(f"/api/runs/{run['id']}").get_json()["cast"] == [named["id"]]
+
+
+# ──────────────────────── moving a run between projects ────────────────────────
+
+
+def _counts(api, project):
+    return api.get(f"/api/projects/{project['id']}").get_json()["counts"]
+
+
+def test_moving_a_run_re_keys_the_listing_row_re_parents_the_folder_and_moves_the_count(
+    empty_api, catalog_table,
+):
+    """Everything that spells "this run is in that project" moves with it: the
+    envelope's `project`, the listing row under the project's partition, the
+    folder under its `runs/`, and one count on each card."""
+    source = _project(empty_api, name="rooftop-teaser")
+    destination = _project(empty_api, name="rooftop-final")
+    run = _submitted(empty_api, source)
+    assert _counts(empty_api, source)["runs"] == 1
+
+    resp = empty_api.patch(f"/api/runs/{run['id']}", json={"project": destination["id"]})
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    assert resp.get_json()["project"] == destination["id"]
+    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["project"] == destination["id"]
+    assert catalog.project_entities(source["id"], catalog.ENTITY_RUN) == []
+    moved = catalog.project_entities(destination["id"], catalog.ENTITY_RUN)
+    assert [row["id"] for row in moved] == [run["id"]]
+    assert moved[0]["status"] == "pending"
+    folder = catalog.node(run["folder"])
+    assert folder["parent_id"] == _child(destination["root"], layout.RUN_PARENT)["node_id"]
+    assert _counts(empty_api, source)["runs"] == 0
+    assert _counts(empty_api, destination)["runs"] == 1
+
+
+def test_moving_a_draft_moves_no_count(empty_api):
+    """A draft was never counted, so a move must not invent a number."""
+    source = _project(empty_api, name="a")
+    destination = _project(empty_api, name="b")
+    run = _create(empty_api, source)
+
+    assert empty_api.patch(f"/api/runs/{run['id']}",
+                           json={"project": destination["id"]}).status_code == 200
+
+    assert _counts(empty_api, source)["runs"] == 0
+    assert _counts(empty_api, destination)["runs"] == 0
+
+
+def test_a_moved_run_leaves_its_scene_and_its_cut(empty_api):
+    """A scene belongs to a project; a cut naming a run in another project is a
+    stitch nobody asked for. The attribute, the edge and the cut entry all go."""
+    source = _project(empty_api, name="a")
+    destination = _project(empty_api, name="b")
+    scene = empty_api.post("/api/scenes",
+                           json={"project": source["id"], "name": "opening"}).get_json()
+    run = _create(empty_api, source, kind="video", scene=scene["id"])
+    empty_api.patch(f"/api/scenes/{scene['id']}/runs", json={"runs": [run["id"]]})
+
+    empty_api.patch(f"/api/runs/{run['id']}", json={"project": destination["id"]})
+
+    got = empty_api.get(f"/api/runs/{run['id']}").get_json()
+    assert got["scene"] is None
+    assert catalog.linked(scene["id"], catalog.ENTITY_RUN) == []
+    assert catalog.links(scene["id"], catalog.ENTITY_RUN) == []
+    assert empty_api.get(f"/api/scenes/{scene['id']}").get_json()["runs"] == []
+    assert "scene" not in catalog.project_entities(destination["id"], catalog.ENTITY_RUN)[0]
+
+
+def test_moving_a_run_to_its_own_project_changes_nothing(empty_api):
+    project = _project(empty_api)
+    run = _submitted(empty_api, project)
+
+    resp = empty_api.patch(f"/api/runs/{run['id']}", json={"project": project["id"]})
+
+    assert resp.status_code == 200
+    assert resp.get_json()["moved"] is False
+    assert _counts(empty_api, project)["runs"] == 1
+
+
+def test_project_cannot_be_combined_with_other_changes(empty_api):
+    source = _project(empty_api, name="a")
+    destination = _project(empty_api, name="b")
+    run = _create(empty_api, source)
+
+    resp = empty_api.patch(f"/api/runs/{run['id']}",
+                           json={"project": destination["id"], "status": "pending"})
+
+    assert resp.status_code == 400
+    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["project"] == source["id"]
+
+
+def test_moving_a_run_into_a_project_you_cannot_reach_is_refused(empty_api, catalog_table):
+    """The destination goes through the same membership check as everything
+    else — a project id from another library is a 404, not a move."""
+    source = _project(empty_api, name="a")
+    run = _create(empty_api, source)
+
+    resp = empty_api.patch(f"/api/runs/{run['id']}", json={"project": "proj-not-there"})
+
+    assert resp.status_code == 404
+    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["project"] == source["id"]

@@ -181,6 +181,8 @@ studio runs outputs <project>/latest --presign    # feed into the next render
 studio runs find --character <name>               # across every project
 studio runs edit <project>/latest                 # a DRAFT's prompt, params and images
                                                   # — show it again before sending
+studio runs move <project>/latest --to <other>    # into another project; no bytes move,
+                                                  # the run leaves its scene and that scene's cut
 studio runs delete <project>/latest              # keeps the folder; --files delete removes it
 studio runs discard <project>/latest             # a DRAFT only, folder deleted; refuses anything
                                                   # sent ("is succeeded and has been submitted;
