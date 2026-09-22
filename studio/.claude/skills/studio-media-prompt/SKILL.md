@@ -177,7 +177,7 @@ Everything above is shared. These differ, and `--engine` switches them:
 | Aspect ratios | 16:9 4:3 1:1 3:4 9:16 21:9 9:21 adaptive | 16:9 9:16 1:1 |
 | Resolutions | 480p 720p 1080p 4k | `mode`: standard/pro/4k |
 | Prompt cap | ~4000 chars | **2500** |
-| `[Image1]` tokens | **Yes** — cite references | No — literal text |
+| Reference tokens | `[Image1]` | `<<<image_1>>>` / `<<<video_1>>>` — **not** `[Image1]`, which is literal text here |
 | Character identity | `reference_images` (≤9) | `reference_images` (≤7) |
 | Image formats | wide | **jpg/jpeg/png only** |
 | Technical fields → | Replicate `input` | Replicate `input` |
@@ -192,6 +192,11 @@ flags the preferred alternative where one is recorded — see
 `studio phrasebook show <model>`. The list is data in
 S3; when it cannot be read the validator says so rather than reporting the draft
 checked.
+
+**Dialogue goes early on Kling.** Lip-sync is reported to drift past ~10
+seconds, so order `shots` with the spoken beats first and a wordless beat last,
+and split anything that needs longer into two clips. Nothing validates this —
+it is a drafting habit.
 
 **No Kling surface has a seed.** Where Seedance gives you reproducibility for
 free, Kling gives you none — holding the prompt byte-identical is the only lever,
