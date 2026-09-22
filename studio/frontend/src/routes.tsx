@@ -36,6 +36,7 @@ import { ObjectPage } from "./pages/ObjectPage";
  * /l/<loc_id>             location: the same page with a room's bible
  * /p/<proj_id>            project: the runs feed, scenes, movies, files, settings
  * /p/<proj_id>/r/<run_id> one run, opened in a lightbox over that same feed
+ * /p/<proj_id>/reel       the project's reel: everything in it, oldest first, full screen
  * /s/<scene_id>           scene
  * /m/<movie_id>           movie
  * /f          /f/<id>     the folder browser: the library root, or one folder
@@ -94,6 +95,10 @@ export function StudioRoutes() {
             again rather than a second load of it. The two-column `RunPage`
             that used to answer this address is gone. */}
         <Route path="/p/:projectId/r/:runId" element={<ProjectPage />} />
+        {/* The reel is the project page too, with `ProjectReel` over the
+            whole viewport — the same bargain as the run: closing it is the
+            feed, cached, where it was. */}
+        <Route path="/p/:projectId/reel" element={<ProjectPage reel />} />
         <Route path="/s/:sceneId" element={<ScenePage />} />
         <Route path="/m/:movieId" element={<MoviePage />} />
 
@@ -104,8 +109,9 @@ export function StudioRoutes() {
             was a `fixed inset-x-0 z-50` reel until Phase C. `/o` with no id
             opens a feed at its first file and the address gains the id as soon
             as that file resolves; nothing in the app builds that shape any more
-            — "Play reel" was the one thing that did — but an old link still
-            lands somewhere usable. */}
+            — the old library-wide "Play reel" was the one thing that did — but
+            an old link still lands somewhere usable. A project's reel is its
+            own address above. */}
         <Route path="/o" element={<ObjectPage />} />
         <Route path="/o/:nodeId" element={<ObjectPage />} />
       </Route>

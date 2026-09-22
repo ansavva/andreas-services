@@ -18,11 +18,12 @@ import { EntityRow } from "../components/entity/EntityRow";
 import { ProjectDetails } from "../components/project/ProjectDetails";
 import { ProjectBar } from "../components/project/ProjectBar";
 import { RunFeed } from "../components/project/RunFeed";
+import { ProjectReel } from "../components/reel/ProjectReel";
 import { RunLightbox } from "../components/run/RunLightbox";
 import { useResource } from "../hooks/useResource";
 import type { HeroImage } from "../types";
 import { formatDate } from "../utils/format";
-import { moviePath, runPath, scenePath } from "../utils/location";
+import { moviePath, projectPath, runPath, scenePath } from "../utils/location";
 import { useSearchParamState } from "../hooks/useSearchParamState";
 import { LoadError } from "../components/common/LoadError";
 
@@ -52,6 +53,12 @@ import { LoadError } from "../components/common/LoadError";
  * in the address. The two-column run page that used to answer that URL is
  * gone.
  *
+ * ## The reel is this page too
+ *
+ * `/p/<project>/reel` sets `reel`, and `ProjectReel` covers the viewport —
+ * everything the project holds, oldest first, swiped through. Same bargain
+ * as the run: closing it is the feed again, off its cache.
+ *
  * ## There is no Inputs tab, and there should not be one
  *
  * There was: `input/` got a tab of its own, drawing the same nodes Files draws
@@ -63,7 +70,7 @@ import { LoadError } from "../components/common/LoadError";
  * off the pool is the CLI's job, and `studio projects inputs <project>` prints
  * each position beside its node.
  */
-export function ProjectPage() {
+export function ProjectPage({ reel = false }: { reel?: boolean }) {
   const { projectId = "", runId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -167,6 +174,15 @@ export function ProjectPage() {
           </Text>
         </Tabs.Panel>
       </Tabs.Root>
+
+      {reel && (
+        <ProjectReel
+          projectId={record.id}
+          rootId={record.root}
+          name={record.name}
+          onClose={() => navigate(projectPath(record.id) + location.search)}
+        />
+      )}
 
       {runId && (
         <RunLightbox

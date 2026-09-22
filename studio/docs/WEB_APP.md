@@ -71,7 +71,7 @@ only authority on whether a name is free.
 | Auth | AWS Cognito (self sign-up behind an invite-code pre-sign-up trigger); **Cognito Managed Login** (hosted pages at `studio-auth.andreas.services`) with the authorization-code flow + PKCE on the SPA, Cognito authorizer on every `/api` route. The `studio` CLI signs in with SRP directly — see `infra/modules/auth`. |
 | Data | **DynamoDB, single-table** (`studio-prod-catalog`) — one item pair per node, three `ALL`-projected GSIs (`by-sk`, `by-path`, `by-recent`). No cache. Listings are a query. |
 | Blobs | S3, addressed only by a row's opaque `blob_key`. Never listed. |
-| Routing | By node id. `/f/<id>` is a folder, `/o/<id>` is one open file. `/favorites` is the one address naming nothing — a favorite is a fact about the caller. |
+| Routing | By node id. `/f/<id>` is a folder, `/o/<id>` is one open file, `/p/<id>/reel` is a project's reel. `/favorites` is the one address naming nothing — a favorite is a fact about the caller. |
 | Media | Presigned S3 GET URLs, direct from the browser to S3 |
 | Infra | Terraform in `studio/infra/` (`modules/` + `envs/prod` + a per-machine `envs/dev`) |
 
@@ -1028,16 +1028,40 @@ page and a plain textarea over its literal bytes, and never offers fields.
   viewer does not adopt `items[0]` for an id it has not reached: a paged walk
   that has not found the file yet is still searching rather than holding a dead
   link.
-- **There is no "Play reel" button, no Identity tab and no Inputs tab.** Each
-  would be a second way of looking at a listing the page already shows.
-  Identity is a *tag* (`default`), so it is a preset of the Files tab; Inputs
-  is a project's `input/` folder, drawn one tab over from the Files that already
-  holds it — `--input N` is a position in a name-ascending listing that nothing
-  stores, and `studio projects inputs <project>` prints those positions. The
-  viewer still plays a feed: opening any tile from the library's Media view
-  scrolls the recursive walk (`/o/<id>?in=recursive`). Home lists no media —
-  it is characters, locations and projects, and the Recent grid it used to
-  carry walked the whole library for twelve tiles.
+- **There is no library-wide "Play reel" button, no Identity tab and no
+  Inputs tab.** Each would be a second way of looking at a listing the page
+  already shows. Identity is a *tag* (`default`), so it is a preset of the
+  Files tab; Inputs is a project's `input/` folder, drawn one tab over from
+  the Files that already holds it — `--input N` is a position in a
+  name-ascending listing that nothing stores, and `studio projects inputs
+  <project>` prints those positions. The viewer still plays a feed: opening
+  any tile from the library's Media view scrolls the recursive walk
+  (`/o/<id>?in=recursive`). Home lists no media — it is characters, locations
+  and projects, and the Recent grid it used to carry walked the whole library
+  for twelve tiles.
+- **A project has a reel, and it is the one surface that runs oldest first.**
+  `/p/<id>/reel` (`components/reel/ProjectReel`), opened by the play icon on
+  the project's bar (2026-09-22): a full-viewport, vertical scroll-snap
+  column over the project's root — `useMedia(root, "oldest")`, so a run's
+  outputs, a scene's cuts, a movie and the input pool are in it in the order
+  they were made. It is not the object page's feed with a different sort: the
+  object page is a *page* — header, rail, neighbours, the Video.js skin — and
+  this is the picture alone, swiped, which is the thing the app had (#247)
+  and lost (#556) and was asked for again. Clips play on a bare `<video>`
+  (`ReelPane`), muted autoplay and loop, because the skin's own tap and
+  double-tap gestures cannot share the surface with the reel's: **one tap
+  pauses, a double tap hearts** — `useFavorites.setFavorite(id, true)`, never
+  a toggle, the same set every heart in the app reads, the mark at the foot
+  the state it leaves. Taps are pointer events with travel summed from
+  `pointermove` (`useTaps`), because an iPhone's touch `pointerup` reports
+  `0,0`. **It remembers where it was left**, per project, in `localStorage`
+  (`reelPosition`) — the snapped item's *id*, not an index, so what the
+  project makes later lands after it and a delete does not shift it; the
+  walk pages forward on open until it finds it. **Reaching the end forgets
+  the place**, so the next open starts over, and the last pane offers Start
+  over for now. Esc closes to the project with the address's tab kept;
+  Space and `m` reach the clip through `useKeyboardNav`; Up/Down are the
+  browser's own scroll, snapped.
 - **A location page is the character page with a room's bible.** `/l/<id>`
   renders `ProfileForm` with `LOCATION_SCHEMA` — the section hints, the
   grouping and the noun in every sentence come from `profileSchemas.ts`, one

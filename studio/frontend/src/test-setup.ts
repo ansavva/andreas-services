@@ -18,9 +18,9 @@
 //   to "near" when the constructor is missing, so this stub is what makes a
 //   test assert the real path rather than the fallback.
 // * **`Element.scrollTo` is absent** — jsdom lays nothing out, so it implements
-//   no scrolling. Nothing in the app calls it since the reel was replaced (the
-//   filmstrip uses `scrollIntoView`, and guards for its absence), but the stub
-//   costs one line and the next thing that scrolls will want it.
+//   no scrolling. The project reel calls it to open on the remembered pane
+//   (the filmstrip uses `scrollIntoView`, and guards for its absence); the
+//   stub is what lets that render at all.
 // * **`window.scrollTo` is present and throws "Not implemented"** — logged
 //   rather than raised, but on every render that fills the create sheet, which
 //   `AppLayout` answers by scrolling the page back to it. Replaced with a

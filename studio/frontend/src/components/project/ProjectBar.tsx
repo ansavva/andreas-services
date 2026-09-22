@@ -1,16 +1,16 @@
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { Badge, Tabs, Text } from "@ansavva/design-system";
+import { Badge, IconButton, Tabs, Text } from "@ansavva/design-system";
 
 import { deleteProject, getCharacters, getProject } from "../../apis/studio";
 import { useInFlightRuns } from "../../hooks/useInFlightRuns";
 import { useResource } from "../../hooks/useResource";
 import type { HeroImage, ProjectRecord } from "../../types";
-import { PROJECTS_PATH, projectPath } from "../../utils/location";
+import { PROJECTS_PATH, projectPath, reelPath } from "../../utils/location";
 import { ApertureSpinner } from "../common/Aperture";
 import { ConfirmDestroyDialog } from "../common/ConfirmDestroyDialog";
-import { SettingsIcon, TrashIcon } from "../common/icons";
+import { PlayIcon, SettingsIcon, TrashIcon } from "../common/icons";
 import { CharacterChipLink } from "../character/CharacterChip";
 import { PageBar, useCopyLinkItem } from "../layout/PageBar";
 
@@ -49,6 +49,12 @@ export function projectTabPath(id: string, tab: string): string {
  * **Nothing here makes a run.** The create bar in the top bar is where a run
  * is authored, on every screen; the page's own primary slot holds who the
  * project is about instead, per the mockup.
+ *
+ * **Play reel is an icon in `actions`, not a menu line.** It is the one
+ * thing on the bar that is a way of *watching* the project rather than a
+ * thing done to it, and a control reached for on every visit costs one press
+ * here and two behind `⋯`. `/p/<id>/reel`, so it is a link and Back leaves
+ * it.
  */
 export function ProjectBar({ record, heroes }: { record: ProjectRecord; heroes: Record<string, HeroImage | null> }) {
   const copyLink = useCopyLinkItem();
@@ -91,6 +97,17 @@ export function ProjectBar({ record, heroes }: { record: ProjectRecord; heroes: 
               ))}
             </div>
           ) : undefined
+        }
+        actions={
+          <IconButton
+            label="Play reel"
+            size="sm"
+            intent="secondary"
+            onClick={() => navigate(reelPath(record.id))}
+            className=""
+          >
+            <PlayIcon className="size-4 fill-current stroke-none" />
+          </IconButton>
         }
         menu={[copyLink, {
             label: "Delete",

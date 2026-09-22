@@ -204,6 +204,15 @@ export function runPath(projectId: string, runId: string): string {
   return `/p/${projectId}/r/${runId}`;
 }
 
+/**
+ * A project's reel — everything in it, oldest first, one item per screen.
+ *
+ * Under the project's path, like a run: closing it is the project again.
+ */
+export function reelPath(projectId: string): string {
+  return `/p/${projectId}/reel`;
+}
+
 export function scenePath(id: string): string {
   return `/s/${id}`;
 }
