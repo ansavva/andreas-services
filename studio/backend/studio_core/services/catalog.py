@@ -1979,10 +1979,21 @@ def set_blob(
     if faststart is not None:
         assignments["faststart"] = faststart
 
+    # **Different bytes, different voice.** A registered voice id names the
+    # sample it was extracted from (`set_voice_id`), and this is the one path
+    # that can put other bytes behind the same node — a re-upload over a
+    # placeholder that already has one. Keeping the id would bind a character
+    # to a recording the library no longer holds, silently, in every later
+    # clip. `None` is a REMOVE here; see `_update`.
+    if (record.get("voices") and checksum is not None
+            and checksum != record.get("checksum")):
+        assignments["voices"] = None
+        logger.info("Dropped the cached voice on %s: its bytes changed", node_id)
+
     _write([(_update_meta(node_id, assignments), NotFoundError(node_id))])
 
     logger.info("Set blob on %s", node_id)
-    return {**record, **assignments}
+    return {k: v for k, v in {**record, **assignments}.items() if v is not None}
 
 
 def voice_id(record: dict, endpoint: str) -> str | None:

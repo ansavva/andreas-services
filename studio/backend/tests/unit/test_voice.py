@@ -316,3 +316,37 @@ def test_submitting_sends_elements_rather_than_a_flat_list(empty_api, media_buck
     record = catalog.entity(catalog.ENTITY_RUN, run["id"])
     assert record["status"] in ("pending", "running")
     assert record["provider"] == registry.FAL
+
+
+def test_replacing_the_bytes_drops_the_cached_voice(empty_api, media_bucket):
+    """**A cached id names the recording it came from.**
+
+    Re-uploading over a node is the one way other bytes get behind the same
+    row, and a voice id that survived it would bind a character to a sample
+    the library no longer holds — silently, in every later clip.
+    """
+    project = empty_api.post("/api/projects", json={"name": "recut"}).get_json()
+    root = empty_api.get(f"/api/projects/{project['id']}").get_json()["root"]
+    sample = _uploaded(empty_api, root, "take.wav", "audio/wav")
+    catalog.set_blob(sample["node_id"], sample["blob_key"], checksum="first")
+    minted = generate.voice_id_for(_entry(), sample["node_id"])
+    assert catalog.voice_id(catalog.node(sample["node_id"]),
+                            registry.voice_endpoint(_entry())) == minted
+
+    catalog.set_blob(sample["node_id"], sample["blob_key"], checksum="second")
+
+    assert "voices" not in catalog.node(sample["node_id"])
+
+
+def test_the_same_bytes_keep_their_voice(empty_api, media_bucket):
+    """A confirm that re-states the same checksum is not a new recording."""
+    project = empty_api.post("/api/projects", json={"name": "same"}).get_json()
+    root = empty_api.get(f"/api/projects/{project['id']}").get_json()["root"]
+    sample = _uploaded(empty_api, root, "take.wav", "audio/wav")
+    catalog.set_blob(sample["node_id"], sample["blob_key"], checksum="one")
+    minted = generate.voice_id_for(_entry(), sample["node_id"])
+
+    catalog.set_blob(sample["node_id"], sample["blob_key"], checksum="one")
+
+    assert catalog.voice_id(catalog.node(sample["node_id"]),
+                            registry.voice_endpoint(_entry())) == minted
