@@ -77,6 +77,7 @@ import {
 } from "./CreateChips";
 import { AttachPicker } from "./AttachPicker";
 import { SettingsPanel } from "./CreateSettings";
+import { ShotsPanel } from "./ShotList";
 import { anyPending, castOf, defaultEntry, findEntry, locationsOf, sendsOf } from "./roles";
 import { seedPlan } from "./seedPlan";
 import { runPath, projectPath } from "../../utils/location";
@@ -916,11 +917,37 @@ export function CreateBar() {
           />
         </div>
 
+        {/* The cuts, under the prompt and in the same column as it, because
+            they are prose too — see `ShotsPanel`. Nothing is drawn for a model
+            that cannot be cut. */}
+        {entry && (
+          <div onPointerDownCapture={leavePrompt}>
+            <ShotsPanel entry={entry} params={params} onParams={setParams} />
+          </div>
+        )}
+
         {/* `@container`: the chips show only when the row is wide enough for
             them (`@min-[40rem]`), and collapse into the gear otherwise. A
             container query rather than `md:`, because a narrow window with the
             sidebar open is the phone's problem at a desktop breakpoint. */}
-        <div className="@container flex items-center gap-1" onPointerDownCapture={leavePrompt}>
+        {/* **Stuck to the foot of the panel while the panel is the scroller.**
+            Over a viewer the sheet is capped at 60dvh and scrolls inside
+            itself (`SheetSlot`), so a tall enough draft — four shot boxes on a
+            15-second multi-shot — put Send and every chip below the fold of a
+            box the page cannot scroll. In the page's flow nothing sticks:
+            there the row is simply the last line of a card the page scrolls
+            past. */}
+        <div
+          className={`@container flex items-center gap-1 ${
+            bar.overViewer
+              ? // A border, because the row is over the last shot box rather
+                // than after it, and an opaque strip with no edge reads as a
+                // card cut in half.
+                "sticky bottom-0 z-10 border-t border-line bg-card pb-1 pt-1"
+              : ""
+          }`}
+          onPointerDownCapture={leavePrompt}
+        >
           {projectPicker}
 
           {entry && (

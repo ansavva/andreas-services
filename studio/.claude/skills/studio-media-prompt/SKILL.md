@@ -296,20 +296,26 @@ start frame is set):
 
 ```json
 {
-  "prompt": "The man from the source image, unchanged. Neo-noir grade.\n\nShot 1 (3s): Medium shot, static. He raises both arms…\nShot 2 (3s): …\n\nAvoid changing face, changing wardrobe, cuts.",
+  "prompt": "The man from the source image, unchanged. Neo-noir grade.\n\nAvoid changing face, changing wardrobe, cuts.",
   "input": {
     "prompt": "…", "mode": "standard", "duration": 9, "generate_audio": false,
-    "multi_prompt": "[{\"prompt\":\"He raises both arms…\",\"duration\":3}, …]"
+    "multi_prompt": "[{\"prompt\":\"Medium shot, static. He raises both arms…\",\"duration\":3}, …]"
   },
   "engine": "kling-replicate", "timeline": true, "warnings": [ … ]
 }
 ```
 
+**The beats are in `multi_prompt` and NOT in the prompt.** The prompt carries
+what is true of every cut — subject, style, lighting, audio, the `Avoid` — and
+the array carries what happens in each. `Shot N (Ns): …` lines appear in the
+prompt only when the durations do not resolve, because then nothing else is
+carrying the timeline. Settled 2026-09-22; see
+[`studio-media-kling`](../studio-media-kling/SKILL.md#the-timeline-goes-out-once).
+
 A single-shot Kling prompt is one paragraph in the formula's order — subject
 and action joined into a sentence, then scene, camera (`Medium shot, slow
 push-in, 35mm lens.`), lighting, style, audio — then dialogue as
-`Speaker (delivery): "line"`, then `Avoid …`. Shot durations on the
-`Shot N (Ns):` lines are the same numbers `multi_prompt` carries. Every rule
+`Speaker (delivery): "line"`, then `Avoid …`. Every rule
 in that shape is Kuaishou's own — its prompt guide is worked through on
 [`studio-media-kling`](../studio-media-kling/SKILL.md#kuaishous-prompt-guide-applied).
 

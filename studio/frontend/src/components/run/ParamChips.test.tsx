@@ -40,3 +40,15 @@ it("draws nothing for a plan with no scalar params and no model", () => {
   );
   expect(container.innerHTML).toBe("");
 });
+
+it("a shot list is not a pill either — it is drawn as boxes under the prompt", () => {
+  const shots = JSON.stringify([{ prompt: "he exhales", duration: 3 }]);
+  render(
+    <TestProviders>
+      <ParamChips params={{ seed: 1, multi_prompt: shots }} />
+    </TestProviders>,
+  );
+  expect(screen.queryByText("multi_prompt")).toBeNull();
+  expect(screen.queryByText(shots)).toBeNull();
+  expect(screen.getByText("seed")).toBeTruthy();
+});

@@ -48,6 +48,7 @@ import { CheckpointList, hasCheckpoints } from "../run/CheckpointList";
 import { OutputTile } from "../run/OutputTile";
 import { SendThumbs } from "../run/SendThumbs";
 import { ParamChips } from "../run/ParamChips";
+import { ShotsRead, shotListOf, type Shot } from "../create/ShotList";
 import { PromoteDrawer } from "../run/PromoteDrawer";
 import { promptText } from "../run/seed";
 import { useRunActions } from "../run/useRunActions";
@@ -863,6 +864,7 @@ const PROMPT_BOX = "flex w-full flex-col gap-2 rounded-md bg-fill-faint px-3 py-
 export function RunPrompt({ row, className = "" }: { row: RunFeedRow; className?: string }) {
   const text = promptText(row.plan?.prompt);
   const negative = negativePromptOf(row.plan?.params);
+  const shots = shotsOf(row.plan?.params);
 
   if (!text) {
     return (
@@ -877,6 +879,20 @@ export function RunPrompt({ row, className = "" }: { row: RunFeedRow; className?
   return (
     <div className={`${PROMPT_BOX} ${className}`}>
       <Clamped text={text} />
+      {/* **The cuts, under the prompt, in the boxes they were written in.**
+          The same `ShotCard` the create panel draws, so a multi-shot run
+          reads back the way it was authored — and in both places a run is
+          read, because this block is the feed row's prompt and the opened
+          run's alike. They were a `key value` pill and a mono line of escaped
+          JSON before, which is the one thing a shot list must not be.
+
+          Each beat clamps like the prompt does: a feed row of six beats is
+          otherwise taller than the picture beside it. */}
+      {shots && (
+        <div className="border-t border-line pt-2">
+          <ShotsRead shots={shots} text={(each) => <Clamped text={each} />} />
+        </div>
+      )}
       {/* **The negative prompt is prose, and reads as prose.** It is a
           parameter to the provider and was drawn as one — a `key value` pill
           beside `seed` — which for a sentence is the wrong shape: the pill
@@ -893,6 +909,20 @@ export function RunPrompt({ row, className = "" }: { row: RunFeedRow; className?
       )}
     </div>
   );
+}
+
+/**
+ * The cuts a plan carries, whichever param holds them.
+ *
+ * Recognised by SHAPE — a run's record has the params and not the registry
+ * entry that would name the field. See `shotListOf`.
+ */
+export function shotsOf(params: Record<string, unknown> | undefined): Shot[] | null {
+  for (const value of Object.values(params ?? {})) {
+    const shots = shotListOf(value);
+    if (shots) return shots;
+  }
+  return null;
 }
 
 /** The plan's `negative_prompt`, when it is a non-empty string. */

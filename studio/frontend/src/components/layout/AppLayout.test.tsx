@@ -116,3 +116,25 @@ it("over a viewer, a summoned sheet publishes its height and takes it back when 
   expect(screen.queryByLabelText("Prompt")).toBeNull();
   expect(root.style.getPropertyValue("--sheet-h")).toBe("");
 });
+
+it("caps the sheet over a viewer, so the run it is editing keeps a height", () => {
+  // A tall draft — four shot boxes on a multi-shot — published its whole
+  // height as `--sheet-h`, and `ViewerFrame` starts under that: the opened
+  // run collapsed to nothing and took Send off the bottom of the screen.
+  // Over a viewer the slot scrolls inside itself instead.
+  render(
+    <TestProviders>
+      <MemoryRouter initialEntries={["/o/node-1"]}>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route path="/o/:nodeId" element={<p>the file</p>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </TestProviders>,
+  );
+  fireEvent.dragEnter(window, { dataTransfer: { types: ["application/x-studio-node"] } });
+  const slot = screen.getByLabelText("Prompt").closest("[class*='z-[25]']") as HTMLElement;
+  expect(slot.className).toContain("max-h-[60dvh]");
+  expect(slot.className).toContain("overflow-y-auto");
+});

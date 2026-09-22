@@ -8,6 +8,7 @@ import type { ModelEntry } from "../../types";
 import { LoadError } from "../common/LoadError";
 import { SectionLoading } from "../common/SectionLoading";
 import { describedProps } from "../run/SchemaParams";
+import { shotsField } from "./ShotList";
 import {
   ParamRows,
   SettingRows,
@@ -56,9 +57,17 @@ export function CreateSettings({
   const skip = useMemo(() => {
     const images = entry.images ?? {};
     return new Set([
-      ...["prompt", images.refs, images.start, images.end, entry.clips?.source].filter(
-        (key): key is string => typeof key === "string",
-      ),
+      ...[
+        "prompt",
+        // The cuts have their own boxes under the prompt — `ShotsPanel`. A
+        // row here too would be a second, worse editor for the same value,
+        // and the sheet is the wrong shape for prose at that length.
+        shotsField(entry),
+        images.refs,
+        images.start,
+        images.end,
+        entry.clips?.source,
+      ].filter((key): key is string => typeof key === "string"),
       ...resolveChips(entry, schema.data ?? null).map((chip) => chip.name),
     ]);
   }, [entry, schema.data]);
