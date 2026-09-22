@@ -718,6 +718,140 @@
     },
     "options": {}
   },
+  "composite": {
+    "arguments": {},
+    "commands": {},
+    "options": {
+      "add_input": {
+        "choices": null,
+        "default": null,
+        "dest": "add_input",
+        "flag": false,
+        "flags": [
+          "--add-input"
+        ],
+        "help": "Write into PROJECT's input pool.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "background": {
+        "choices": null,
+        "default": "#ffffff",
+        "dest": "background",
+        "flag": false,
+        "flags": [
+          "--background"
+        ],
+        "help": "Hex colour behind the panels (default #ffffff).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "dest_key": {
+        "choices": null,
+        "default": null,
+        "dest": "dest_key",
+        "flag": false,
+        "flags": [
+          "--dest-key"
+        ],
+        "help": "Explicit destination name path instead.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "direction": {
+        "choices": [
+          "column",
+          "row"
+        ],
+        "default": "row",
+        "dest": "direction",
+        "flag": false,
+        "flags": [
+          "--direction"
+        ],
+        "help": "Lay the panels across or down (default row).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "gap": {
+        "choices": null,
+        "default": 6,
+        "dest": "gap",
+        "flag": false,
+        "flags": [
+          "--gap"
+        ],
+        "help": "Gutter and outer margin, as a % of the panel edge (default 6).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "int"
+      },
+      "key": {
+        "choices": null,
+        "default": null,
+        "dest": "keys",
+        "flag": false,
+        "flags": [
+          "--key"
+        ],
+        "help": "A panel, by node id or name path. Repeat, in layout order.",
+        "hidden": false,
+        "multiple": true,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "quality": {
+        "choices": null,
+        "default": 95,
+        "dest": "quality",
+        "flag": false,
+        "flags": [
+          "--quality"
+        ],
+        "help": "JPEG/WebP quality (default 95).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "int"
+      },
+      "to": {
+        "choices": [
+          "jpeg",
+          "jpg",
+          "png",
+          "webp"
+        ],
+        "default": null,
+        "dest": "to",
+        "flag": false,
+        "flags": [
+          "--to"
+        ],
+        "help": "Output format (default: the first panel's).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      }
+    }
+  },
   "config": {
     "arguments": {},
     "commands": {

@@ -1,7 +1,9 @@
-"""`convert` and `crop`: one image in, one image out, **synchronously**.
+"""`convert`, `crop` and `composite`: Pillow work answered **synchronously**.
 
 The second of the two questions the render-worker issue left open — *do `convert`
-and `crop` belong on the queue at all?* — and the answer is no.
+and `crop` belong on the queue at all?* — and the answer is no. `composite` joined
+them later on the same test: several small images in, one plate out, still
+sub-second, still nothing to stream.
 
 Both are sub-second operations on a single image. A queue round trip is an
 enqueue, a poll, and at least one more poll, so it costs more wall clock than the
@@ -14,7 +16,7 @@ not one module over.
 So the API image carries **Pillow and not ffmpeg**. `media/imaging.py` is the
 work; this is the addressing, the cap and the destination.
 
-## Both of these copy. Neither modifies its source.
+## All three of these copy. None modifies its source.
 
 A run's output is append-only history, so a conversion and a crop are new nodes
 beside the old one. That was true of the CLI commands these replace and it is the
@@ -60,6 +62,37 @@ def _source(node_id) -> tuple[dict, bytes]:
             f"that image is {record['size']} bytes and this route handles at most "
             f"{cap}. Large sources belong on the render queue.")
     return record, s3.get_body(record["blob_key"], cap)
+
+
+def _sources(nodes) -> tuple[list[dict], list[bytes]]:
+    """Several nodes, membership-checked, capped as ONE heap rather than each.
+
+    `_source`'s cap is per image because `convert` and `crop` hold one. A plate
+    holds all of its panels decoded at once plus the plate itself, so the budget
+    that matters is the total — twelve images each just inside the per-image cap
+    would be a third of a gigabyte of the Lambda's 512 MB before Pillow has
+    drawn anything.
+    """
+    if not isinstance(nodes, list) or len(nodes) < 2:
+        raise ValidationError(
+            "nodes is a list of at least two node ids, in the order they lay out")
+    if len(nodes) > imaging.MAX_PANELS:
+        raise ValidationError(
+            f"a plate holds at most {imaging.MAX_PANELS} panels — got {len(nodes)}. "
+            "More than that is a contact sheet, which is a render job.")
+    cap = config.max_image_bytes()
+    records, bodies, spent = [], [], 0
+    for node_id in nodes:
+        record, data = _source(node_id)
+        spent += len(data)
+        if spent > cap:
+            raise ValidationError(
+                f"those {len(nodes)} images come to more than {cap} bytes together, "
+                "which is what this route will hold at once. Compose fewer, or "
+                "smaller ones.")
+        records.append(record)
+        bodies.append(data)
+    return records, bodies
 
 
 def _destination(body: dict, source: dict, target_ext: str) -> tuple[str, str]:
@@ -167,4 +200,50 @@ def crop_image():
     logger.info("Cropped %s to %s in %s", source["node_id"], report["box"], g.library)
     return jsonify({"image": _write(folder_id, name, cut, target_ext),
                     "source": {"node": source["node_id"], "bytes": len(data)},
+                    **report}), 201
+
+
+@bp.post("/images/composite")
+def composite_image():
+    """Lay several images out as one plate. `nodes` is the order they appear in.
+
+    **The operation that makes a multi-angle reference out of a turnaround.**
+    Several engines take one image where the identity ought to be several — a
+    front, a three-quarter and a back on one sheet carry a face and a build a
+    single frontal view cannot, and they arrive in one reference slot.
+
+    Panels are normalised to a common edge, **downscale only**: a panel smaller
+    than its neighbours is the reason to shrink them, never to invent pixels for
+    it. The gutter defaults to something visible and runs around the outside as
+    well, because panels butted together on a shared white ground merge — two
+    shoulders meet and one figure appears to have four arms.
+
+    **Choosing the images and their order is deliberately not here**, for the
+    reason detection is not in `crop`: which three angles carry a subject is a
+    judgement about that subject, and a plate built from the wrong ones is worse
+    than no plate. Name them, in order.
+    """
+    body = support.body()
+    sources, bodies = _sources(body.get("nodes"))
+    target_ext = _target_ext(body, sources[0])
+    folder_id, name = _destination(body, sources[0], target_ext)
+    if not body.get("name"):
+        # `_destination`'s default is the source's own stem, which is right for
+        # a conversion sitting beside its source and wrong here: a plate landing
+        # in the same folder as its first panel under that panel's name would be
+        # `create_numbered`'d to `front (2).png` and read as another angle.
+        stem = os.path.splitext(sources[0].get("name") or "image")[0]
+        name = f"{stem}-composite{target_ext}"
+
+    plate, report = imaging.composite(
+        bodies, target_ext,
+        direction=body.get("direction") or "row",
+        gap_percent=body.get("gap", imaging.DEFAULT_GAP_PERCENT),
+        background=body.get("background") or "#ffffff",
+        quality=_quality(body))
+    logger.info("Composited %s panels into %sx%s in %s",
+                len(bodies), report["width"], report["height"], g.library)
+    return jsonify({"image": _write(folder_id, name, plate, target_ext),
+                    "sources": [{"node": record["node_id"], "bytes": len(data)}
+                                for record, data in zip(sources, bodies)],
                     **report}), 201

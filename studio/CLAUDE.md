@@ -236,8 +236,8 @@ same library.
 
 ## Which skill
 
-**Load one before doing anything else in `studio/`.** Forty skills in **two
-families** — thirty-nine `studio-media-*` and one `studio-code-*`; route by what
+**Load one before doing anything else in `studio/`.** Forty-one skills in **two
+families** — forty `studio-media-*` and one `studio-code-*`; route by what
 the task *changes*, not by what it mentions.
 
 | If the task changes… | Load | Examples |
@@ -265,6 +265,7 @@ The app half (`backend/`, `frontend/`) has no skill of its own; read
 | Store, fetch, list or presign anything; record a run | `studio-media-s3` |
 | Make a still image | `studio-media-image`, then a model skill |
 | Enlarge or restore an image that already exists | `studio-media-image-upscale` |
+| Lay several angles out as one multi-view reference plate | `studio-media-composite` |
 | Make one shot end to end (still → motion) | `studio-media-shot` |
 | Continue past a model's duration ceiling | `studio-media-scene` |
 | Cut finished scenes into one piece | `studio-media-movie` |

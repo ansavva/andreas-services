@@ -1,4 +1,4 @@
-"""`convert` and `crop`: the two operations that are **not** on the render queue.
+"""`convert`, `crop` and `composite`: the Pillow work that is **not** queued.
 
 The issue that moved ffmpeg into the service asked the question directly — *do
 `convert` and `crop` belong on the queue at all?* — and the answer these routes
@@ -7,13 +7,15 @@ more wall clock than the work, and Pillow is ~3 MB where `imageio-ffmpeg` is ~80
 So the API image carries Pillow and the render image carries both.
 
 What is under test here is the addressing, the cap and the destination.
-`media/imaging.py` is the arithmetic and is covered in `test_media.py`.
+`media/imaging.py` is the arithmetic — the box, the clamp, the plate's
+geometry — and is covered in `test_media.py`.
 """
 
 import io
 
 from PIL import Image
 
+from studio_core.media import imaging
 from studio_core.services import catalog, layout
 
 
@@ -236,3 +238,110 @@ def test_the_crop_keeps_the_source_format_unless_told_otherwise(empty_api):
     # extension is what this test is about.
     assert body["image"]["name"] == "wide (2).png"
     assert Image.open(io.BytesIO(_bytes(body["image"]["node"]))).format == "PNG"
+
+
+# ──────────────────────────── composite ──────────────────────────────────────
+
+
+def test_a_plate_is_one_new_node_and_every_panel_survives_it(empty_api):
+    """Three angles in, one sheet out, and the turnaround they came from is
+    still a turnaround."""
+    project = _project(empty_api)
+    panels = [_image(empty_api, project, name=f"angle-{n}.png") for n in range(3)]
+    before = [_bytes(p["node_id"]) for p in panels]
+
+    resp = empty_api.post("/api/images/composite", json={
+        "nodes": [p["node_id"] for p in panels]})
+
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert [s["node"] for s in body["sources"]] == [p["node_id"] for p in panels]
+    assert [_bytes(p["node_id"]) for p in panels] == before
+    plate = Image.open(io.BytesIO(_bytes(body["image"]["node"])))
+    assert plate.size == (body["width"], body["height"])
+
+
+def test_a_plate_is_named_for_its_first_panel_and_not_AS_it(empty_api):
+    """It lands in the same folder as the panels, so the source's own stem —
+    which is what `convert` and `crop` default to — would be `create_numbered`'d
+    to `angle-0 (2).png` and read as a fourth angle."""
+    project = _project(empty_api)
+    panels = [_image(empty_api, project, name=f"angle-{n}.png") for n in range(2)]
+
+    body = empty_api.post("/api/images/composite", json={
+        "nodes": [p["node_id"] for p in panels]}).get_json()
+
+    assert body["image"]["name"] == "angle-0-composite.png"
+
+
+def test_a_named_plate_is_called_what_it_was_told(empty_api):
+    project = _project(empty_api)
+    panels = [_image(empty_api, project, name=f"angle-{n}.png") for n in range(2)]
+
+    body = empty_api.post("/api/images/composite", json={
+        "nodes": [p["node_id"] for p in panels],
+        "name": "wardrobe-plate.png"}).get_json()
+
+    assert body["image"]["name"] == "wardrobe-plate.png"
+
+
+def test_the_geometry_comes_back_because_a_silent_rescale_is_not_stated(empty_api):
+    project = _project(empty_api)
+    panels = [_image(empty_api, project, name="tall.png", width=400, height=600),
+              _image(empty_api, project, name="short.png", width=200, height=300)]
+
+    body = empty_api.post("/api/images/composite", json={
+        "nodes": [p["node_id"] for p in panels]}).get_json()
+
+    assert body["scaled"] is True
+    assert body["panels"][0]["source"] == {"width": 400, "height": 600}
+    assert body["panels"][0]["height"] == 300, "normalised down to the shortest"
+
+
+def test_one_node_is_refused_rather_than_copied(empty_api):
+    project = _project(empty_api)
+    source = _image(empty_api, project)
+
+    resp = empty_api.post("/api/images/composite", json={
+        "nodes": [source["node_id"]]})
+
+    assert resp.status_code == 400
+    assert "at least two" in resp.get_json()["error"]
+
+
+def test_more_panels_than_a_plate_holds_is_refused_before_anything_is_read(empty_api):
+    """The count is checked first, so thirteen bad node ids cost one refusal
+    rather than thirteen catalog reads."""
+    resp = empty_api.post("/api/images/composite", json={
+        "nodes": [f"node-{n}" for n in range(imaging.MAX_PANELS + 1)]})
+
+    assert resp.status_code == 400
+    assert "contact sheet" in resp.get_json()["error"]
+
+
+def test_panels_are_capped_as_one_heap_and_not_each(empty_api, monkeypatch):
+    """`convert` and `crop` hold one image; a plate holds all of them decoded at
+    once, so the budget that matters is the total."""
+    project = _project(empty_api)
+    panels = [_image(empty_api, project, name=f"angle-{n}.png") for n in range(3)]
+    one = catalog.node(panels[0]["node_id"])["size"]
+    monkeypatch.setenv("STUDIO_MAX_IMAGE_BYTES", str(int(one) * 2))
+
+    resp = empty_api.post("/api/images/composite", json={
+        "nodes": [p["node_id"] for p in panels]})
+
+    assert resp.status_code == 400
+    assert "together" in resp.get_json()["error"]
+
+
+def test_a_plate_can_be_written_somewhere_else_entirely(empty_api):
+    project = _project(empty_api)
+    panels = [_image(empty_api, project, name=f"angle-{n}.png") for n in range(2)]
+    elsewhere = layout.folder_under(project["root"], layout.INPUT_FOLDER)
+
+    body = empty_api.post("/api/images/composite", json={
+        "nodes": [p["node_id"] for p in panels],
+        "dest": elsewhere["node_id"], "to": "jpg"}).get_json()
+
+    assert catalog.node(body["image"]["node"])["parent_id"] == elsewhere["node_id"]
+    assert Image.open(io.BytesIO(_bytes(body["image"]["node"]))).format == "JPEG"

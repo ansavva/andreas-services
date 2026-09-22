@@ -554,6 +554,18 @@ of a whole pool into `review/`, for eyeballing which pose is which. The
 captions are baked into the pixels, which makes it the wrong image to send a
 model.
 
+**`studio composite` is how one is built**, and there is a skill for the rest of
+it — **`studio-media-composite`**: which three angles to choose and why a
+mirrored one is a poor panel, why the gutter between them is not decoration, and
+what to tell a prompt so the model renders the subject rather than the sheet.
+The plates already in the library were laid out by hand before the command
+existed; the conventions above are theirs and the command follows them.
+
+```bash
+studio composite --key <node> --key <node> --key <node> \
+    --dest-key <subject-root>/reference/wardrobe/<outfit>/<file>.png
+```
+
 ## A bible describes identity, not a fixed look
 
 A character record is medium-agnostic on purpose:
