@@ -16,8 +16,8 @@ captions, the trigger, hard rule #2, what lands where and when, and the
 failure modes holds here unchanged. This page is what differs.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model ltx-2.3-lora-train …`,
-> and `studio models show ltx-2.3-lora-train` for the knobs. `ltx-2-lora-train`
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model runpod-ltx-2.3-lora-train …`,
+> and `studio models show runpod-ltx-2.3-lora-train` for the knobs. `ltx-2-lora-train`
 > is an alias.
 
 ## What differs from the Wan trainer
@@ -36,7 +36,7 @@ failure modes holds here unchanged. This page is what differs.
 ## Invoke
 
 ```bash
-studio run --model ltx-2.3-lora-train --project <project> \
+studio run --model runpod-ltx-2.3-lora-train --project <project> \
   --character <name> --pick-tag dataset \
   --extra '{"trigger":"ohwx_pt","steps":1500,"gpu":"h100"}' \
   --dry-run

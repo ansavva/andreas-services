@@ -13,8 +13,8 @@ prompt and a repeatable seed are what set it apart from the Replicate
 engines here besides Veo. **It takes no image of any kind.**
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model wan-2.6-t2v …`,
-> and `studio models show wan-2.6-t2v` for the schema. This page covers
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model runpod-wan-2.6-t2v …`,
+> and `studio models show runpod-wan-2.6-t2v` for the schema. This page covers
 > only what is specific to this model.
 
 ## What is specific to this model
@@ -38,12 +38,12 @@ engines here besides Veo. **It takes no image of any kind.**
 
 ```bash
 # five seconds, landscape 720p, a repeatable seed
-studio run --model wan-2.6-t2v --project <project> \
+studio run --model runpod-wan-2.6-t2v --project <project> \
   --extra '{"duration":5,"size":"1280*720","seed":7}' \
   --prompt "…"
 
 # portrait, ten seconds, with a negative prompt
-studio run --model wan-2.6-t2v --project <project> \
+studio run --model runpod-wan-2.6-t2v --project <project> \
   --extra '{"duration":10,"size":"1080*1920","negative_prompt":"text, watermark, jitter"}' \
   --prompt "…"
 ```

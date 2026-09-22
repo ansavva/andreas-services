@@ -45,6 +45,13 @@ from studio_core.errors import ValidationError
 # bucket really does contain both `.jpg` and `.JPG` (characters/<name>/corpus).
 IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".bmp"})
 VIDEO_EXTENSIONS = frozenset({".mp4", ".webm", ".mov", ".m4v"})
+# The audio a voice sample arrives as. `.mp4` and `.mov` are deliberately NOT
+# here: a file is one kind, and a container that holds a voice track holds
+# pictures too — Kling will read a voice off either, and a tile that drew a
+# waveform for a clip would be lying about what was uploaded. A model that
+# takes a video as a voice source says so in its own registry entry
+# (`audio.accepts_ext`), which is a different question from what this file is.
+AUDIO_EXTENSIONS = frozenset({".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"})
 TEXT_EXTENSIONS = frozenset({".json", ".md", ".txt", ".yaml", ".yml", ".csv", ".log"})
 
 # What the text viewer labels a text file as, for syntax highlighting.
@@ -162,12 +169,14 @@ def extension(key: str) -> str:
 
 
 def kind(key: str) -> str:
-    """Classify a key for the UI: image, video, text or other."""
+    """Classify a key for the UI: image, video, audio, text or other."""
     ext = extension(key)
     if ext in IMAGE_EXTENSIONS:
         return "image"
     if ext in VIDEO_EXTENSIONS:
         return "video"
+    if ext in AUDIO_EXTENSIONS:
+        return "audio"
     if ext in TEXT_EXTENSIONS:
         return "text"
     return "other"

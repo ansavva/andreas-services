@@ -106,7 +106,7 @@ studio describe <node> --text "Wide from the door: counter left, window ahead, t
 ## Rendering a frame in a location
 
 ```bash
-studio run --model nano-banana-pro --project <project> \
+studio run --model replicate-nano-banana-pro --project <project> \
   --character <name> --location <place> --location-tag wide \
   --prompt "<name> at the counter, night state, reverse to the window" --dry-run
 ```

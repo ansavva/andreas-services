@@ -275,7 +275,7 @@ The app half (`backend/`, `frontend/`) has no skill of its own; read
 | Write a tight, repeatable video prompt | `studio-media-prompt` |
 | Invoke a model generically, or inspect its schema | `studio-media-core` |
 | Register a new Replicate model | `studio-media-add-model` |
-| Pick a video engine | `studio-media-seedance` · `studio-media-seedance-2-5` · `studio-media-kling` · `studio-media-kling-v3-motion-control` · `studio-media-veo-3-1` · `studio-media-grok-imagine-video` · `studio-media-wan-2-6-t2v` · `studio-media-wan-2-6-i2v` · `studio-media-wan-2-2-i2v-lora` · `studio-media-wan-2-2-i2v-studio` · `studio-media-ltx-2-3-i2v-lora` · `studio-media-wan-3-0-t2v` · `studio-media-wan-3-0-i2v` · `studio-media-wan-3-0-r2v` · `studio-media-wan-3-0-openrouter` |
+| Pick a video engine | `studio-media-seedance` · `studio-media-seedance-2-5` · `studio-media-kling` · `studio-media-fal-kling` · `studio-media-kling-v3-motion-control` · `studio-media-veo-3-1` · `studio-media-grok-imagine-video` · `studio-media-wan-2-6-t2v` · `studio-media-wan-2-6-i2v` · `studio-media-wan-2-2-i2v-lora` · `studio-media-wan-2-2-i2v-studio` · `studio-media-ltx-2-3-i2v-lora` · `studio-media-wan-3-0-t2v` · `studio-media-wan-3-0-i2v` · `studio-media-wan-3-0-r2v` · `studio-media-wan-3-0-openrouter` |
 | Pick an image engine | `studio-media-nano-banana-pro` · `studio-media-nano-banana-2` · `studio-media-gpt-image-2` · `studio-media-gpt-image-2-5-sunburst` · `studio-media-gpt-image-2-5-flare` · `studio-media-gpt-image-1-5` · `studio-media-seedream-5-pro` · `studio-media-krea-2-large` · `studio-media-flux-2-pro` · `studio-media-z-image-turbo` |
 
 **Ask which project before generating anything.** A run belongs to a project;

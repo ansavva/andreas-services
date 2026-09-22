@@ -5,7 +5,7 @@ import { Badge, IconButton, Text } from "@ansavva/design-system";
 import type { FileEntry } from "../../types";
 import { downloadNode } from "../../utils/download";
 import { formatBytes } from "../../utils/format";
-import { describeBinary, extensionOf } from "../../utils/media";
+import { describeBinary, extensionOf, kindOfFile } from "../../utils/media";
 import { CopyKeyButton } from "../common/CopyKeyButton";
 import { CloseIcon, DownloadIcon } from "../common/icons";
 import { PageBar, type Crumb } from "../layout/PageBar";
@@ -38,6 +38,14 @@ export function FilePage({ file, onClose, crumbs }: Props) {
   const [error, setError] = useState<string | null>(null);
   const what = describeBinary(file.name);
   const ext = extensionOf(file.name).replace(/^\./, "") || "file";
+  /**
+   * Audio is the one kind here that can be *played* rather than only
+   * described, and it is on this page for the reason everything else is: the
+   * viewer draws pictures and clips, and a voice sample is neither. The
+   * browser's own controls are the whole player — a scrub bar, a volume, a
+   * duration — and building a second one would add nothing a person asked for.
+   */
+  const isAudio = kindOfFile(file.name, file.content_type) === "audio";
 
   const download = async () => {
     setDownloading(true);
@@ -85,6 +93,16 @@ export function FilePage({ file, onClose, crumbs }: Props) {
       />
 
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-4" data-file-page="">
+        {/* No caption track on a voice sample; the bar above names the file. */}
+        {isAudio && (
+          <audio
+            src={file.url ?? undefined}
+            controls
+            preload="metadata"
+            className="w-full"
+            data-audio-player=""
+          />
+        )}
         <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 rounded-md border border-line bg-card p-4">
           <dt>
             <Text variant="caption" tone="muted">
@@ -115,6 +133,14 @@ export function FilePage({ file, onClose, crumbs }: Props) {
             </Text>
           </dd>
         </dl>
+        {isAudio && (
+          <Text variant="caption" tone="muted">
+            A voice sample. A Kling run binds one to a character — the model reads its pitch
+            and tone and speaks that character in it — with{" "}
+            <span className="font-mono">--voice-key</span>, or the Voice tile on the create
+            sheet. 5–30 seconds of one clean voice is what the model asks for.
+          </Text>
+        )}
         {what === "LoRA / model weights" && (
           <Text variant="caption" tone="muted">
             Weights a model loads beside its own. Nothing here draws them; a video run binds

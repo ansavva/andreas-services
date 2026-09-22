@@ -15,8 +15,8 @@ the newer pair — editing precision and speed respectively — carrying two
 higher quality tiers.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model gpt-image-2 …`,
-> and `studio models show gpt-image-2` for the live schema. This page covers
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model replicate-gpt-image-2 …`,
+> and `studio models show replicate-gpt-image-2` for the live schema. This page covers
 > only what is specific to this model. [`gpt-image-1.5`](../studio-media-gpt-image-1-5/SKILL.md) is the sibling that does transparent backgrounds.
 
 ## What is specific to this model
@@ -74,7 +74,7 @@ letting the render fail. Two ways out:
 
 # or convert an existing run output (the source is never modified)
 studio convert \
-  --run <project>/latest#1 --for kling --add-input <project>
+  --run <project>/latest#1 --for replicate-kling --add-input <project>
 ```
 
 `--add-input` takes a **PROJECT** — the destination is that project's input

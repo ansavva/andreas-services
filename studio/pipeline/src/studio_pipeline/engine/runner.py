@@ -333,6 +333,8 @@ def _refuse_a_duplicate(record: dict, args) -> None:
 @click.option("--start-key", help="Node id (or name path) of the first frame (video).")
 @click.option("--start-run", help="An earlier run's output as the first frame (video).")
 @click.option("--timeout", type=int, help="Give up after N seconds.")
+@click.option("--voice-key", multiple=True, help=("Node id (or name path) of an audio file the model clones a "
+              "voice from and binds to that character (video, element models). Repeatable."))
 def cmd_run(**options):
     args = SimpleNamespace(**options)
     try:
@@ -376,7 +378,8 @@ def cmd_run(**options):
     payload = build_payload(entry, args)
 
     try:
-        bindings = SUB.gather(entry, args)
+        args.send_roles = {}
+        bindings = SUB.gather(entry, args, args.send_roles)
         SUB.check_payload_rules(entry, payload)
     except (SUB.SubmitError, REFS.RefError, R.RunError) as e:
         die(str(e))
@@ -412,7 +415,8 @@ def cmd_run(**options):
             die(str(e))
         _refuse_a_duplicate(record, args)
         link = LINKS.run(record)
-        print(SUB.render(entry, record["id"], payload, bindings, args.json_, ui=link))
+        print(SUB.render(entry, record["id"], payload, bindings, args.json_,
+                         ui=link, roles=args.send_roles))
         print(f"\ndraft {record['id']} — nothing submitted, nothing billed.\n"
               f"       submit it:   studio runs submit {record['id']}\n"
               f"       discard it:  studio runs discard {record['id']}"

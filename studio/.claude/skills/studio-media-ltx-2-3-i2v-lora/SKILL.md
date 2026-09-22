@@ -13,8 +13,8 @@ alias; the `ltx-2` and `ltx-2-19b` endpoints it might have named are
 deprecated on fal since 2026-08-15, and this is the 2.3 endpoint on purpose.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model ltx-2.3-i2v-lora …`,
-> and `studio models show ltx-2.3-i2v-lora` for the live schema. This page
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model fal-ltx-2.3-i2v-lora …`,
+> and `studio models show fal-ltx-2.3-i2v-lora` for the live schema. This page
 > covers only what is specific to this model.
 
 ## What is specific to this model
@@ -38,7 +38,7 @@ deprecated on fal since 2026-08-15, and this is the 2.3 endpoint on purpose.
 
 ```bash
 # the newest full-body still, the final checkpoint of a training run
-studio run --model ltx-2.3-i2v-lora --project <project> \
+studio run --model fal-ltx-2.3-i2v-lora --project <project> \
   --start-run <project>/latest#1 \
   --lora-key <name>/models/<name>-ohwx-pt-<run>.safetensors \
   --extra '{"num_frames":121,"seed":7,"lora_scale":1.0}' \

@@ -82,7 +82,7 @@ To add a model, use [`studio-media-add-model`](../studio-media-add-model/SKILL.m
 ## Generating
 
 ```bash
-studio run --model gpt-image-2 --project <project> \
+studio run --model replicate-gpt-image-2 --project <project> \
   --prompt "..." --character <name> --name <file>
 ```
 
@@ -118,7 +118,7 @@ same check, so the payload a person read is the payload that submits. When a fie
 aimed at the wrong model, the error names the one that takes it:
 
 ```
-$ studio run --model gpt-image-2 --project <project> --extra '{"input_fidelity":"high"}' …
+$ studio run --model replicate-gpt-image-2 --project <project> --extra '{"input_fidelity":"high"}' …
 error: openai/gpt-image-2 does not accept: ['input_fidelity']
   `input_fidelity` is accepted by: gpt-image-1.5
   valid inputs: ['aspect_ratio', 'background', 'input_images', …]
@@ -164,12 +164,12 @@ name fragment, or a bare run id when the project is supplied out of band
 
 ```bash
 # refine a frame using the previous frame plus part of the curated set
-studio run --model nano-banana-pro --project <project> --prompt "..." \
+studio run --model replicate-nano-banana-pro --project <project> --prompt "..." \
   --character <name> --slots 1,2 --ref-run <project>/latest#1 --name <file>
 
 # then animate it — the payoff
 studio run \
-  --model kling --project <project> --input-file input.json --character <name> \
+  --model replicate-kling --project <project> --input-file input.json --character <name> \
   --start-run <project>/latest#1 --name <file> --poll
 ```
 
@@ -234,7 +234,7 @@ is copied, never re-encoded in place:
 
 ```bash
 studio convert \
-  --run <project>/latest#1 --for kling --add-input <project>
+  --run <project>/latest#1 --for replicate-kling --add-input <project>
 # -> <project>/input/<file>.png   (prints the new node)
 ```
 
@@ -251,7 +251,7 @@ base image goes first, references after. Name the roles in the prompt to match
 model to infer them.
 
 ```bash
-studio run --model nano-banana-pro --project <project> --name <file> \
+studio run --model replicate-nano-banana-pro --project <project> --name <file> \
   --key <project>/input/<file>.png \
   --character <name> --pick-tag face \
   --aspect-ratio match_input_image --prompt "Use the FIRST image as the base…"
@@ -283,11 +283,11 @@ What works is a **chain of two runs, holding one identity per run:**
    remaining images, and ONLY him*.
 
 ```bash
-studio run --model gpt-image-2.5-flare --project <project> \
+studio run --model replicate-gpt-image-2.5-flare --project <project> \
   --character <name-1> --pick-tag default --aspect-ratio 3:2 \
   --name two-shot-step1 --prompt-file step1.txt
 
-studio run --model gpt-image-2.5-sunburst --project <project> \
+studio run --model replicate-gpt-image-2.5-sunburst --project <project> \
   --image-run <project>/latest --character <name-2> --pick-tag default,face \
   --aspect-ratio 3:2 --name two-shot-step2 --prompt-file step2.txt
 ```
@@ -319,16 +319,16 @@ comes off last:
 3. **Remove the shirt as a one-thing edit** — the only change in that prompt.
 
 ```bash
-studio run --model nano-banana-pro --project <project> \
+studio run --model replicate-nano-banana-pro --project <project> \
   --input <N> --aspect-ratio match_input_image --name pose-1 \
   --prompt "Reproduce the image exactly … change only his pose: …"
 
-studio run --model nano-banana-pro --project <project> \
+studio run --model replicate-nano-banana-pro --project <project> \
   --input <M> --character <name-2> --pick-tag default,face \
   --aspect-ratio match_input_image --name pose-2 \
   --prompt "Use the FIRST image as the base … add the man from the SECOND and THIRD images, dressed as he is there, …"
 
-studio run --model nano-banana-pro --project <project> \
+studio run --model replicate-nano-banana-pro --project <project> \
   --input <K> --aspect-ratio match_input_image --name pose-3 \
   --prompt "Reproduce the image exactly; the only change: the man on the left is now shirtless."
 ```
@@ -375,11 +375,11 @@ frame). Measured 2026-09-18. The chain that works:
    stay exactly as they are.
 
 ```bash
-studio run --model nano-banana-pro --project <project> \
+studio run --model replicate-nano-banana-pro --project <project> \
   --input <N> --aspect-ratio match_input_image --name repose-step1 \
   --prompt "Reproduce the image exactly … change only his pose: …"
 
-studio run --model gpt-image-2.5-sunburst --project <project> \
+studio run --model replicate-gpt-image-2.5-sunburst --project <project> \
   --image-run <project>/latest --character <name-2> --pick-tag default,face \
   --name repose-step2 --prompt-file step2.txt
 ```

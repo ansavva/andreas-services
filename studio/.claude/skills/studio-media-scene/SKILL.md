@@ -206,13 +206,13 @@ Per clip, and only two steps bill.
 studio scenes new <project> --name <name>
 
 # 2. the seed still  (SHOWS THE PAYLOAD, THEN ASKS — bills, cents)
-studio run --model gpt-image-2 --project <project> --scene <name> \
+studio run --model replicate-gpt-image-2 --project <project> --scene <name> \
     --character <character> --prompt-file seed.txt --name seed
 
 # 3. LOOK AT IT — hard rule #2b: a seed nobody looked at is a scene nobody wanted
 
 # 4. clip 1, opening on the seed  (SHOWS THE PAYLOAD, THEN ASKS — bills, dollars)
-studio run --model kling --project <project> --scene <name> \
+studio run --model replicate-kling --project <project> --scene <name> \
     --start-run <project>/latest#1 --input-file shot-01.json --name shot-01
 studio scenes add <project>/<name> <project>/latest
 
@@ -222,7 +222,7 @@ studio frames last <project>/latest --add-input          # -> a node id
 studio scenes frames <project>/<name> --args --max 7     # -> --key … --key …
 
 # 6. clip 2, opening on that frame, referencing the scene's own frames
-studio run --model kling --project <project> --scene <name> \
+studio run --model replicate-kling --project <project> --scene <name> \
     --start-key <node id from step 5> --key <…> --key <…> \
     --input-file shot-02.json --name shot-02
 studio scenes add <project>/<name> <project>/latest

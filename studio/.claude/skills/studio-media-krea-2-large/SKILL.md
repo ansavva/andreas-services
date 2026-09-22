@@ -13,8 +13,8 @@ field, real-world texture) and **expressive artistic styles**, with a
 result. It bills a flat price per image and exposes almost no other knobs.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model krea-2-large …`,
-> and `studio models show krea-2-large` for the live schema. This page covers
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model replicate-krea-2-large …`,
+> and `studio models show replicate-krea-2-large` for the live schema. This page covers
 > only what is specific to this model.
 
 ## What is specific to this model
@@ -36,7 +36,7 @@ result. It bills a flat price per image and exposes almost no other knobs.
 ## Invoke
 
 ```bash
-studio run --model krea-2-large --project <project> \
+studio run --model replicate-krea-2-large --project <project> \
   --no-refs --aspect-ratio 3:2 \
   --extra '{"creativity":"raw","seed":7}' \
   --prompt "…"
@@ -129,7 +129,7 @@ needed; the source is never modified:
 
 ```bash
 studio runs outputs <project>/latest
-studio convert --run <project>/latest#1 --for kling --add-input <project>
+studio convert --run <project>/latest#1 --for replicate-kling --add-input <project>
 ```
 
 ## When the output goes wrong

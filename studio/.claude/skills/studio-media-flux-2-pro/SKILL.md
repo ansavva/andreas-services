@@ -14,8 +14,8 @@ It bills **per megapixel** — input and output both count — so the price is
 decided by `resolution` and by how much you hand it, not by a quality tier.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model flux-2-pro …`,
-> and `studio models show flux-2-pro` for the live schema. This page covers
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model replicate-flux-2-pro …`,
+> and `studio models show replicate-flux-2-pro` for the live schema. This page covers
 > only what is specific to this model.
 
 ## What is specific to this model
@@ -36,13 +36,13 @@ decided by `resolution` and by how much you hand it, not by a quality tier.
 
 ```bash
 # a plate, repeatable
-studio run --model flux-2-pro --project <project> \
+studio run --model replicate-flux-2-pro --project <project> \
   --no-refs --aspect-ratio 3:2 \
   --extra '{"resolution":"2 MP","seed":7,"output_format":"png"}' \
   --prompt "…"
 
 # an edit of a finished frame — --image-run is always image 1
-studio run --model flux-2-pro --project <project> \
+studio run --model replicate-flux-2-pro --project <project> \
   --image-run <project>/latest#1 \
   --aspect-ratio match_input_image \
   --extra '{"resolution":"match_input_image","output_format":"png"}' \
@@ -134,7 +134,7 @@ output — the source is never modified:
 
 ```bash
 studio runs outputs <project>/latest
-studio convert --run <project>/latest#1 --for kling --add-input <project>
+studio convert --run <project>/latest#1 --for replicate-kling --add-input <project>
 ```
 
 ## When the output goes wrong

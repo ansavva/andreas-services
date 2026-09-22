@@ -1,6 +1,6 @@
 /** Shapes returned by the studio API. Mirrors `studio_core.services`. */
 
-export type MediaKind = "image" | "video" | "text" | "other";
+export type MediaKind = "image" | "video" | "audio" | "text" | "other";
 
 /**
  * Mirrors `browse.SORTS`. `newest` is the default on both sides: this is a
@@ -957,8 +957,24 @@ export interface RunSend extends RunAsset {
   order: number;
   /** The model input this binds to, e.g. `image_input`, `start_image`. */
   field: string;
-  /** `null` on a run backfilled from a model the registry does not list. */
-  role: "start" | "end" | "reference" | "input" | "clip" | "lora" | null;
+  /**
+   * `null` on a run backfilled from a model the registry does not list.
+   *
+   * `frontal` and `voice` are an element model's two: a subject's main view,
+   * and the sample its voice was cloned from. Both land on the same field as
+   * that subject's other pictures, so the role is the only thing that says
+   * which is which — mirrors `catalog.SEND_ROLES`.
+   */
+  role:
+    | "start"
+    | "end"
+    | "reference"
+    | "input"
+    | "clip"
+    | "lora"
+    | "frontal"
+    | "voice"
+    | null;
   source: RunSendSource;
 }
 
@@ -1186,6 +1202,38 @@ export interface ModelEntry {
   clips?: {
     source?: string | null;
     accepts_ext?: string[];
+  };
+  /**
+   * How this model takes SUBJECTS, on the models that take them rather than a
+   * flat list of references — `elements` on Kling via fal.
+   *
+   * The field an element goes in is `images.refs` as well, which is not a
+   * duplicate: a reference image still binds there, and what changes is how
+   * the API shapes them at submit — grouped per character, each with its own
+   * main view, its other angles and, where one is bound, its voice. Present
+   * here so the sheet can say a model HAS voices without knowing which
+   * provider is behind it.
+   */
+  elements?: {
+    field?: string | null;
+    frontal?: string | null;
+    refs?: string | null;
+    clip?: string | null;
+    voice?: string | null;
+    max?: number | null;
+    max_images_each?: number | null;
+  };
+  /**
+   * The voice input: which model field a SAMPLE binds to, and what it accepts.
+   * Absent on every model that cannot clone a voice, which is how the sheet
+   * knows whether to draw the tile at all.
+   */
+  audio?: {
+    voice?: string | null;
+    create?: string | null;
+    accepts_ext?: string[];
+    min_seconds?: number | null;
+    max_seconds?: number | null;
   };
   prompt?: { max_chars?: number | null; recommended_words?: number | null };
   note?: string;

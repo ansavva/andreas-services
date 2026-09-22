@@ -15,8 +15,8 @@ with audio generated in the same pass. It sits beside the three fal entries,
 not in place of them.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model wan-3.0-openrouter …`,
-> and `studio models show wan-3.0-openrouter` for the schema. This page covers
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model openrouter-wan-3.0 …`,
+> and `studio models show openrouter-wan-3.0` for the schema. This page covers
 > only what is specific to this model.
 
 ## What is specific to this model
@@ -40,13 +40,13 @@ not in place of them.
 
 ```bash
 # text to video — five seconds, 720p, landscape, a repeatable seed
-studio run --model wan-3.0-openrouter --project <project> \
+studio run --model openrouter-wan-3.0 --project <project> \
   --no-refs \
   --extra '{"duration":5,"aspect_ratio":"16:9","seed":7}' \
   --prompt "…"
 
 # image to video — open on a still, ten seconds, silent
-studio run --model wan-3.0-openrouter --project <project> \
+studio run --model openrouter-wan-3.0 --project <project> \
   --start-run <project>/latest#1 \
   --extra '{"duration":10,"aspect_ratio":"16:9","generate_audio":false}' \
   --prompt "…"

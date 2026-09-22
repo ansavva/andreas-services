@@ -1,6 +1,6 @@
 ---
 name: studio-media-seedance
-description: Generate videos with ByteDance Seedance 2.0 via `studio run --model seedance` — the multimodal engine of the studio-* family, with native audio, first/last-frame images, and reference images, videos and audio. Use whenever the user wants to create, generate, or render a video, clip, animation, or motion piece on Seedance. Covers the model input schema, the mutually exclusive image fields, the duration and resolution ranges, and how references reach Replicate (presigned URLs the runner mints at submit time). Pair with studio-media-prompt (--engine seedance) to author the prompt and studio-media-character for on-model character videos. For renders on the Kling models use studio-media-kling instead.
+description: Generate videos with ByteDance Seedance 2.0 via `studio run --model replicate-seedance` — the multimodal engine of the studio-* family, with native audio, first/last-frame images, and reference images, videos and audio. Use whenever the user wants to create, generate, or render a video, clip, animation, or motion piece on Seedance. Covers the model input schema, the mutually exclusive image fields, the duration and resolution ranges, and how references reach Replicate (presigned URLs the runner mints at submit time). Pair with studio-media-prompt (--engine seedance) to author the prompt and studio-media-character for on-model character videos. For renders on the Kling models use studio-media-kling instead.
 ---
 
 # studio-media-seedance — Seedance 2.0 video generation
@@ -11,7 +11,7 @@ duration mode none of the others have.
 
 Rendered with **`bytedance/seedance-2.0` on Replicate**
 (<https://replicate.com/bytedance/seedance-2.0>) through the shared runner —
-`studio run --model seedance`. There is no separate submitter and no MCP path:
+`studio run --model replicate-seedance`. There is no separate submitter and no MCP path:
 one command records the run, mints the presigned URLs, polls, and archives the
 finished video into the run.
 
@@ -65,7 +65,7 @@ exclusive.** Use `image` for a specific first frame; use `reference_images` when
 you want a character/style carried across a freshly composed scene. The runner
 enforces this locally rather than letting Replicate reject a billed request.
 
-`studio models show seedance` prints the live schema; it is authoritative over
+`studio models show replicate-seedance` prints the live schema; it is authoritative over
 this table.
 
 ## Hard rule #2 (MANDATORY) — the FULL payload, shown, then asked
@@ -80,7 +80,7 @@ broad-shouldered — carry the physique.
 
 `studio prompt` checks a draft against this model's wording list and suggests
 the preferred alternative where one is recorded; see
-`studio phrasebook show --model seedance`.
+`studio phrasebook show --model replicate-seedance`.
 
 ## Invoke
 
@@ -88,7 +88,7 @@ the preferred alternative where one is recorded; see
 # input.json = the built `input` object WITHOUT image/reference fields
 #   (studio-media-prompt: studio prompt prompt.json --emit input  → the .input object)
 studio run \
-  --model seedance --project <project> --input-file input.json \
+  --model replicate-seedance --project <project> --input-file input.json \
   --character <name> --slots 1,2,3,6 --name <file> --poll
 ```
 
@@ -117,7 +117,7 @@ predictions that all bill**. The runner creates and then polls, which is what
 
 ```bash
 studio run \
-  --model seedance --project <project> --input-file input.json \
+  --model replicate-seedance --project <project> --input-file input.json \
   --start-run <project>/latest#1 --name <file> --poll
 ```
 
@@ -127,7 +127,7 @@ studio run \
 `reference_images` are mutually exclusive here, the runner **refuses** a start
 frame combined with `--character`/`--ref-run` rather than letting Replicate
 reject it — a start frame already carries identity. (On Kling the two combine
-freely, so the same command with `--model kling` is allowed.)
+freely, so the same command with `--model replicate-kling` is allowed.)
 
 ### Output — the run owns it
 

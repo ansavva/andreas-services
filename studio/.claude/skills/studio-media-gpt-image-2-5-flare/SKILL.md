@@ -13,8 +13,8 @@ tuned for speed and volume where Sunburst is tuned for editing precision.
 No OpenAI key needed; it bills through Replicate.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model gpt-image-2.5-flare …`,
-> and `studio models show gpt-image-2.5-flare` for the live schema. This page
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model replicate-gpt-image-2.5-flare …`,
+> and `studio models show replicate-gpt-image-2.5-flare` for the live schema. This page
 > covers only what is specific to this model — which is mostly what it shares
 > with Sunburst, and the one thing it does not.
 
@@ -55,7 +55,7 @@ one — the saving is wall-clock on a run of ten, not money.
 ## Invoke
 
 ```bash
-studio run --model gpt-image-2.5-flare --project <project> \
+studio run --model replicate-gpt-image-2.5-flare --project <project> \
   --no-refs --aspect-ratio 16:9 \
   --extra '{"quality":"low","output_format":"png"}' \
   --prompt "…"
@@ -75,7 +75,7 @@ Identical to Sunburst; the prose is on
 [that page](../studio-media-gpt-image-2-5-sunburst/SKILL.md) and is not
 repeated here. In short: name the change and lock the rest; `transparent` is
 honoured (ask for `png`); `.webp` is the default output, and Kling refuses it —
-request `png` at generation time or `studio convert --for kling` afterwards.
+request `png` at generation time or `studio convert --for replicate-kling` afterwards.
 
 ## When the output goes wrong
 

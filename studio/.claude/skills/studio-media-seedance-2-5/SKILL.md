@@ -1,6 +1,6 @@
 ---
 name: studio-media-seedance-2-5
-description: Generate videos with ByteDance Seedance 2.5 via `studio run --model seedance-2.5` — the successor to Seedance 2.0 and the engine to reach for when a character SPEAKS: better dialogue timing and lip-sync, a true 30-second ceiling in one pass, up to 30 reference images, and a seed. Covers what it changes against 2.0, the two things it lost on Replicate (no 1080p, no 4k), the aspect-ratio rule that first+last-frame mode imposes, and how a talking-head clip is prompted. Pair with studio-media-prompt (--engine seedance) and studio-media-character. For the 2.0 model use studio-media-seedance.
+description: Generate videos with ByteDance Seedance 2.5 via `studio run --model replicate-seedance-2.5` — the successor to Seedance 2.0 and the engine to reach for when a character SPEAKS: better dialogue timing and lip-sync, a true 30-second ceiling in one pass, up to 30 reference images, and a seed. Covers what it changes against 2.0, the two things it lost on Replicate (no 1080p, no 4k), the aspect-ratio rule that first+last-frame mode imposes, and how a talking-head clip is prompted. Pair with studio-media-prompt (--engine seedance) and studio-media-character. For the 2.0 model use studio-media-seedance.
 ---
 
 # studio-media-seedance-2-5 — Seedance 2.5
@@ -10,7 +10,7 @@ generalist, 2.5 is the same family tuned for **production dialogue**: speech in
 double quotes drives voice and lip movement in the same pass as the picture,
 and the timing lands where the words are. Reach for it whenever a clip has
 someone talking to camera. Rendered with **`bytedance/seedance-2.5` on
-Replicate** through the shared runner: `studio run --model seedance-2.5`.
+Replicate** through the shared runner: `studio run --model replicate-seedance-2.5`.
 
 > Invocation, hard rule #2, run recording and validation are shared — see
 > [`studio-media-core`](../studio-media-core/SKILL.md), and `studio models show
@@ -54,7 +54,7 @@ the rate — bind one only when the motion genuinely has to come from footage.
 # prompt.json authored with studio-media-prompt; dialogue as a `dialogue` array
 studio prompt prompt.json --engine seedance > compiled.json
 # input.json = compiled.json's `input` object (no image fields)
-studio run --model seedance-2.5 --project <project> \
+studio run --model replicate-seedance-2.5 --project <project> \
   --input-file input.json --prompt-json prompt.json \
   --start-run <project>/latest#1 --name <file> --poll
 ```

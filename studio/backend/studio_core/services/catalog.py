@@ -1985,6 +1985,42 @@ def set_blob(
     return {**record, **assignments}
 
 
+def voice_id(record: dict, endpoint: str) -> str | None:
+    """The provider-side voice this file has already been registered as, or None.
+
+    Keyed by the ENDPOINT that minted it, because that is the scope the id is
+    good in: a `voice_id` from fal's `kling-video/create-voice` names a voice
+    inside Kling and means nothing to anything else. A bare `voice_id` column
+    would have been a single slot for a value with as many meanings as there
+    are providers willing to clone a voice.
+    """
+    return (record.get("voices") or {}).get(endpoint)
+
+
+def set_voice_id(node_id: str, endpoint: str, value: str) -> dict:
+    """Record what `endpoint` called this file's voice, so it is minted once.
+
+    **A cache, and it must stay one.** Registering a sample is a call to the
+    provider on the path of a submission that is about to bill; doing it per
+    run would put a third-party round trip between `pending` and the
+    prediction every time, and would hand the same character a new voice id on
+    every clip — which is the exact opposite of the persistent identity the
+    binding exists for. The bytes behind a node never change, so the id stays
+    true for as long as the node does.
+
+    Merged into the map rather than replacing it: one sample can be registered
+    with two providers, and the second must not forget the first.
+    """
+    record = node(node_id)
+    if record["kind"] != KIND_FILE:
+        raise ValidationError("only a file can carry a voice")
+    voices = {**(record.get("voices") or {}), endpoint: value}
+    assignments = {"voices": voices, "updated_at": _now()}
+    _write([(_update_meta(node_id, assignments), NotFoundError(node_id))])
+    logger.info("Recorded voice %s for %s on %s", value, node_id, endpoint)
+    return {**record, **assignments}
+
+
 # ═══════════════════════════════ entities ═══════════════════════════════
 #
 # Characters, projects, runs, scenes and movies. Everything above this line is
@@ -3271,7 +3307,12 @@ SEND_PREFIX = "SEND#"
 #: the registry names under `clips.source`.
 # `lora`: a weights file a model loads beside its own — bound to one of the
 # entry's `loras.*` fields and sent as `{path, scale}`, see `generate.dispatch`.
-SEND_ROLES = frozenset({"start", "end", "reference", "input", "clip", "lora"})
+#: What a bound file is FOR. `frontal` and `voice` are the two an element
+#: model adds: a subject's main view, and the sample its voice is cloned from.
+#: Both are roles rather than fields because both land INSIDE the element
+#: object — there is no top-level input called `voice_id` to name.
+SEND_ROLES = frozenset(
+    {"start", "end", "reference", "input", "clip", "lora", "frontal", "voice"})
 
 #: Everything a send row holds. All four are AUTHORED; a send has no recorded
 #: half, which is why `put_sends` replaces rather than merging: there is

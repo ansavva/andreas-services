@@ -5,6 +5,7 @@ import {
   Button,
   Chip,
   Drawer,
+  IconButton,
   Text,
   Toggle,
   ToggleGroup,
@@ -36,14 +37,21 @@ import { UploadButton } from "../browse/UploadButton";
 import { UploadStatus } from "../browse/UploadStatus";
 import { EmptyState } from "../common/EmptyState";
 import { FilterBar } from "../common/FilterBar";
-import { ArrowUpIcon, CheckIcon, FolderIcon } from "../common/icons";
+import { ArrowUpIcon, CheckIcon, FolderIcon, PlusIcon } from "../common/icons";
 import { LoadError } from "../common/LoadError";
 import { SectionLoading } from "../common/SectionLoading";
 import { SheetHandle } from "../common/SheetHandle";
 import { EntityRow } from "../entity/EntityRow";
+import { AudioTile } from "../media/AudioTile";
 import { MediaThumb } from "../media/MediaThumb";
 import { ROLE_WORDS } from "./roles";
 
+/** What this picker is looking for, in words, for its empty states. */
+const WANTED_WORD: Partial<Record<MediaKind, string>> = {
+  image: "picture",
+  video: "video",
+  audio: "voice sample",
+};
 const VIEW_FOLDERS = "folders";
 const VIEW_MEDIA = "media";
 type View = typeof VIEW_FOLDERS | typeof VIEW_MEDIA;
@@ -210,7 +218,8 @@ function PickerBody({
   // fresh-but-equal array.
   const asked = tags.join(",");
   /** What this role is made of. */
-  const wanted: MediaKind = role === "clip" ? "video" : "image";
+  const wanted: MediaKind =
+    role === "clip" ? "video" : role === "voice" ? "audio" : "image";
 
   const entity = place.kind === "entity" ? place.entity : null;
   const folderId = place.kind === "entity" ? place.folder : null;
@@ -468,6 +477,60 @@ function PickerBody({
                   {files.map((file) => {
                     const on = attached.has(file.id);
                     const blocked = !on && full !== null;
+                    /**
+                     * **A voice sample gets two targets, not one.**
+                     *
+                     * Every other cell is one `<Button>`: press the picture,
+                     * attach it. A sample has to be HEARD before it is bound
+                     * — that is the whole decision — and a play control
+                     * inside the attach button is a button inside a button,
+                     * which is invalid HTML the browser resolves by dropping
+                     * one of them. (React said so out loud the first time
+                     * this ran.) So the tile plays and a `+` in the corner
+                     * attaches; the accessible name of the corner control is
+                     * the same `Attach <name>` every other cell answers to.
+                     */
+                    if (wanted === "audio") {
+                      return (
+                        <div
+                          key={file.id}
+                          className={`relative flex flex-col gap-1 rounded-md p-1
+                                      ${on ? "ring-2 ring-primary" : ""}`}
+                          title={blocked ? full : file.name}
+                        >
+                          <AudioTile
+                            nodeId={file.id}
+                            url={file.url}
+                            name={file.name}
+                            drag={false}
+                            dimmed={on}
+                            // A border, where a picture needs none: the tile
+                            // is a flat fill on a flat panel, and without an
+                            // edge the play button and the `+` read as
+                            // floating over nothing.
+                            className="aspect-[3/4] w-full rounded-md border border-line"
+                          />
+                          <Text variant="caption" tone="muted" truncate>
+                            {file.name}
+                          </Text>
+                          <IconButton
+                            intent="overlay"
+                            size="sm"
+                            label={on ? `Remove ${file.name}` : `Attach ${file.name}`}
+                            aria-pressed={on}
+                            disabled={blocked}
+                            className="absolute right-2 top-2 rounded-pill bg-overlay-scrim/80"
+                            onClick={() => (on ? onDetach(file.id) : attach(file))}
+                          >
+                            {on ? (
+                              <CheckIcon className="size-3.5 fill-none stroke-current stroke-[2.5]" />
+                            ) : (
+                              <PlusIcon className="size-3.5 fill-none stroke-current stroke-[2]" />
+                            )}
+                          </IconButton>
+                        </div>
+                      );
+                    }
                     return (
                       <Button
                         key={file.id}
@@ -503,13 +566,20 @@ function PickerBody({
                   })}
                 </div>
               )}
-              {empty && !deep && <EmptyState title="No pictures here yet." className="p-3" />}
+              {/* **The empty state says what this picker wanted.** Every role
+                  asked for a picture until a voice could be bound, and
+                  "Nothing under this folder is a picture" over a folder full
+                  of stills — which is what a voice picker sees — reads as a
+                  bug in the listing rather than as "no sound in here". */}
+              {empty && !deep && (
+                <EmptyState title={`No ${WANTED_WORD[wanted]}s here yet.`} className="p-3" />
+              )}
               {empty && deep && (
                 <EmptyState
                   title={
                     tags.length > 0
                       ? `Nothing under this folder is tagged ${tags.join(" + ")}.`
-                      : "Nothing under this folder is a picture."
+                      : `Nothing under this folder is a ${WANTED_WORD[wanted]}.`
                   }
                   className="p-3"
                 />

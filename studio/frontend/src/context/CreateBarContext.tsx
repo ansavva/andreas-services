@@ -26,7 +26,7 @@ import { getMovie, getScene } from "../apis/studio";
 import type { RunKind, RunPlan } from "../types";
 
 /** What an attachment is FOR. The same five words a send's `role` takes. */
-export type AttachRole = "reference" | "start" | "end" | "input" | "clip";
+export type AttachRole = "reference" | "start" | "end" | "input" | "clip" | "voice";
 
 /**
  * An image handed to the bar: the node it names, and enough to draw and to
@@ -133,15 +133,24 @@ export const CREATE_PROJECT_STORAGE_KEY = "studio.createBar.project";
  * A role that holds ONE object. `start`, `end` and `clip` are scalar fields on
  * every model that has them, and `input` — the image an edit starts from — is
  * one picture by meaning even where it lands on a list field. Attaching to any
- * of these replaces; only `reference` accumulates.
+ * of these replaces; `reference` and `voice` accumulate.
+ *
+ * **A voice accumulates because a scene can have two people in it.** Kling
+ * binds a voice per element, and an element is a character — so a run with two
+ * characters speaking carries two samples, each landing on its own subject
+ * (the API groups them by where the file sits, `catalog.source_of`). One slot
+ * would have made the second character silent with nothing on screen saying
+ * why.
  */
 export function holdsOne(role: AttachRole): boolean {
-  return role !== "reference";
+  return role !== "reference" && role !== "voice";
 }
 
-/** The kind a role belongs to. A frame or a clip is a video's; the rest fit either. */
+/** The kind a role belongs to. A frame, a clip or a voice is a video's; the rest fit either. */
 function kindOfRole(role: AttachRole, current: RunKind): RunKind {
-  return role === "start" || role === "end" || role === "clip" ? "video" : current;
+  return role === "start" || role === "end" || role === "clip" || role === "voice"
+    ? "video"
+    : current;
 }
 
 interface CreateBarState {

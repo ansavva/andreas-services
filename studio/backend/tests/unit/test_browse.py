@@ -61,6 +61,27 @@ def _folders(result):
     return [entry for entry in result["entries"] if entry["kind"] == catalog.KIND_FOLDER]
 
 
+def test_audio_is_a_kind_a_listing_can_be_asked_for(catalog_tree):
+    """**The create sheet's voice picker asks for exactly this.**
+
+    `?kind=` is validated against a closed set, so a kind missing from it is a
+    400 naming every kind but the one that was wanted. Audio had to join it
+    the moment anything in the library was a sound — and it deliberately did
+    NOT join `REEL_KINDS`, which is the sparse by-recent index: an audio row
+    carries no `reel` attribute, so an index scan would answer an empty page
+    about files that are plainly there.
+    """
+    assert browse.entries(CATALOG_LIBRARY, depth="all", kinds="audio")["entries"] == []
+    assert "audio" in browse.ENTRY_KINDS
+    assert "audio" not in browse.REEL_KINDS
+
+
+def test_an_unknown_kind_is_still_refused(catalog_tree):
+    with pytest.raises(ValidationError) as raised:
+        browse.entries(CATALOG_LIBRARY, kinds="sound")
+    assert "unknown kind 'sound'" in str(raised.value)
+
+
 def test_root_lists_the_top_level(catalog_tree):
     result = _folder(CATALOG_LIBRARY)
     # The browsable root is the library's root node. It answers to the empty

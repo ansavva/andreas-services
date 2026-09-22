@@ -192,6 +192,59 @@ def lora_fields(entry: dict) -> set[str]:
     return {v for k, v in loras.items() if k not in ("accepts_ext", "scale_param") and isinstance(v, str)}
 
 
+def elements(entry: dict) -> dict | None:
+    """How this model takes SUBJECTS, or None where it takes a flat list.
+
+    An element is one subject as one object — a frontal view, its other
+    angles, optionally a clip, optionally a bound voice — and the prompt cites
+    it positionally (`@Element1`). The entry names the field it goes in and
+    what each part of it is called:
+
+        {"field": "elements", "frontal": "frontal_image_url",
+         "refs": "reference_image_urls", "clip": "video_url",
+         "voice": "voice_id", "max": 4, "max_images_each": 4}
+
+    **Only Kling on fal has this so far, and the shape is registry data
+    anyway**, because the alternative is a branch reading `if model.startswith
+    ("fal/fal-ai/kling")` inside `dispatch` — which is the per-model code the
+    registry exists to not have.
+    """
+    block = entry.get("elements")
+    return block if isinstance(block, dict) and block.get("field") else None
+
+
+def voice_field(entry: dict) -> str | None:
+    """The model input a VOICE SAMPLE binds to, or None where it takes none.
+
+    Not the field the id is written into — that is `elements.voice`, one level
+    down inside the object. This is the field a *send* names, so that a bound
+    sample is an ordinary `SEND#` row with a role, checked and displayed like
+    every other bound file rather than being a second kind of attachment.
+    """
+    return field(entry, "audio.voice")
+
+
+def voice_accepts_ext(entry: dict) -> set[str]:
+    """The file types this model will clone a voice from.
+
+    Wider than `keys.AUDIO_EXTENSIONS` on purpose: Kling reads a voice out of
+    an `.mp4` as happily as out of a `.wav`, and refusing one because the
+    library files it under a different tile would be studio's rule rather than
+    the model's.
+    """
+    return set(field(entry, "audio.accepts_ext", []) or [])
+
+
+def voice_endpoint(entry: dict) -> str | None:
+    """Where a sample is registered before a run can cite it.
+
+    A provider model id (`fal/fal-ai/kling-video/create-voice`), so the same
+    `clients/` seam that runs a generation runs this too, and so the cached id
+    on a node can be keyed by the thing that issued it.
+    """
+    return field(entry, "audio.create")
+
+
 def output_grant(entry: dict) -> dict | None:
     """The upload a worker of ours wants minted into its request, or None.
 

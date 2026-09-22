@@ -13,8 +13,8 @@ five aspect ratios, **with audio generated in the same pass**. It takes no
 image of any kind.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model wan-3.0-t2v …`,
-> and `studio models show wan-3.0-t2v` for the schema. This page covers
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model fal-wan-3.0-t2v …`,
+> and `studio models show fal-wan-3.0-t2v` for the schema. This page covers
 > only what is specific to this model.
 
 ## What is specific to this model
@@ -39,12 +39,12 @@ image of any kind.
 
 ```bash
 # five seconds, 720p, landscape, a repeatable seed
-studio run --model wan-3.0-t2v --project <project> \
+studio run --model fal-wan-3.0-t2v --project <project> \
   --extra '{"duration":5,"aspect_ratio":"16:9","seed":7}' \
   --prompt "…"
 
 # a fifteen-second portrait clip, silent, at 1080p
-studio run --model wan-3.0-t2v --project <project> \
+studio run --model fal-wan-3.0-t2v --project <project> \
   --extra '{"duration":15,"resolution":"1080p","aspect_ratio":"9:16","audio":false}' \
   --prompt "…"
 ```

@@ -88,7 +88,7 @@ provider token. Older notes opening with `set -a; . ./.env; set +a` are a no-op.
 
 ```bash
 studio run \
-  --model veo-3.1 --project <project> \
+  --model replicate-veo-3.1 --project <project> \
   --prompt "…" \
   --extra '{"duration": 8, "resolution": "1080p", "aspect_ratio": "16:9",
             "negative_prompt": "on-screen text, watermarks", "seed": 42}' \
@@ -173,7 +173,7 @@ from the schema:
 
 ## Verified
 
-`studio run --model veo-3.1 --dry-run` with
+`studio run --model replicate-veo-3.1 --dry-run` with
 `--extra '{"duration": 8, "resolution": "1080p", "aspect_ratio": "16:9",
 "negative_prompt": "…", "seed": 42}'` emits a correct payload — every field
 passes through to the Replicate `input` unchanged and the endpoint resolves to

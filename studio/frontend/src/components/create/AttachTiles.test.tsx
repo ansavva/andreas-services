@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import type { Attachment } from "../../context/CreateBarContext";
 import type { ModelEntry } from "../../types";
+import { holdsOne } from "../../context/CreateBarContext";
 import { fallbackDropRole } from "./AttachTiles";
-import { fieldFor, sendsOf } from "./roles";
+import { ROLES_BY_KIND, fieldFor, sendsOf } from "./roles";
 
 const STILL: ModelEntry = {
   key: "still",
@@ -32,6 +33,19 @@ const TRANSFER: ModelEntry = {
   images: { refs: null, start: "image", end: null, max_refs: 0 },
   clips: { source: "video", accepts_ext: [".mp4", ".mov"] },
   snapshot: { refreshed: "2026-09-12" },
+};
+
+/** Kling on fal: subjects rather than a flat reference list, and a voice. */
+const ELEMENTS: ModelEntry = {
+  key: "fal-kling-v3-i2v",
+  model: "fal/fal-ai/kling-video/v3/pro/image-to-video",
+  kind: "video",
+  skill: "studio-media-fal-kling",
+  images: { refs: "elements", start: "start_image_url", end: "end_image_url", max_refs: 4 },
+  elements: { field: "elements", frontal: "frontal_image_url",
+              refs: "reference_image_urls", voice: "voice_id", max: 4 },
+  audio: { voice: "elements", accepts_ext: [".mp3", ".wav"] },
+  snapshot: { refreshed: "2026-09-22" },
 };
 
 const held = (role: Attachment["role"], node = `node-${role}`): Attachment => ({
@@ -93,5 +107,45 @@ describe("the clip role", () => {
     expect(sendsOf([waiting, held("clip")], TRANSFER)).toEqual([
       { field: "video", role: "clip", node: "node-clip" },
     ]);
+  });
+});
+
+/**
+ * A voice is bound to a SUBJECT, not to the run — the id the provider reads
+ * sits inside that subject's element, beside its pictures. So the role exists
+ * only on the models whose entry declares an `audio.voice`, and it lands on
+ * the same field the references do.
+ */
+describe("the voice role", () => {
+  it("binds to the elements field, and to nothing on a model without one", () => {
+    expect(fieldFor("voice", ELEMENTS)).toBe("elements");
+    expect(fieldFor("voice", MOTION)).toBeNull();
+    expect(fieldFor("voice", TRANSFER)).toBeNull();
+  });
+
+  it("is a video role, offered last", () => {
+    expect(ROLES_BY_KIND.video).toContain("voice");
+    expect(ROLES_BY_KIND.image).not.toContain("voice");
+  });
+
+  it("accumulates, because a scene can have two people speaking in it", () => {
+    expect(holdsOne("voice")).toBe(false);
+    expect(holdsOne("start")).toBe(true);
+  });
+
+  it("travels as a send that says it is a voice", () => {
+    const sends = sendsOf([held("reference"), held("voice")], ELEMENTS);
+    expect(sends).toEqual([
+      { field: "elements", role: "reference", node: "node-reference" },
+      { field: "elements", role: "voice", node: "node-voice" },
+    ]);
+  });
+
+  it("is dropped rather than sent to a model that cannot speak", () => {
+    expect(sendsOf([held("voice")], MOTION)).toEqual([]);
+  });
+
+  it("never takes a dropped still, which is what a drag carries", () => {
+    expect(fallbackDropRole("video", ELEMENTS, [])).not.toBe("voice");
   });
 });

@@ -12,8 +12,8 @@ product or a style, or to put several subjects into one scene. It bills a flat
 price per output image, decided by resolution alone.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model seedream-5-pro …`,
-> and `studio models show seedream-5-pro` for the live schema. This page covers
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model replicate-seedream-5-pro …`,
+> and `studio models show replicate-seedream-5-pro` for the live schema. This page covers
 > only what is specific to this model. [`seedance`](../studio-media-seedance/SKILL.md)
 > is the video engine from the same house.
 
@@ -33,7 +33,7 @@ price per output image, decided by resolution alone.
 ## Invoke
 
 ```bash
-studio run --model seedream-5-pro --project <project> \
+studio run --model replicate-seedream-5-pro --project <project> \
   --character <name> --pick-tag face \
   --aspect-ratio 3:4 \
   --prompt "…"
@@ -102,7 +102,7 @@ round — a `.webp` from GPT Image 2 as a reference for this model — is fine
 under the accepted list above; if the provider rejects it, convert first:
 
 ```bash
-studio convert --run <project>/latest#1 --for seedream-5-pro --add-input <project>
+studio convert --run <project>/latest#1 --for replicate-seedream-5-pro --add-input <project>
 ```
 
 ## When the output goes wrong

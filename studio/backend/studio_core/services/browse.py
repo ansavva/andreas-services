@@ -45,7 +45,17 @@ DEPTHS = frozenset({DEPTH_ONE, DEPTH_ALL})
 #: What `?kind=` accepts: `folder` off the row, the rest classified from the
 #: extension by `keys.kind`. Not `catalog.KINDS`, which is the storage
 #: vocabulary — folder or file — and says nothing about what a file holds.
-ENTRY_KINDS = frozenset({catalog.KIND_FOLDER, "image", "video", "text", "other"})
+#:
+#: **`audio` is here and deliberately not in `REEL_KINDS`.** A voice sample is
+#: a first-class file — the create sheet's voice picker asks for `kind=audio`
+#: and would otherwise get a 400 naming every kind but the one it wanted — and
+#: it is still not something the by-recent wall can answer for: `reel` is a
+#: sparse attribute written at ingest for pictures and clips, so an audio row
+#: carries none and an index scan would silently return an empty page rather
+#: than the files that are plainly there. Outside the library root this
+#: enumerates instead, which is exactly what a picker sitting in a character
+#: does.
+ENTRY_KINDS = frozenset({catalog.KIND_FOLDER, "image", "video", "audio", "text", "other"})
 
 # The four orders every listing endpoint accepts. `newest` is the default
 # because this is a library of generated output: what you came to look at is

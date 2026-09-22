@@ -182,6 +182,55 @@ test("a model that works from a video offers a Source video tile, and its picker
   expect(escaped(calls, page)).toEqual([]);
 });
 
+test("a model that binds a voice offers a Voice tile, and its picker lists audio only", async ({
+  page,
+}) => {
+  const calls = log(page);
+  await page.goto(`/p/${PROJECT}`);
+
+  // A voice is the one role that is nearly always absent: two entries in the
+  // registry declare an `audio.voice`, both of them Kling on fal.
+  const strip = page.locator("[data-mode-strip]");
+  await page.getByRole("group", { name: "Kind" }).getByText("Video").click();
+  await expect(strip.getByRole("group", { name: "Voice" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: /^Model: / }).click();
+  await page.getByRole("option", { name: /^fal-kling-v3-i2v/ }).click();
+  await expect(strip.getByRole("group", { name: "Voice" })).toHaveCount(1);
+
+  // The picker asks for `kind=audio`: the library is stills and one clip
+  // besides the sample, so exactly one row is offered.
+  await strip.getByRole("group", { name: "Voice" }).getByRole("button", { name: "Voice" }).click();
+  const picker = page.getByRole("region", { name: "Choose a voice sample" });
+  await expect(picker).toBeVisible();
+  await picker.getByRole("button", { name: "Media" }).click();
+  const offered = picker.getByRole("button", { name: /^Attach / });
+  await expect(offered).toHaveCount(1);
+  await expect(offered).toHaveAccessibleName(/\.wav$/);
+
+  // **Two targets on the cell, not one.** Listening must not attach, so the
+  // play control is a sibling of the attach control rather than inside it —
+  // a button inside a button is invalid HTML the browser resolves by dropping
+  // one of them.
+  await picker.getByRole("button", { name: /^Play / }).click();
+  await expect(picker.getByRole("button", { name: /^Pause / })).toBeVisible();
+  // Still "Attach", so the press that started it bound nothing. (The strip
+  // cannot answer this: its empty ghost is captioned `Voice` too.)
+  await expect(offered).toHaveCount(1);
+
+  await offered.click();
+
+  // Bound: a tile in the voice role stands on the strip, and the cell still
+  // offers another — one voice per character, up to the model's four.
+  const cell = strip.getByRole("group", { name: "Voice" });
+  await expect(cell.locator("[data-attachment='voice']")).toHaveCount(1);
+  await expect(picker.getByRole("button", { name: /^Remove / })).toHaveCount(1);
+
+  // Attaching is not a send.
+  expect(wrote(calls)).toEqual([]);
+  expect(escaped(calls, page)).toEqual([]);
+});
+
 test("on a phone the picker is a sheet over the create sheet, and a one-picture role closes it on the pick", async ({
   page,
 }) => {

@@ -17,8 +17,8 @@ and adds two quality tiers above `high`. No OpenAI key needed; it bills
 through Replicate.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model gpt-image-2.5-sunburst …`,
-> and `studio models show gpt-image-2.5-sunburst` for the live schema. This
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model replicate-gpt-image-2.5-sunburst …`,
+> and `studio models show replicate-gpt-image-2.5-sunburst` for the live schema. This
 > page covers only what is specific to this model.
 
 ## What is specific to this model
@@ -72,7 +72,7 @@ An edit is a run with the source image as its first reference and the
 instruction as its prompt:
 
 ```bash
-studio run --model gpt-image-2.5-sunburst --project <project> \
+studio run --model replicate-gpt-image-2.5-sunburst --project <project> \
   --ref-run <project>/latest#1 \
   --extra '{"quality":"low","output_format":"png"}' \
   --prompt "Change only the lighting to soft coastal daylight; preserve the face, pose and clothing."
@@ -99,7 +99,7 @@ survives pixel-for-pixel; the only face drawn is the second's. Generating both
 in one run instead blends them.
 
 ```bash
-studio run --model gpt-image-2.5-sunburst --project <project> \
+studio run --model replicate-gpt-image-2.5-sunburst --project <project> \
   --image-run <project>/latest --character <name-2> --pick-tag default,face \
   --aspect-ratio 3:2 --prompt-file step2.txt
 ```
@@ -133,7 +133,7 @@ never modified):
 
 ```bash
 --extra '{"output_format":"png"}'
-studio convert --run <project>/latest#1 --for kling --add-input <project>
+studio convert --run <project>/latest#1 --for replicate-kling --add-input <project>
 ```
 
 ## When the output goes wrong

@@ -57,7 +57,7 @@ the shared prose lives in one place rather than six:
 
 ```bash
 studio models                    # every registered model
-studio models show gpt-image-2   # entry + LIVE input schema + caveats
+studio models show replicate-gpt-image-2   # entry + LIVE input schema + caveats
 studio models refresh            # re-snapshot schema enums into models.json
                                  # (the backend's copy — it reaches prod on deploy)
 
@@ -68,6 +68,14 @@ studio run --model <key> --project <project> --prompt "..." --character <name> \
 `--model` takes any registry key, image or video; the entry decides which image
 fields exist and what the caps are. There is deliberately **no default model** —
 the engines are peers, chosen per shot.
+
+**Every key starts with its provider** — `replicate-kling`, `fal-kling-v3-i2v`,
+`runpod-wan-2.6-i2v`, `openrouter-wan-3.0`. One model is often hosted by two
+providers at different prices, with different inputs and different bills, and a
+bare `kling` said nothing about which of them was about to be charged. **The old
+bare name is still an alias on its entry**, so `--model kling` and every run
+ever recorded still resolve; what a person reads in `studio models` and in the
+app now says where the money goes.
 
 **`--project` is required and never inferred.** A run belongs to a project, and
 where output lands is the one thing rerunning a command cannot undo — so it is

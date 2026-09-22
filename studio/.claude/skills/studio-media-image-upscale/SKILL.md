@@ -12,8 +12,8 @@ generative "upscaler" that redraws a face produces a better-looking image of a
 slightly different person.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model image-upscale …`,
-> and `studio models show image-upscale` for the live schema. This page covers
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model replicate-image-upscale …`,
+> and `studio models show replicate-image-upscale` for the live schema. This page covers
 > only what is specific to this model.
 
 ## What is specific to this model
@@ -34,7 +34,7 @@ slightly different person.
 options that fill one are refused rather than ignored:
 
 ```bash
-studio run --model image-upscale --project <project> \
+studio run --model replicate-image-upscale --project <project> \
   --start-key <node> --no-refs --name <output-name> \
   --extra '{"enhance_model":"High Fidelity V2","upscale_factor":"4x","face_enhancement":true,"face_enhancement_creativity":0}'
 ```

@@ -884,13 +884,13 @@ $ studio projects inputs rooftop-teaser
 ### 3.3 Generating, and reading back
 
 ```bash
-$ studio run --project rooftop-teaser --model nano-banana-pro \
+$ studio run --project rooftop-teaser --model replicate-nano-banana-pro \
              --character subject-a --pick-tag face \
              --prompt "…" --aspect 9:16 --resolution 4k --dry-run
 # GET /api/characters/char-9f3c1e57-… → /selection?tag=face
 # renders PROMPT and INPUT to read. Nothing is submitted. (hard rule #2)
 
-$ studio run --project rooftop-teaser --model nano-banana-pro \
+$ studio run --project rooftop-teaser --model replicate-nano-banana-pro \
              --character subject-a --pick-tag face \
              --prompt "…" --aspect 9:16 --resolution 4k
 run-77c2f0a8-…  submitted   s7k2m9x4qwe1
@@ -898,7 +898,7 @@ run-77c2f0a8-…  succeeded   1 output   $0.032
   node-3610c8b4-…  output-1.png
 # POST /api/runs → provider → POST /api/runs/<id>/outputs → PATCH /api/runs/<id>
 
-$ studio runs list rooftop-teaser --model nano-banana-pro --status succeeded
+$ studio runs list rooftop-teaser --model replicate-nano-banana-pro --status succeeded
 2026-08-19 09:40  run-77c2f0a8-…  rooftop-portrait  image  succeeded  $0.032
 # GET /api/runs?project=…&model=…&status=…      (one query)
 

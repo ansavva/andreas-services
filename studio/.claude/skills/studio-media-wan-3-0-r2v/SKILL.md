@@ -12,8 +12,8 @@ clip of 2–30 seconds comes out with audio. No start frame and no end frame:
 the references carry identity, the prompt carries the shot.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model wan-3.0-r2v …`,
-> and `studio models show wan-3.0-r2v` for the schema. Everything about
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model fal-wan-3.0-r2v …`,
+> and `studio models show fal-wan-3.0-r2v` for the schema. Everything about
 > provider, price, duration, resolution, aspect, audio, seed, prompt
 > expansion and thinking is as on [`studio-media-wan-3-0-t2v`](../studio-media-wan-3-0-t2v/SKILL.md);
 > this page covers only what differs.
@@ -32,13 +32,13 @@ the references carry identity, the prompt carries the shot.
 
 ```bash
 # a character on-model, references chosen from its described index
-studio run --model wan-3.0-r2v --project <project> \
+studio run --model fal-wan-3.0-r2v --project <project> \
   --character <name> \
   --extra '{"duration":6,"aspect_ratio":"16:9","seed":11}' \
   --prompt "The subject in Image 1 turns from the window and …"
 
 # two explicit references, product plus setting
-studio run --model wan-3.0-r2v --project <project> \
+studio run --model fal-wan-3.0-r2v --project <project> \
   --key <product-node> --key <setting-node> \
   --extra '{"duration":5}' \
   --prompt "The bottle in Image 1 stands on the table in Image 2 as …"

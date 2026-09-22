@@ -195,6 +195,47 @@ def clip_accepts_ext(entry: dict) -> set[str]:
     return set(field(entry, "clips.accepts_ext", []) or [])
 
 
+def elements(entry: dict) -> dict | None:
+    """How this model takes SUBJECTS, or None where it takes a flat image list.
+
+    An element is one subject as one object — a main view, its other angles,
+    optionally a clip, optionally a bound voice — cited in the prompt as
+    `@Element1`. The API builds the array at submit, grouping the bound images
+    by the character or location they came from; what this side needs it for is
+    smaller: knowing a model HAS elements changes what `--voice-key` may be
+    bound to and what the payload render says a run is about to send.
+    """
+    block = entry.get("elements")
+    return block if isinstance(block, dict) and block.get("field") else None
+
+
+def voice_field(entry: dict) -> str | None:
+    """The model input a VOICE SAMPLE binds to, or None where it takes none.
+
+    The elements field, on every model that has one — the id the provider
+    actually reads sits one level down inside the object, which is the API's
+    business (`services/generate.voice_id_for`). What matters here is that a
+    voice is an ordinary bound file with a role, so it is gathered, checked,
+    rendered in the payload and recorded as a `SEND#` row like every picture.
+    """
+    return field(entry, "audio.voice")
+
+
+def voice_accepts_ext(entry: dict) -> set[str]:
+    """The file types this model will clone a voice from, as a set."""
+    return set(field(entry, "audio.accepts_ext", []) or [])
+
+
+def voice_seconds(entry: dict) -> tuple[int | None, int | None]:
+    """The sample length the model asks for, as `(min, max)` seconds.
+
+    Advisory: nothing here opens the file to measure it. It is in the registry
+    so the CLI can say "5–30 seconds of one clean voice" at the moment somebody
+    binds one, rather than after fal has refused it.
+    """
+    return field(entry, "audio.min_seconds"), field(entry, "audio.max_seconds")
+
+
 def lora_fields(entry: dict) -> dict[str, str]:
     """`{slot: field}` for the inputs that take LoRA weights — `{}` where none do.
 

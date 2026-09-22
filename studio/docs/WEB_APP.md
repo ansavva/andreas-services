@@ -391,7 +391,16 @@ page and a plain textarea over its literal bytes, and never offers fields.
   for what goes in read as two things called clip) — because a clip sent as a frame, or a still
   sent as the clip, is a field that refuses it; `attachActions` decides by the
   file's kind, once. On the create sheet the same role is the **Source video** tile, whose
-  picker lists videos only. A clip's menu also carries a second group,
+  picker lists videos only. A sixth role joined them for Kling on fal: a
+  **Voice** tile, whose picker lists `kind=audio` and whose tiles play in
+  place (`AudioTile` — audio is the first kind in this library with nothing to
+  look at, so it is a play button rather than a branch inside `MediaThumb`).
+  It is drawn only where the chosen model's entry declares an `audio.voice`,
+  like every other role, and it binds to the same field the references do —
+  the `voice_id` the provider reads sits INSIDE that subject's element, which
+  is what binds the voice to the character rather than to the run. It
+  accumulates rather than replacing, because a scene can have two people
+  speaking in it. Nothing drags into it: a drag carries a still. A clip's menu also carries a second group,
   **First frame as** Reference / Start frame / End frame: `useFirstFrame`
   asks the render worker for the clip's opening still (`POST /api/renders`,
   `kind: frame, at: 0`, into the project's input pool), polls the row, and

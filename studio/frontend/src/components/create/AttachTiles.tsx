@@ -15,11 +15,13 @@ import {
   GripIcon,
   ImagePlusIcon,
   PencilIcon,
+  SoundOnIcon,
   StartFrameIcon,
   SwapIcon,
   TrashIcon,
   VideoIcon,
 } from "../common/icons";
+import { AudioTile } from "../media/AudioTile";
 import { AttachPreview } from "./AttachPreview";
 import { isNodeDrag, readNodeDrag } from "./dragRef";
 import { ROW_ATTR, useReorder, type Sortable } from "./reorder";
@@ -32,6 +34,7 @@ const ROLE_ICONS: Record<AttachRole, (props: { className?: string }) => ReactEle
   start: StartFrameIcon,
   end: FrameEndIcon,
   clip: VideoIcon,
+  voice: SoundOnIcon,
 };
 
 const GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
@@ -77,6 +80,15 @@ export function blockedReason(
     return "This model takes a start frame or reference images, not both.";
   if (of === "end" && refs > 0 && images.end_excludes_refs)
     return "This model takes an end frame or reference images, not both.";
+  // One voice per subject, and a subject is an element: the cap on voices is
+  // the cap on elements. The API refuses the fifth too — this is the word
+  // before the press rather than after the send.
+  if (of === "voice") {
+    const cap = entry.elements?.max;
+    const bound = attachments.filter((each) => each.role === "voice").length;
+    if (typeof cap === "number" && bound >= cap)
+      return `This model binds at most ${cap} voices — one per character.`;
+  }
   return null;
 }
 
@@ -86,7 +98,7 @@ export function blockedReason(
  * video, so a drop there is refused and the picker is the way in.
  */
 function takesDrop(of: AttachRole): boolean {
-  return of !== "clip";
+  return of !== "clip" && of !== "voice";
 }
 
 /**
@@ -198,6 +210,9 @@ export function AttachTiles({
   const refs = held("reference");
   const input = held("input")[0];
   const clip = held("clip")[0];
+  // Plural, unlike the clip: one voice per subject, and a scene can have two
+  // people in it. `holdsOne` says the same thing on the context's side.
+  const voices = held("voice");
 
   // The drag speaks in positions among the references; the bar in indices.
   const sortable = useReorder(refs.length, (from, to) => {
@@ -410,6 +425,28 @@ export function AttachTiles({
           </div>
         )}
 
+        {roles.includes("voice") && (
+          <div role="group" aria-label={ROLE_WORDS.voice.label} data-role-cell="voice" className="contents">
+            {/* No `dropTarget`: a drag off a tile carries a still, and a
+                still is not a voice. The picker is the way in. */}
+            {voices.map(({ attachment, index }) => (
+              <Thumb
+                key={attachment.ref.node}
+                attachment={attachment}
+                caption="Voice"
+                onDetach={() => onDetach(index)}
+                actions={linesFor({ attachment, index })}
+              />
+            ))}
+            <Ghost
+              role="voice"
+              on={role === "voice"}
+              blocked={blocked("voice")}
+              onPress={() => onRole(role === "voice" ? null : "voice")}
+            />
+          </div>
+        )}
+
         {roles.includes("clip") && (
           <div role="group" aria-label={ROLE_WORDS.clip.label} data-role-cell="clip" className="contents">
             {clip ? (
@@ -558,6 +595,20 @@ export function Thumb({
             <ApertureSpinner size="sm" label={ref.pending!} />
           </span>
         </>
+      ) : role === "voice" ? (
+        // A waveform nobody drew: `AudioTile` gives it a play button instead,
+        // so the tile says which take is bound AND lets it be heard without
+        // leaving the sheet.
+        <AudioTile
+          nodeId={ref.node}
+          url={ref.url}
+          name={ref.name ?? ""}
+          drag={false}
+          // The tile is already a button — pressing it opens the preview
+          // drawer, and that is where the sample plays. See `playable`.
+          playable={false}
+          className={`${MEDIA} w-24`}
+        />
       ) : role === "clip" ? (
         // `preload="metadata"` is the free poster frame; nothing plays here.
         <video
