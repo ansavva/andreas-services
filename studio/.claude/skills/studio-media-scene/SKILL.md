@@ -459,3 +459,12 @@ arbitrary music. Name the ambience, name the sounds the action makes, and say
 what to exclude. Keep the ambience wording **identical** across clips; it is
 continuity like any other locked field, and a shifting soundbed makes joins
 audible even when the picture matches.
+
+**A spoken line belongs in the first ~10 seconds of its clip.** On Kling,
+lip-sync is reported to come apart past roughly that mark, which makes a
+15 s clip carrying dialogue at the end a bad buy however well the picture
+holds — see
+[`studio-media-kling`](../studio-media-kling/SKILL.md#dialogue-holds-for-about-ten-seconds-then-lip-sync-drifts).
+So a clip is cut where the talking stops: dialogue early, action late, and a
+conversation that runs long becomes two clips rather than one long one. That
+is a scene decision, not a prompt one — it changes where the boundaries go.

@@ -1,6 +1,6 @@
 ---
 name: studio-media-kling
-description: Generate videos with Kling 3.0 / O3 Omni via kwaivgi/kling-v3-omni-video on Replicate (pay-per-second, reference_images for character consistency, native multi-shot). Use whenever a video is rendered on Kling rather than Seedance. Covers the model schema, native multi-shot up to 6 cuts, start/end frames, image-to-video prompting, cross-clip consistency, and chaining into a scene. Pair with studio-media-prompt (--engine kling-replicate) and studio-media-character.
+description: Generate videos with Kling 3.0 / O3 Omni via kwaivgi/kling-v3-omni-video on Replicate (pay-per-second, reference_images for characters, locations, props and styles, native multi-shot). Use whenever a video is rendered on Kling rather than Seedance. Covers the model schema, native multi-shot up to 6 cuts, start/end frames, image-to-video prompting, naming references in the prompt with <<<image_N>>>, where dialogue has to sit, cross-clip consistency, and chaining into a scene. Pair with studio-media-prompt (--engine kling-replicate) and studio-media-character.
 ---
 
 # studio-media-kling — Kling 3.0 / O3 Omni
@@ -38,10 +38,10 @@ The family:
 
 | Input | Notes |
 |---|---|
-| `prompt` | **max 2500 chars.** Supports `<<<image_1>>>` template refs. |
+| `prompt` | **max 2500 chars.** Supports `<<<image_1>>>` / `<<<video_1>>>` template refs — see [below](#references-are-elements-not-just-characters--and-the-prompt-can-name-them). |
 | `start_image` | First frame. `.jpg/.jpeg/.png`, **max 10 MB**, min 300px, aspect 1:2.5–2.5:1. |
 | `end_image` | Last frame; requires `start_image`. |
-| `reference_images` | The character-consistency mechanism. **The cap of 7 counts the start frame too** — see below. 4 with a reference video. |
+| `reference_images` | "Elements, scenes, or styles" in the schema's own words — a character, a location plate, a prop, a style frame, and a request may mix them. **The cap of 7 counts the start frame too** — see below. 4 with a reference video. |
 | `reference_video` | 3–10s, `.mp4/.mov`, ≤200 MB; `video_reference_type` `feature` (style/camera) or `base` (editing). Binds with `--clip-run` / `--clip-key`, or the sheet's **Source video** tile. |
 | `multi_prompt` | JSON-encoded array `[{"prompt": "...", "duration": N}]`. **Max 6 shots, durations must sum to `duration`.** |
 | `mode` | `standard` = 720p · `pro` = 1080p · `4k`. |
@@ -60,7 +60,8 @@ on a kiss it did so even with `avoid` naming talking, speaking and dialogue,
 and `avoid` is folded into the prompt, so nothing stronger exists here. A
 clip that must be silent is `generate_audio: false`, with sound added in
 post; Veo's real `negative_prompt` is the only field that suppresses speech
-without switching audio off.
+without switching audio off. **Lines land in the first ~10 s and drift after**
+— see [below](#dialogue-holds-for-about-ten-seconds-then-lip-sync-drifts).
 
 **Kling renders a kiss between two adults** — no refusal across several
 runs, from a start frame with `reference_images`. The map across every
@@ -131,6 +132,58 @@ not also send references: the two frames have already fixed the look at both
 ends.
 
 Enforced locally, so it costs a message rather than a round trip.
+
+## References are elements, not just characters — and the prompt can name them
+
+The live schema's own wording for `reference_images` is "reference images for
+elements, scenes, or styles". Character consistency is the common use and not
+the only one: a **location plate**, a **prop**, an **animal** and a **style
+frame** are all valid entries, and one request may mix them — four references
+covering two people, a room and a dog is a documented shape, not an abuse.
+
+**The prompt can address them positionally.** `prompt` "Supports
+`<<<image_1>>>`, `<<<video_1>>>` template references" — the index is the
+reference's place in the `reference_images` array, 1-based, and `<<<video_1>>>`
+is `reference_video`. That turns a reference list from a bag of hints into
+something directable:
+
+```
+<<<image_1>>> and <<<image_2>>> stand in the room of <<<image_3>>>.
+<<<image_1>>> rises and says "I got it". <<<image_4>>> trots in behind him.
+```
+
+`studio prompt --engine kling-replicate` does not emit these tokens — write
+them into `subject`, `action` or a `shots[].description` and they reach the
+wire verbatim, because the compiler serialises prose rather than escaping it.
+**Confirm on the compiled string `studio prompt` prints before submitting**;
+that check is free and the render is not.
+
+Seedance's equivalent token is `[Image1]`. Different spelling, same idea, and
+they are not interchangeable — `[Image1]` on Kling is literal text.
+
+The 1-based ordering is read off the schema's wording, not measured here.
+`studio runs show` prints the request's reference list in order, which is how
+to check after the fact what `<<<image_2>>>` actually pointed at.
+
+### More references is not more control
+
+Consistency falls off as the list grows: the more elements a single generation
+has to hold, the more likely one of them mutates — a reported four-reference
+run grew a tail out of a dog's head while the two people held fine. The cap is
+7; the working number is smaller. Spend the slots on what the shot cannot do
+without, and settle anything fiddly in a **still** first.
+
+Two corollaries worth having:
+
+- **Three angles beat seven for one character.** Front, side and back is
+  enough data to stop the model inventing a face it never saw, and it leaves
+  slots for the location and the props. A character's full `default_set` is
+  the wrong default here — `--pick` it down.
+- **A secondary character can be prose-only.** A described-but-unreferenced
+  person stayed consistent across the cuts of a single multi-shot generation.
+  Within one generation, description is enough for anyone who is not the
+  subject; *across* generations it is not, which is what the locked template
+  is for.
 
 ## Workflow
 
@@ -488,6 +541,134 @@ movements, and variations in framing. Record which combinations are most
 effective … a personal library of proven prompts." Vary one thing per run
 against a held base, and write what held into `studio phrasebook` and the
 locked template.
+
+## A creator walkthrough, applied
+
+Source: Dan Kieft, [*STOP Wasting Credits & Master Kling 3.0 in 25
+Minutes*](https://youtu.be/b_RghITuQQM) (2026-02-24, 25 min). Driven through
+OpenArt's hosted Kling 3.0 / Omni rather than Replicate, so the UI affordances
+in it are not ours and the model behaviour is. **Nothing below is measured
+here** — each line is one experienced user's reported result, which is a
+hypothesis to design a run around, not a fact to build on. Where it meets
+something this file measured, the measurement wins and the difference is
+stated.
+
+### His prompt structure is this object, in a different order
+
+The video's answer to "how do I prompt Kling" is a seven-segment checklist,
+and it is worth reading as independent confirmation of the schema rather than
+as news — six of the seven are keys you already fill in:
+
+| His segment | Key | Note |
+|---|---|---|
+| Camera | `camera` | He writes it **first** |
+| Subject | `subject` | |
+| Action | `action` / `shots[].description` | |
+| Environment | `scene` | |
+| Lighting | `lighting` | "a bit optional" |
+| Texture | — | **No key.** Folds into `style` |
+| Audio | `audio` | "a bit optional" |
+
+Two things to take from it and one to leave:
+
+- **Texture is the only segment with nowhere to go.** Surface language —
+  grain, sheen, wet asphalt, worn fabric — is real direction and it lands in
+  `style` alongside the grade. Worth naming when a shot's material qualities
+  matter; Kuaishou's own guide says the same thing under "describe what is
+  visible".
+- **A shot line is camera + action + a length, fused.** His example is "an
+  over-the-shoulder close-up as she leans in" — one clause carrying the
+  framing and the beat, which is the shape `shots[]` compiles to. Nothing to
+  change; it is a good model of how short a beat description can be.
+- **Leave the camera-first ordering.** Kuaishou's guide is subject-first and
+  that is what the compiler emits. One creator's habit does not outrank the
+  vendor's documentation, the segments are the same either way, and nothing in
+  the video tests the order against anything.
+
+He also calls the last three optional. Treat that as his shorthand, not
+permission: `audio` is what stops
+[invented music and invented speech](#a-two-person-beat--measured-2026-09-18),
+which is measured here.
+
+### One reference, many angles — what multi-shot is actually for
+
+The framing that makes `multi_prompt` worth its hard cuts: **one reference
+image, up to six angles of the same subject, held consistent by the model**.
+The alternative it replaces is four prompts, four reference images and four
+generations stitched afterwards.
+
+So there are now two reasons to reach for it, and they are different jobs —
+[controlling *when* things
+happen](#multi_prompt-beats-are-cuts--and-they-are-the-only-timing-control),
+and getting coverage of one subject cheaply. For the second, chaining is the
+expensive way round.
+
+### Dialogue holds for about ten seconds, then lip-sync drifts
+
+The sharpest finding in the piece, and it argues *against* the 15 s ceiling
+rather than for it: past roughly 10 seconds the mouth separates from the audio
+— reported across his own runs and corroborated in his comments, on a feature
+Kuaishou markets as improved.
+
+The rule that follows, adopted here: **put every spoken line in the first ~10
+seconds, and give the remaining seconds to action rather than speech.** With
+`multi_prompt`, that means the dialogue beats come first and a wordless beat
+closes. It composes with what this file measured — a `dialogue` list constrains
+speech, its absence invites it — into one shape: audio on, a list present,
+lines early, silence last.
+
+A clip whose dialogue genuinely needs more than 10 seconds is two clips.
+
+### Morphing scales with duration *and* with prompt complexity
+
+Long generations morph — a face or a garment sliding into something else
+mid-shot. The reported levers are two, and only one of them is the one people
+reach for: shorten the clip **or simplify the prompt**. This file already says
+[shorter clips drift less](#shorter-clips-drift-less); the second half is new
+and matters, because the instinct when a shot breaks is to add wording, which
+is the wrong direction.
+
+### Motion carries across a `multi_prompt` cut
+
+A subject leaning in at the end of one beat was still leaning in at the start
+of the next. Beats are hard cuts in framing, [as this file
+says](#multi_prompt-beats-are-cuts--and-they-are-the-only-timing-control), but
+the model appears to carry physical state across the boundary. If it holds,
+the [pose-continuity
+line](../studio-media-scene/SKILL.md#the-pose-continuity-line) that a *chained
+clip* needs is redundant *within* one generation — write the pose once, in the
+beat that starts it.
+
+### Multi-shot may be unavailable when both frames are set
+
+Reported as a flat UI restriction: with a start frame **and** an end frame,
+multi-shot is not offered. Nothing in the Replicate schema forbids the
+combination, and this repo has never sent one — but it sits beside a
+[constraint we did hit](#an-end-frame-clears-the-reference-list), where the
+same pair caps the request at two images, so treat a bracketed multi-beat
+request as likely to fail and cheap to avoid.
+
+Wanting both the bracket and the cuts is the case for chaining:
+[`studio-media-scene`](../studio-media-scene/SKILL.md).
+
+### What it is reported to be good at
+
+Two claims worth knowing when choosing an engine, both unmeasured here:
+
+- **Facial expression and emotion** — the strongest thing in his showcase, and
+  the reason to send a performance beat here rather than to a model picked for
+  motion.
+- **Prompt coherence on an odd brief** — briefs that Kling 2.6 mangled and Veo
+  3.1 refused outright came back readable. A shot that failed elsewhere is
+  worth one attempt here before the brief is blamed.
+
+### What to not take from it
+
+**"Meta-prompt it with an LLM"** — that is `studio prompt`, and his own caveat
+is the important half: an LLM-written prompt you did not read is a slot
+machine. Which is also [hard rule #2](../../../CLAUDE.md) — the payload gets
+shown and a person says send. The camera-first ordering is the other one; see
+[above](#his-prompt-structure-is-this-object-in-a-different-order).
 
 ## Verified runs
 
