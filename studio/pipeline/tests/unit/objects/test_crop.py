@@ -62,7 +62,7 @@ def test_a_box_over_the_edge_is_clamped_not_refused(library):
         CHARACTER.pool_folder(record, "seed")["id"], "wide.png", _image(400, 600))
 
     result = _run("crop", "--key", source["id"], "--box", "-20,-20,500,5000",
-                  "--dest-key", "characters/subject-a/seed/current/cut.png")
+                  "--dest-key", f"{library.character}/seed/current/cut.png")
 
     assert result.exit_code == 0, result.output
     assert "400x600 -> 400x600" in result.output
@@ -76,7 +76,7 @@ def test_a_box_that_misses_the_image_entirely_is_refused(library):
         CHARACTER.pool_folder(record, "seed")["id"], "wide.png", _image(400, 600))
 
     result = _run("crop", "--key", source["id"], "--box", "900,900,1000,1000",
-                  "--dest-key", "characters/subject-a/seed/current/cut.png")
+                  "--dest-key", f"{library.character}/seed/current/cut.png")
 
     assert result.exit_code != 0
     assert "entirely outside" in result.output
@@ -91,12 +91,12 @@ def test_crop_writes_the_cut_and_leaves_the_source_alone(library):
     before = store.read_node(source["id"])
 
     result = _run("crop", "--key", source["id"], "--box", "100,50,300,550",
-                  "--dest-key", "characters/subject-a/seed/current/cut.png")
+                  "--dest-key", f"{library.character}/seed/current/cut.png")
 
     assert result.exit_code == 0, result.output
     assert "400x600 -> 200x500" in result.output
     assert store.read_node(source["id"]) == before, "source untouched"
-    written = store.resolve("characters/subject-a/seed/current/cut.png")
+    written = store.resolve(f"{library.character}/seed/current/cut.png")
     assert Image.open(io.BytesIO(store.read_node(written["id"]))).size == (200, 500)
 
 
@@ -106,7 +106,7 @@ def test_crop_reports_when_it_clamped(library):
     source = library.fake.put_file(seed["id"], "wide.png", _image(400, 600))
 
     result = _run("crop", "--key", source["id"], "--box", "-10,0,4000,600",
-                  "--dest-key", "characters/subject-a/seed/current/cut.png")
+                  "--dest-key", f"{library.character}/seed/current/cut.png")
 
     assert result.exit_code == 0, result.output
     assert "clamped from -10,0,4000,600" in result.output

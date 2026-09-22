@@ -53,7 +53,7 @@ from pathlib import Path
 from studio_pipeline.adapters import api
 
 #: One page of `GET /api/nodes`. The route caps it at 1,000; asking for the cap
-#: makes an ordinary folder one request, and `_paged` follows the cursor when a
+#: makes an ordinary folder one request, and `paged` follows the cursor when a
 #: pool is bigger than that rather than stopping at the first page.
 PAGE = 1000
 
@@ -99,10 +99,10 @@ def _listing(**params) -> list[dict]:
     a caller says otherwise. Every caller in this module documented
     name-ascending, so that is asked for here rather than left to the default.
     """
-    return _paged(sort="name", **params)
+    return paged(sort="name", **params)
 
 
-def _paged(**params) -> list[dict]:
+def paged(**params) -> list[dict]:
     """Every page of one listing, followed to the end.
 
     **Followed rather than capped, because a short answer here is silent.** The
@@ -110,6 +110,12 @@ def _paged(**params) -> list[dict]:
     returned a folder whole — so a caller taking the first page of a pool of
     1,200 would bind the wrong images and nothing would say so. `next_cursor` is
     null on the last page, which is the only stop condition needed.
+
+    **Public, because `entities` lists too.** `subject_images` read one page of
+    the same route on its own for a fortnight and returned 200 of a production
+    character's 202 images — the two newest, sorted past the cut — and nothing
+    said so: `curate` and `pool --unreferenced` sit on that call. Every
+    `GET /api/nodes` listing in this package goes through here.
     """
     found: list[dict] = []
     cursor = None
@@ -209,7 +215,7 @@ def exists(path: str) -> bool:
     return True
 
 
-def folder(path: str) -> dict:
+def folder(path: str, *, allow_new_root_folder: bool = False) -> dict:
     """Ensure a folder exists at a name path and return its node.
 
     **Folders were free in S3 and are rows now**, and that is the whole reason
@@ -227,6 +233,16 @@ def folder(path: str) -> dict:
     Refuses to hand back a file. A caller asking for a folder is about to write
     children into it, and `catalog.create_node` would refuse them one at a time
     with the parent's id rather than the path that was actually wrong.
+
+    **Refuses to create a folder directly under the library root**, unless the
+    caller says `allow_new_root_folder=True` — which only `config sync` does,
+    for the one top-level folder the pipeline owns. Every other top-level folder
+    is an entity's root, made by the API when the entity is, and a first segment
+    that resolves nothing is a misspelt address, not a folder to make: twice in
+    two days `upload --folder <name>/input` and `upload --folder
+    char-<uuid>/reference` (an id under the old `characters/` layout) each
+    built a stray tree at the root, holding files nothing would ever list,
+    and reported success.
     """
     clean = path.strip("/")
     try:
@@ -243,7 +259,14 @@ def folder(path: str) -> dict:
         raise StoreError("The library root does not exist.")
 
     parent_path, _, name = clean.rpartition("/")
-    parent = folder(parent_path)
+    if not parent_path and not allow_new_root_folder:
+        raise StoreError(
+            f"{name!r} does not exist at the library root, and a top-level folder "
+            "is not created on the way to a path. An entity's root folder is "
+            "named by its id — `studio character show <name>` and `studio "
+            "projects show <project>` print it — so the address is "
+            "char-<uuid>/…, proj-<uuid>/… or loc-<uuid>/…, never a name.")
+    parent = folder(parent_path, allow_new_root_folder=allow_new_root_folder)
     try:
         return api.post(
             "/api/nodes", {"parent": parent["id"], "name": name, "kind": "folder"}
@@ -462,7 +485,7 @@ def walk_files_of(node_id: str) -> list[dict]:
         # prefix of the node asked about, so the difference is the path relative
         # to it — which is what a caller printing two same-named files needs.
         {**entry, "path": entry["key"][len(base):]}
-        for entry in _paged(under=node_id, depth="all")
+        for entry in paged(under=node_id, depth="all")
         if _is_file(entry) and entry.get("key")
     ]
     return sorted(found, key=_depth_first)

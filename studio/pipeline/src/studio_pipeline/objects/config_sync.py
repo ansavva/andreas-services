@@ -123,7 +123,9 @@ def cmd_sync(apply_: bool, quiet: bool) -> int:
 
     for path, local in absent:
         parent, _, _name = path.rpartition("/")
-        store.folder(parent)
+        # `config/` is the one top-level folder the pipeline itself owns; every
+        # other folder at the root is an entity's, made when the entity is.
+        store.folder(parent, allow_new_root_folder=True)
         node = store.upload(
             path, pathlib.Path(local),
             content_type=mimetypes.guess_type(local)[0] or "application/octet-stream",

@@ -162,8 +162,8 @@ studio projects show <project>
 # List / download / upload / presign, by folder path
 studio download --folder char-<uuid>/reference --list      # a root folder is named by its id: `character show` prints it
 studio download --folder char-<uuid>/reference --all --dest /tmp/refs --json
-studio upload photo.jpg --folder <name>/seed
-studio presign --folder <name>/reference/face --json
+studio upload photo.jpg --folder char-<uuid>/seed            # a name resolves nothing: a first segment that does not exist is refused
+studio presign --folder char-<uuid>/reference/face --json
 
 # Cut a rectangle out of an image already in the tree. The source is untouched.
 studio crop --key <node> --box 120,40,880,1400 --add-input <project>

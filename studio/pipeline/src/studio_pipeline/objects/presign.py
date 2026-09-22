@@ -5,13 +5,13 @@ presigned GET URL that Replicate fetches during the job. The bucket stays
 private; no credentials are exposed.
 
   # every reference image, in <name>_1..<name>_N order -> [Image1]..[ImageN]
-  studio presign --folder <name>/reference --json
+  studio presign --folder char-<uuid>/reference --json
 
   # specific objects under a folder
-  studio presign --folder <name>/reference <name>_1.webp <name>_2.webp
+  studio presign --folder char-<uuid>/reference face_1.webp face_2.webp
 
   # one exact key
-  studio presign --key <name>/output/clip.mp4
+  studio presign --key proj-<uuid>/runs/<run>/output/clip.mp4
 """
 import json
 
@@ -22,7 +22,7 @@ from studio_pipeline.adapters import api, store
 
 @click.command(help=__doc__, epilog="\n\nArguments:\n  NAMES  With --folder: specific basenames (default: all in the folder).")
 @click.argument("names", nargs=-1)
-@click.option("--folder", help="Key prefix (e.g. characters/<name>/reference).")
+@click.option("--folder", help="Name path from the library root (e.g. char-<uuid>/reference).")
 @click.option("--json", "json_", is_flag=True, help="Emit JSON [{key,url}] instead of one URL per line.")
 @click.option("--key", help="An exact key (e.g. projects/<p>/runs/<id>/output/clip.mp4).")
 def presign(names, folder, json_, key):

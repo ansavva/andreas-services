@@ -56,7 +56,7 @@ from __future__ import annotations
 
 import uuid
 
-from studio_pipeline.adapters import api
+from studio_pipeline.adapters import api, store
 
 
 def _clean(**fields) -> dict:
@@ -149,13 +149,15 @@ def subject_images(segment: str, entity_id: str, tags: list[str] | None = None) 
     would be invisible. This is the subject's whole branch, filtered to
     images, and the tags on each say which are identity.
 
-    One listing call: `?under=<root>&depth=all&kind=image`, which is the same
-    route the file browser and the picker use.
+    One listing — `?under=<root>&depth=all&kind=image`, the same route the file
+    browser and the picker use — followed to its last page. It read the first
+    page only until 2026-09-21, and the route pages at 200, so a character past
+    that many images lost its tail silently: `images`, `curate` and
+    `pool --unreferenced` all answered from 200 of 202.
     """
     record = get_subject(segment, entity_id)
-    found = api.get("/api/nodes", under=record["root"], depth="all", kind="image",
-                    sort="name", tag=",".join(tags) if tags else None)
-    return found.get("entries") or []
+    return store.paged(under=record["root"], depth="all", kind="image",
+                       sort="name", tag=",".join(tags) if tags else None)
 
 
 def subject_selection(segment: str, entity_id: str, *, pick: list[str] | None = None,

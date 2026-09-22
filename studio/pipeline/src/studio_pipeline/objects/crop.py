@@ -21,7 +21,7 @@ enqueue plus two polls would cost more wall clock than the work, and Pillow is
 
   # a run's output, to a named destination
   studio crop --run <project>/latest#1 --box 0,0,1179,2196 \
-      --dest-key characters/<name>/seed/current/<file>.jpg
+      --dest-key char-<uuid>/seed/current/<file>.jpg
 
 **The box is LEFT,TOP,RIGHT,BOTTOM in source pixels**, the same order and
 meaning Pillow's `crop` takes and the same a detector reports. It is clamped to

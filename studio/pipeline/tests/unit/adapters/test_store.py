@@ -310,6 +310,57 @@ def test_a_missing_chain_of_folders_is_created_deepest_last(apis, monkeypatch):
             if verb == "POST" and route == "/api/nodes"] == ["<project>", "runs"]
 
 
+def test_a_folder_is_not_created_directly_under_the_library_root(apis, monkeypatch):
+    """A first segment that resolves nothing is a misspelt address, not a folder.
+
+    Every top-level folder is an entity's root, made by the API when the entity
+    is. `upload --folder peter-training/input` (a name) and `upload --folder
+    char-<uuid>/reference` (an id, under the old `characters/` layout) each
+    built a stray tree at the root that nothing would ever list, and printed
+    success. Now the whole chain is refused before anything is written.
+    """
+    calls, _table = apis
+
+    def _get(_route, **params):
+        calls.append(("GET", _route, params))
+        raise api.NotFound(f"no such node: {params.get('path')}", 404)
+
+    def _post(_route, payload=None, **params):
+        calls.append(("POST", _route, payload))
+        raise AssertionError("nothing may be created")
+
+    monkeypatch.setattr(api, "get", _get)
+    monkeypatch.setattr(api, "post", _post)
+
+    with pytest.raises(store.StoreError, match="'made-up' does not exist at the library root"):
+        store.folder("made-up/input")
+    assert not [c for c in calls if c[0] == "POST"]
+
+
+def test_config_sync_is_the_one_caller_allowed_a_new_root_folder(apis, monkeypatch):
+    """`config/` is the pipeline's own; the flag says so at the call site."""
+    calls, _table = apis
+    present = {""}          # the library root, which is never created
+
+    def _get(_route, **params):
+        path = params.get("path")
+        if path not in present:
+            raise api.NotFound(f"no such node: {path}", 404)
+        return {"id": f"node:{path}", "kind": "folder"}
+
+    def _post(_route, payload=None, **params):
+        calls.append(("POST", _route, payload))
+        return {"id": f"node:{payload['name']}", "kind": "folder"}
+
+    monkeypatch.setattr(api, "get", _get)
+    monkeypatch.setattr(api, "post", _post)
+
+    store.folder("config/angle", allow_new_root_folder=True)
+
+    assert [payload["name"] for verb, route, payload in calls
+            if verb == "POST" and route == "/api/nodes"] == ["config", "angle"]
+
+
 # ──────────────────────────── listing files (#305) ────────────────────────────
 
 

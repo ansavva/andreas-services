@@ -1,7 +1,7 @@
 """Upload local file(s) into the media tree.
 
-  studio upload --folder <name>/output output/<name>/clip.mp4
-  studio upload --folder <name>/reference img/*.webp --presign --json
+  studio upload --folder proj-<uuid>/input frame.png
+  studio upload --folder char-<uuid>/reference/face img/*.webp --presign --json
 
 **This names no bucket, deliberately.** It used to say
 `studio-prod-media-us-east-1` in this docstring, which was two things at once: a
@@ -34,7 +34,7 @@ def content_type(path: str) -> str:
 
 @click.command(help=__doc__, epilog="\n\nArguments:\n  FILES  Local file(s) to upload.")
 @click.argument("files", nargs=-1, required=True)
-@click.option("--folder", required=True, help="Destination key prefix (e.g. characters/<name>/seed).")
+@click.option("--folder", required=True, help="Destination name path from the library root (e.g. char-<uuid>/seed, proj-<uuid>/input).")
 @click.option("--json", "json_", is_flag=True, help="Emit a JSON list instead of text.")
 @click.option("--presign", is_flag=True, help="Also emit a temporary HTTPS URL per file.")
 def upload(files, folder, json_, presign):

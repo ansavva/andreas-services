@@ -282,14 +282,17 @@ def test_convert_to_an_explicit_destination_ensures_the_parent(
     made = []
     real = store.folder
 
-    def spy(path):
+    def spy(path, **kwargs):
         made.append(path)
-        return real(path)
+        return real(path, **kwargs)
 
     monkeypatch.setattr(store, "folder", spy)
 
+    # The project's root is named by its ID. This test once said
+    # `porch-teaser/derived/…` and passed by building a stray `porch-teaser/`
+    # at the library root — the exact mistake `store.folder` now refuses.
     result = _run("convert", "--key", source_png, "--to", "webp",
-                  "--dest-key", "porch-teaser/derived/frame.webp")
+                  "--dest-key", f"{library.project}/derived/frame.webp")
 
     assert result.exit_code == 0, result.output
     # A spy that DELEGATES, not one that answers. A stub returning a fake node
@@ -300,8 +303,8 @@ def test_convert_to_an_explicit_destination_ensures_the_parent(
     # is asked for first and its parents follow. That the WHOLE chain is walked
     # is the property — a project that has never had a `derived/` is the case
     # this flag most often meets.
-    assert made[0] == "porch-teaser/derived"
-    assert store.resolve("porch-teaser/derived/frame.webp")["kind"] == "file"
+    assert made[0] == f"{library.project}/derived"
+    assert store.resolve(f"{library.project}/derived/frame.webp")["kind"] == "file"
 
 
 def test_convert_names_a_source_that_is_not_there(library):

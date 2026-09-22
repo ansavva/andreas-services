@@ -139,7 +139,7 @@ its result where it is and prints the promotion line; a person looks, and then:
 
 ```bash
 studio runs outputs <project>/latest --presign            # look first
-studio upload --folder <name>/reference <file> && studio describe <node> --tag default
+studio upload --folder char-<uuid>/reference <file> && studio describe <node> --tag default
 ```
 
 The promotion copies inside the bucket, so the run keeps its own output and no
