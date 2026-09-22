@@ -701,6 +701,89 @@ line](../studio-media-scene/SKILL.md#the-pose-continuity-line) that a *chained
 clip* needs is redundant *within* one generation — write the pose once, in the
 beat that starts it.
 
+### One complete prompt, annotated
+
+Everything above was extracted from working prompts; this is one of them
+intact, because the rules are abstractions of the thing and the thing is
+shorter. Four shots, 12 seconds, four references — two people, an animal and a
+location. Reproduced in **the pack's own spelling**, which is not the one this
+repo emits; the mapping follows.
+
+```
+SHOT 1 [3 sec]
+@image4 is the background. Medium tracking shot slowly dolly pushing in on
+@image1 kneeling beside an open cardboard box while a big @image2 drags along
+a small box. She points at a small blanket on the sofa and says
+[woman: casual]
+"Pokie, could you fetch me that blanket?"
+Audio: cardboard rustle, distant birds outside, light fabric movement.
+
+SHOT 2 [2 sec]
+Low-angle medium shot on @image2 waddling to the sofa. She reaches down to
+take the small blanket.
+Audio: tiny claws tapping wood, soft fabric drag, gentle room tone.
+
+SHOT 3 [4 sec]
+Locked-off interior shot facing the sliding glass doors as @image3 walks past
+outside along the garden path. He stops and glances through the glass,
+noticing @image1 and @image2.
+[Man: friendly, raised voice]
+"Oh—hey! You must be the new neighbors!"
+Audio: faint outdoor footsteps on stone, muffled voice through glass, light
+breeze in grass.
+
+SHOT 4 [3 sec]
+Over-the-shoulder from outside, through the glass of @image1 as she turns
+toward the door, sunlight edging her silhouette.
+[Woman: stuttering and blushing]
+"Oh, hi! Yes we are!"
+Audio: subtle fabric shift, soft daylight ambience, distant birds.
+```
+
+What it demonstrates, in the order it appears:
+
+- **A location tagged like a person.** `@image4 is the background` — the plate
+  occupies a reference slot and is addressed the same way the cast is.
+- **One camera move per shot,** each shot opening with its framing: dolly in,
+  low-angle static, locked-off, over-the-shoulder. No shot stacks two.
+- **Durations sum to the total** — 3 + 2 + 4 + 3 = 12, which is what
+  `multi_prompt` requires.
+- **Every line carries a delivery** — `casual`, `friendly, raised voice`,
+  `stuttering and blushing` — and every speaker is labelled even though only
+  two of them talk.
+- **Audio is per shot and specific**, and the ambience repeats: "distant birds
+  outside" in shot 1, "distant birds" in shot 4.
+- **And it breaks the ten-second rule, visibly.** Shot 4 runs 9–12 s and
+  carries a spoken line, which crosses the mark where lip-sync is reported to
+  come apart — and lip-sync is exactly what the video names as the one flaw in
+  this clip. The pack is not a set of perfect prompts; it is a set of prompts
+  that ran. Moving that last line into shot 3 and closing on the wordless beat
+  is the fix, and it costs nothing. See
+  [the ten-second rule](#dialogue-holds-for-about-ten-seconds-then-lip-sync-drifts).
+
+And one thing to *not* copy: the ambience wording drifts — "gentle room tone",
+"soft daylight ambience", "light breeze in grass" are three names for one
+place. [Hold it identical](../studio-media-scene/SKILL.md#audio-across-clips)
+and let only the beat's own sounds change.
+
+**In this repo the same shot is an object, and the compiler spells it
+differently.** The shape survives; four things are renamed:
+
+| The pack | Here |
+|---|---|
+| `SHOT 1 [3 sec]` | a `shots[]` entry with `dur` → `Shot 1 (3s):` |
+| `@image1` | `<<<image_1>>>` — [the spelling question](#references-are-elements-not-just-characters--and-the-prompt-can-name-them) |
+| `[woman: casual]` + line beneath | `dialogue: [{"speaker", "line", "delivery"}]` → `Woman (casual): "…"` |
+| per-shot `Audio:` line | held ambience in `audio`, beat sounds in the `shots[].description` |
+
+Three devices this example happens not to use, from elsewhere in the pack:
+
+```
+Bucket Vigilante (overly forced gravel voice): "WHERE IS HE?"
+"Don't play games with me." Beat. Louder, more forced: "WHERE. IS. HE."
+The Man (O.S., chewing): "It's about loyalty."
+```
+
 ### Multi-shot may be unavailable when both frames are set
 
 Reported as a flat UI restriction: with a start frame **and** an end frame,
