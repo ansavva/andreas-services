@@ -31,7 +31,9 @@ vi.mock("./pages/FavoritesPage", () => ({ FavoritesPage: () => <div>favorites</d
 vi.mock("./pages/CharactersPage", () => ({ CharactersPage: () => <div>characters</div> }));
 vi.mock("./pages/ProjectsPage", () => ({ ProjectsPage: () => <div>projects</div> }));
 vi.mock("./pages/CharacterPage", () => ({ CharacterPage: () => <div>character</div> }));
-vi.mock("./pages/ProjectPage", () => ({ ProjectPage: () => <div>project</div> }));
+vi.mock("./pages/ProjectPage", () => ({
+  ProjectPage: ({ reel = false }: { reel?: boolean }) => <div>{reel ? "reel" : "project"}</div>,
+}));
 vi.mock("./pages/ScenePage", () => ({ ScenePage: () => <div>scene</div> }));
 vi.mock("./pages/MoviePage", () => ({ MoviePage: () => <div>movie</div> }));
 vi.mock("./pages/BrowsePage", () => ({ BrowsePage: () => <div>browser</div> }));
@@ -73,6 +75,9 @@ describe("the route table", () => {
       "/p/proj-4a10b8d2-5c93-47ae-8f61-0d51e6b7c2a9/r/run-77c2f0a8-31b5-4e62-9a07-c4d8e15b3f60",
       "project",
     ],
+    // The reel is the project page too, told so by a prop rather than a
+    // param — there is no id to read, only the word.
+    ["/p/proj-4a10b8d2-5c93-47ae-8f61-0d51e6b7c2a9/reel", "reel"],
     ["/s/scene-0001", "scene"],
     ["/m/movie-0001", "movie"],
     ["/f", "browser"],

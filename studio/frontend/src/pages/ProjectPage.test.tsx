@@ -14,6 +14,13 @@ vi.mock("../components/project/RunFeed", () => ({
 vi.mock("../components/run/RunLightbox", () => ({
   RunLightbox: ({ runId }: { runId: string }) => <div>lightbox {runId}</div>,
 }));
+vi.mock("../components/reel/ProjectReel", () => ({
+  ProjectReel: ({ rootId, onClose }: { rootId: string; onClose: () => void }) => (
+    <button type="button" onClick={onClose}>
+      reel over {rootId}
+    </button>
+  ),
+}));
 vi.mock("../hooks/useInFlightRuns", () => ({ useInFlightRuns: vi.fn(() => ({})) }));
 
 vi.mock("../apis/studio", () => ({
@@ -67,6 +74,7 @@ async function open(path = `/p/${ID}`) {
       <Routes>
         <Route path="/p/:projectId" element={<ProjectPage />} />
         <Route path="/p/:projectId/r/:runId" element={<ProjectPage />} />
+        <Route path="/p/:projectId/reel" element={<ProjectPage reel />} />
       </Routes>
     </MemoryRouter>,
     { wrapper: TestProviders },
@@ -167,6 +175,24 @@ it("draws the lightbox over the feed when the address names a run", async () => 
   await open(`/p/${ID}/r/run-0001?tab=runs`);
   expect(screen.getByText("lightbox run-0001")).toBeTruthy();
   expect(screen.getByText(`feed for ${ID}`)).toBeTruthy();
+});
+
+/**
+ * The reel is the same bargain: the page underneath, the reel over it, and
+ * closing it is the project again with the address's search kept.
+ */
+it("draws the reel over the project's root, and closing it is the project", async () => {
+  await open(`/p/${ID}/reel?tab=scenes`);
+  expect(selected("Scenes")).toBe(true);
+  fireEvent.click(screen.getByText("reel over node-root"));
+  await waitFor(() => expect(screen.queryByText("reel over node-root")).toBeNull());
+  expect(selected("Scenes")).toBe(true);
+});
+
+it("the bar's Play reel opens the reel", async () => {
+  await open();
+  fireEvent.click(screen.getByRole("button", { name: "Play reel" }));
+  expect(await screen.findByText("reel over node-root")).toBeTruthy();
 });
 
 /**

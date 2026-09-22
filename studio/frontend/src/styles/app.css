@@ -437,3 +437,49 @@ input.h-10,
     background: var(--color-card);
   }
 }
+
+/*
+ * The project reel: a vertical scroll-snap column, one item per viewport.
+ *
+ * The snapping is the browser's — done in JS it fights the platform's own
+ * momentum and never feels right on touch. `overscroll-behavior: contain`
+ * is what keeps a swipe past either end from scrolling the feed the reel
+ * is drawn over. `100dvh` rather than `h-full`: a phone's browser toolbar
+ * comes and goes, and the pane has to be the viewport that is actually
+ * there. `-webkit-overflow-scrolling` is what Safari needs before it
+ * treats the column as a snapping scroller at all.
+ */
+.reel-scroller {
+  scroll-snap-type: y mandatory;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.reel-pane {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  height: 100dvh;
+}
+
+/*
+ * The heart a double tap leaves on the picture: swells in, holds, fades.
+ * One pass, no loop, so reduced motion keeps it — a burst that is over in
+ * 700ms is feedback, not decoration — but shortened, so the hold is what
+ * remains rather than the swell.
+ */
+@keyframes studio-heart-burst {
+  0% { transform: scale(0.4); opacity: 0; }
+  20% { transform: scale(1.1); opacity: 1; }
+  40% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+.studio-heart-burst {
+  animation: studio-heart-burst 0.7s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-heart-burst {
+    animation-duration: 0.4s;
+  }
+}
