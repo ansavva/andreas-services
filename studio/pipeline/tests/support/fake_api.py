@@ -24,9 +24,12 @@ half a fake would be tempted to get wrong. `rev` is compare-and-swap and a stale
 one is a 409. Reference `order` is gapped by 1000 and `after` takes the midpoint.
 Deleting a node that is an entity's `root` is refused.
 
-**Not real.** There is no authorisation, no library membership check, no
-pagination and no cursor. Every one of those is the backend's to enforce and the
-smoke suite's to exercise; imitating them here would test this file.
+**Not real.** There is no authorisation and no library membership check. Both
+are the backend's to enforce and the smoke suite's to exercise; imitating them
+here would test this file. **Paging IS real**, with the backend's numbers: the
+listing answers 200 entries unless asked for more, caps a page at 1,000 and
+hands back a `next_cursor` — because a client that read only the first page
+of a 370-image character passed every test that did not page.
 
 ## The bytes
 
@@ -335,6 +338,12 @@ class FakeApi:
     #: shapes the CLI and the app used to ask for separately.
     MEDIA_KINDS = ("image", "video")
 
+    #: `services/browse.py`'s `DEFAULT_PAGE_SIZE` and `MAX_PAGE_SIZE`. The
+    #: parameter is `limit`, as the route reads it; a `page_size=` is ignored
+    #: there and so it is here.
+    DEFAULT_PAGE_SIZE = 200
+    MAX_PAGE_SIZE = 1000
+
     def _listing(self, params) -> dict:
         under = params.get("under") or self.root["id"]
         if under not in self.nodes:
@@ -367,7 +376,7 @@ class FakeApi:
             kept.sort(key=lambda row: row[1]["created_at"], reverse=sort == "newest")
 
         offset = int(params.get("cursor") or 0)
-        limit = int(params.get("limit") or 200)
+        limit = min(int(params.get("limit") or self.DEFAULT_PAGE_SIZE), self.MAX_PAGE_SIZE)
         window = kept[offset : offset + limit]
         nxt = offset + len(window)
 

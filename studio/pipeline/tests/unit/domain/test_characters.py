@@ -268,6 +268,45 @@ def test_images_filters_on_every_named_tag(library):
     assert library.body_1 not in result.output
 
 
+def _seed_wardrobe(library, count: int, tags: list[str]) -> list[str]:
+    """`count` images in a `wardrobe/` folder, every one tagged `tags`, sorting
+    after the fixture's three by name."""
+    folder = library.fake._create_node(library.reference, "wardrobe", "folder")
+    ids = []
+    for i in range(count):
+        node = library.fake.put_file(folder["id"], f"look-{i:04d}.webp", b"w")
+        store.describe_node(node["id"], tags=tags)
+        ids.append(node["id"])
+    return ids
+
+
+def test_images_by_tag_reaches_past_the_first_page(library):
+    """Measured in production: 32 freshly tagged files that sorted past position
+    200 were missing from `images --tag wardrobe`. The listing pages at 200 by
+    default; the CLI has to follow it to the end."""
+    tagged = _seed_wardrobe(library, library.fake.DEFAULT_PAGE_SIZE + 32, ["wardrobe"])
+
+    result = _run("images", "subject-a", "--tag", "wardrobe")
+
+    assert result.exit_code == 0, result.output
+    assert all(node in result.output for node in tagged)
+    assert f"{len(tagged)} image(s)" in result.output
+
+
+def test_show_counts_the_whole_branch_not_the_first_page(library):
+    """`images 200 · sent by default: 6` against a character with ~370 images
+    and 7 `default` ones is what the first page looks like when nobody says it
+    is a page. Both numbers must come from the whole branch."""
+    library.fake.MAX_PAGE_SIZE = 250  # a smaller cap; the paging is what is under test
+    _seed_wardrobe(library, 300, ["default", "wardrobe"])
+
+    result = _run("show", "subject-a")
+
+    assert result.exit_code == 0, result.output
+    assert "images    303" in result.output
+    assert "sent by default: 302" in result.output
+
+
 def test_tagging_an_image_is_what_makes_it_identity(library):
     """`studio describe` is the only way in, and it already existed.
 
