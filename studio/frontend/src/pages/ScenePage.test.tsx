@@ -22,9 +22,19 @@ vi.mock("../apis/studio", () => ({
   deleteProject: vi.fn(),
   getProject: vi.fn(),
   getCharacters: vi.fn().mockResolvedValue([]),
+  // The take's `⋮` reads the favorited set, like every other media menu.
+  getFavoriteIds: vi.fn().mockResolvedValue({ ids: [] }),
+  addFavorite: vi.fn().mockResolvedValue({ node: "node-take" }),
+  removeFavorite: vi.fn(),
 }));
 
-import { deleteScene, getProject, getScene, setSceneRuns } from "../apis/studio";
+import {
+  addFavorite,
+  deleteScene,
+  getProject,
+  getScene,
+  setSceneRuns,
+} from "../apis/studio";
 import { ScenePage } from "./ScenePage";
 import { TestProviders } from "../test-providers";
 
@@ -163,6 +173,27 @@ it("draws a single take with no strip", async () => {
 
   expect(await screen.findByText("The take")).toBeTruthy();
   expect(screen.queryByRole("tablist", { name: "Takes" })).toBeNull();
+});
+
+/**
+ * **The assembled take is favoritable where it is drawn.** It was the one
+ * media tile in the app carrying no menu, so the finished scene — the thing
+ * a person keeps — could only be favorited by opening it and finding the
+ * line in the viewer's `⋯`, while every clip it was cut from offered it on
+ * the tile.
+ */
+it("offers the take's own ⋮, with the heart on it", async () => {
+  draw(record({ output: asset("node-take"), status: "assembled" }));
+
+  await screen.findByText("The take");
+  // `ActionMenu` draws a dropdown trigger and a sheet trigger, told apart in
+  // CSS jsdom does not apply — the first is the dropdown, whose lines are
+  // `menuitem`s. `ObjectPage.test` makes the same pick.
+  fireEvent.click(screen.getAllByRole("button", { name: "Actions for node-take.mp4" })[0]!);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Add to favorites" }));
+
+  // The node the SCENE points at, not the scene — a favorite names a file.
+  await waitFor(() => expect(vi.mocked(addFavorite)).toHaveBeenCalledWith("node-take"));
 });
 
 /**
