@@ -511,6 +511,49 @@ a second render could drift on. Record the provenance in the description and tag
 it `mirrored`, so nobody later reads it as independent evidence of the face. It
 costs nothing, and it is what `config/angle/` already does for its own angle images.
 
+### A composite plate puts three angles in one slot
+
+The same instinct one step further. A **composite plate** is several approved
+angles laid side by side on one white ground — front, three-quarter and back,
+left to right — kept as a single image the character can send.
+
+Two things it buys:
+
+- **Engines that take one reference image** get a turnaround anyway.
+- **Engines with a hard image cap** get their slots back. Kling counts seven
+  images *including* the start frame, so three separate angles plus a start
+  frame is over half the budget; one plate leaves room for the location and
+  the previous clip's last frame. See
+  [`studio-media-kling`](../studio-media-kling/SKILL.md#more-references-is-not-more-control).
+
+**Composite the renders you already approved — never prompt for a sheet.** A
+model asked for a three-angle triptych returns three *new* faces in one file:
+a fresh roll of the die, and the drift is now baked into a single node that
+reads as authoritative. Assembling approved frames is the same argument as
+[mirroring](#making-a-matched-pair-without-a-second-render) — the pixels are
+ones that were already looked at.
+
+How the existing ones are filed, and the convention worth keeping:
+
+- **One pair per wardrobe** — a full-body plate and a headshot plate. A plate
+  is only true for the outfit it shows, so a wardrobe change is a new plate,
+  not an edit.
+- **Tag it `composite` and `multi-angle`, and also tag every angle it
+  contains** — `front`, `three-quarter-right`, `back`. Tag-based selection is
+  how a character is chosen from, so a plate that does not carry its angles is
+  a picture nobody can pick.
+- **Say in the description that it is composited, not generated.** Same
+  provenance rule as `mirrored`: nobody should later read it as independent
+  evidence of the face.
+- **Keep it out of `default_set`.** It is an alternative to the set, not a
+  member — sending both ships the same three angles twice and spends the cap
+  it exists to save.
+
+**Not the same thing as `studio contact-sheet`.** That builds a captioned grid
+of a whole pool into `review/`, for eyeballing which pose is which. The
+captions are baked into the pixels, which makes it the wrong image to send a
+model.
+
 ## A bible describes identity, not a fixed look
 
 A character record is medium-agnostic on purpose:

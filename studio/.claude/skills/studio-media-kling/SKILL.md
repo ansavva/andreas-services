@@ -139,7 +139,9 @@ The live schema's own wording for `reference_images` is "reference images for
 elements, scenes, or styles". Character consistency is the common use and not
 the only one: a **location plate**, a **prop**, an **animal** and a **style
 frame** are all valid entries, and one request may mix them — four references
-covering two people, a room and a dog is a documented shape, not an abuse.
+covering two people, a room and a dog is a documented shape, not an abuse —
+and it is how the shots in the prompt pack below are actually built, with the
+location plate tagged in the prompt like any other reference.
 
 **The prompt can address them positionally.** `prompt` "Supports
 `<<<image_1>>>`, `<<<video_1>>>` template references" — the index is the
@@ -158,8 +160,20 @@ wire verbatim, because the compiler serialises prose rather than escaping it.
 **Confirm on the compiled string `studio prompt` prints before submitting**;
 that check is free and the render is not.
 
-Seedance's equivalent token is `[Image1]`. Different spelling, same idea, and
-they are not interchangeable — `[Image1]` on Kling is literal text.
+**There is a second spelling in the wild: `@image1`.** Kuaishou's own product
+uses `@`-prefixed tags — the 3.0 Omni guide writes characters as `@Name` — and
+every working prompt in Dan Kieft's
+[prompt pack](https://docs.google.com/document/d/1JxYJzqJ3ICCQsP_H9yZ0YsUE2jpeuDgvJe0ULBins18/edit)
+tags reference slots that way instead: `background @image3`, `@image1 stands
+up`, `@image4 naturally jumps up onto the desk`. Those prompts ran, so the
+spelling works **through Kuaishou's own surface**. `<<<image_1>>>` is what
+Replicate's schema documents, and that is the one to default to here; if a
+render ignores the tags, the other spelling is the first thing to try, and
+worth recording either way — neither has been sent from this repo.
+
+Seedance's token is a third, `[Image1]`, and none of the three are
+interchangeable: the wrong spelling is literal text in the prompt rather than
+an error.
 
 The 1-based ordering is read off the schema's wording, not measured here.
 `studio runs show` prints the request's reference list in order, which is how
@@ -178,7 +192,11 @@ Two corollaries worth having:
 - **Three angles beat seven for one character.** Front, side and back is
   enough data to stop the model inventing a face it never saw, and it leaves
   slots for the location and the props. A character's full `default_set` is
-  the wrong default here — `--pick` it down.
+  the wrong default here — `--pick` it down. Better still, spend **one** slot:
+  a [composite
+  plate](../studio-media-character/SKILL.md#a-composite-plate-puts-three-angles-in-one-slot)
+  carries all three angles in a single image, which is what keeps room under
+  the seven for a location and the previous clip's last frame.
 - **A secondary character can be prose-only.** A described-but-unreferenced
   person stayed consistent across the cuts of a single multi-shot generation.
   Within one generation, description is enough for anyone who is not the
@@ -524,7 +542,9 @@ paragraph then `Shot N (Ns):` lines is exactly that. The guide's own example
 uses a third bracketed spelling — `[Shot 1: Wide shot] … [Shot 2: Medium shot]
 … [Shot 3: Close-up shot] …` with the style tail after the last shot — so any
 of the three documented spellings is read; ours carries the duration the
-Custom mode wants. Custom Multi-Shot controls per shot: content, duration,
+Custom mode wants. A practitioner's pack uses a fourth — `SHOT 1 [3 sec]`,
+duration in the header — which also works, so the label's shape is not what
+the model is reading. Custom Multi-Shot controls per shot: content, duration,
 size and perspective, camera movement — the four things a `shots[]` entry has.
 
 ### Text in frame
@@ -544,10 +564,13 @@ locked template.
 
 ## A creator walkthrough, applied
 
-Source: Dan Kieft, [*STOP Wasting Credits & Master Kling 3.0 in 25
-Minutes*](https://youtu.be/b_RghITuQQM) (2026-02-24, 25 min). Driven through
+Sources: Dan Kieft, [*STOP Wasting Credits & Master Kling 3.0 in 25
+Minutes*](https://youtu.be/b_RghITuQQM) (2026-02-24, 25 min) and the
+[prompt pack](https://docs.google.com/document/d/1JxYJzqJ3ICCQsP_H9yZ0YsUE2jpeuDgvJe0ULBins18/edit)
+behind it — a dozen prompts that produced the video's clips, which is the more
+useful half: they are working text, not advice about text. Both driven through
 OpenArt's hosted Kling 3.0 / Omni rather than Replicate, so the UI affordances
-in it are not ours and the model behaviour is. **Nothing below is measured
+in them are not ours and the model behaviour is. **Nothing below is measured
 here** — each line is one experienced user's reported result, which is a
 hypothesis to design a run around, not a fact to build on. Where it meets
 something this file measured, the measurement wins and the difference is
@@ -618,6 +641,45 @@ speech, its absence invites it — into one shape: audio on, a list present,
 lines early, silence last.
 
 A clip whose dialogue genuinely needs more than 10 seconds is two clips.
+
+### How the working prompts write dialogue and audio
+
+The pack's twelve prompts are consistent about this, and it is craft the
+five-element formula does not cover.
+
+**A speaker label is `[Name: delivery]` on its own line, the line in quotes
+beneath it.** The compiler emits Kuaishou's other documented form —
+`Name (delivery): "line"` — and the two are alternatives, not a hierarchy.
+What matters is that **a delivery is always present**: "hushed whisper",
+"calm, flat", "overly forced gravel voice", "stuttering and blushing",
+"barely audible, shattered". A bare line with no delivery is a performance
+left to the model, and performance is [what this engine is reportedly best
+at](#what-it-is-reported-to-be-good-at) — so it is worth directing.
+
+Three devices inside the quoted text itself:
+
+- **Capitals carry volume** — `"WHERE IS HE?"`.
+- **Periods between words beat it out** — `"WHERE. IS. HE."`.
+- **`Beat.` is an explicit pause** mid-line, between two quoted fragments,
+  which is how a held silence gets timed inside a beat rather than across one.
+
+**`(O.S.)` puts a line off-screen** — `The Man (O.S., chewing): "It's about
+loyalty."` while the shot is on the listener. That is the reaction shot, and
+without the marker the model has to guess whether to cut to the speaker.
+
+**Speakers can be labelled by position when nobody has a reference** —
+`[Foreground Player: casual]` and `[Seated Player: breathy]` distinguish two
+unnamed men in one frame by where they sit. Useful before a character exists,
+and it composes with a tagged reference for anyone who does.
+
+**Every shot carries its own `Audio:` line, and it is specific.** Not "room
+tone" but "cardboard rustle, distant birds outside, light fabric movement" —
+or "tiny claws tapping wood, soft fabric drag, gentle room tone". Read the
+pattern as two layers: a **held ambience** that should read identically in
+every shot, and **beat-specific SFX** naming the sounds *this* action makes.
+The object has one `audio` field for the first; the second belongs in the
+`shots[].description` that causes it. See
+[`studio-media-scene`](../studio-media-scene/SKILL.md#audio-across-clips).
 
 ### Morphing scales with duration *and* with prompt complexity
 

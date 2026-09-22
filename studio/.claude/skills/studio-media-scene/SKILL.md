@@ -460,6 +460,14 @@ what to exclude. Keep the ambience wording **identical** across clips; it is
 continuity like any other locked field, and a shifting soundbed makes joins
 audible even when the picture matches.
 
+**Ambience is held; SFX are not.** They are two layers and only one of them is
+continuity. The room tone, the weather, the traffic behind the wall — identical
+wording, every clip. The sounds a particular beat *makes* — a floorboard creak,
+fabric shifting, a fork on a plate — are written into the beat that causes
+them and change with it. Working Kling prompts carry both in a per-shot
+`Audio:` line; keeping them in one undifferentiated block is what makes a
+soundbed wander.
+
 **A spoken line belongs in the first ~10 seconds of its clip.** On Kling,
 lip-sync is reported to come apart past roughly that mark, which makes a
 15 s clip carrying dialogue at the end a bad buy however well the picture
