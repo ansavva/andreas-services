@@ -172,7 +172,23 @@ function SheetSlot() {
           **Full width inside them**, like the content: the `max-w-3xl` it
           carried when it floated centred it over a feed; on the page it is a
           row of the page, and a row runs the column's width. */}
-      <div ref={slot} className="relative z-[25] px-4 pt-6 md:px-6">
+      {/* **Over a viewer the sheet is capped and scrolls inside itself.**
+          Everywhere else it is a row of the page and the PAGE scrolls it,
+          however tall it grows. Over the opened run there is no page scroll
+          to do that: the viewer is `fixed` and starts under whatever height
+          this slot publishes, so a sheet taller than the window pushed the
+          run it was editing to a height of ZERO — and took Send and the chip
+          row off the bottom of the screen with it. Four shot boxes on a
+          15-second multi-shot draft is enough to do it at 900px; a long
+          enough prompt always could. 60dvh leaves the run readable behind
+          what is being written about it, the way the phone drawer caps at a
+          fraction of the viewport for the same reason. */}
+      <div
+        ref={slot}
+        className={`relative z-[25] px-4 pt-6 md:px-6 ${
+          overViewer ? "max-h-[60dvh] overflow-y-auto overscroll-contain" : ""
+        }`}
+      >
         <CreateBar />
       </div>
     </>

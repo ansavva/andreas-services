@@ -13,13 +13,17 @@ the registry, `"json"` unless an entry says otherwise:
 - `json` — the object as indented JSON. ByteDance's Seedance guidance endorses
   labelled structured text, so that is what Seedance receives.
 - `kling` — Kuaishou's own formula: *subject + subject movement + scene +
-  (camera + lighting + atmosphere)* as a paragraph of short sentences, shots as
-  `Shot N (Ns): …` lines, dialogue with speaker labels, then an `Avoid …`
-  sentence. Kuaishou's prompt guide, its 3.0 Omni user guide and its blog use
-  prose throughout and mention no JSON; the only JSON the model parses is the
-  typed `multi_prompt` field. Kling used to receive the JSON form, which was
-  validated on Seedance and never on Kling — the braces and key names reached
-  it as literal characters in a 2,500-character field. Settled 2026-09-20.
+  (camera + lighting + atmosphere)* as a paragraph of short sentences,
+  dialogue with speaker labels, then an `Avoid …` sentence. Kuaishou's prompt
+  guide, its 3.0 Omni user guide and its blog use prose throughout and mention
+  no JSON; the only JSON the model parses is the typed `multi_prompt` field.
+  Kling used to receive the JSON form, which was validated on Seedance and
+  never on Kling — the braces and key names reached it as literal characters
+  in a 2,500-character field. Settled 2026-09-20.
+
+  **A timeline goes out ONCE.** With `multi_prompt` on the wire the prompt is
+  the setting and nothing else; `Shot N (Ns): …` lines appear only when no
+  structured field carries the beats. See `render_kling`.
 
 The object is the record either way: it is what `prompt.json` stores beside a
 run and what the locked-template discipline diffs. Only the wire text differs.
@@ -508,16 +512,28 @@ def _shot_seconds(shots: list, total: int | None) -> list[int] | None:
     return durs if all(d >= 1 for d in durs) else None
 
 
-def _shot_text(shot) -> str:
-    """One shot's prompt text: its description plus shot type / camera."""
-    if not isinstance(shot, dict):
-        return str(shot).strip()
-    bits = [shot.get("description") or ""]
-    for k in ("shot", "camera"):
-        v = shot.get(k)
-        if isinstance(v, str) and v.strip():
-            bits.append(f"{'shot type' if k == 'shot' else 'camera'}: {v.strip()}")
-    return ", ".join(b.strip().rstrip(".") for b in bits if b and b.strip())
+def beats_as_a_field(obj: dict, engine: str) -> list[int] | None:
+    """The beat durations when this engine carries the timeline as a FIELD OF
+    ITS OWN rather than as prose inside the prompt — `None` when it does not.
+
+    Kling is the one that does: `multi_prompt` is a typed array of
+    `{"prompt", "duration"}`, and Replicate's own README calls it *the*
+    multi-shot mechanism. So when it is filled, the prompt must not also spell
+    the beats out — see `render_kling`.
+
+    **One function, because two callers need the same answer**: `build_settings`
+    fills the field and `serialize` decides what the prompt says instead. Split
+    across two places they could disagree, and the failure would be a prompt
+    that describes four cuts beside a field that sends three.
+    """
+    spec = engines()[engine]
+    if spec["technical"] != "replicate_kling":
+        return None
+    shots = obj.get("shots") or []
+    if not shots:
+        return None
+    tech = obj.get("technical") if isinstance(obj.get("technical"), dict) else {}
+    return _shot_seconds(shots, tech.get("duration"))
 
 
 def resolve_negative(obj: dict) -> str | None:
@@ -542,8 +558,17 @@ def build_prompt_object(obj: dict, engine: str) -> tuple[dict, bool]:
     out: dict = {}
 
     if timeline:
-        # globals first, then the ordered shot list.
-        for k in ("subject", "style", "audio", "lighting"):
+        # Globals first, then the ordered shot list.
+        #
+        # **`scene` is one of the globals, and it did not used to be.** It was
+        # dropped on the reasoning that each beat describes its own setting —
+        # which held while the beats were also written into the prompt, and
+        # stopped holding the moment they left it for `multi_prompt`. The room
+        # is the one thing true of every cut, Kuaishou's multi-shot guidance is
+        # "define the setting first", and a `<<<image_N>>>` naming the location
+        # plate lives in this field: dropped, the plate went to the model as an
+        # unaddressed hint. `camera` stays out — framing is per beat.
+        for k in ("subject", "scene", "style", "audio", "lighting"):
             v = obj.get(k)
             if v:
                 out[k] = v
@@ -599,14 +624,13 @@ def build_settings(obj: dict, prompt_str: str, engine: str) -> tuple[str, dict]:
         inp["generate_audio"] = bool(picked.get("generate_audio"))
         if not obj.get("start_image") and "aspect_ratio" in picked:
             inp["aspect_ratio"] = picked["aspect_ratio"]
-        shots = obj.get("shots") or []
-        if shots:
-            durs = _shot_seconds(shots, picked.get("duration"))
-            if durs:
-                inp["multi_prompt"] = json.dumps(
-                    [{"prompt": _shot_text(sh), "duration": d} for sh, d in zip(shots, durs)],
-                    ensure_ascii=False,
-                )
+        durs = beats_as_a_field(obj, engine)
+        if durs:
+            inp["multi_prompt"] = json.dumps(
+                [{"prompt": _kling_shot(sh), "duration": d}
+                 for sh, d in zip(obj.get("shots") or [], durs)],
+                ensure_ascii=False,
+            )
         return "input", inp
 
     return "input", {"prompt": prompt_str, **picked}
@@ -696,18 +720,35 @@ def _kling_shot(shot) -> str:
                                 _sentence(shot.get("description") or "")) if p)
 
 
-def render_kling(prompt_obj: dict, obj: dict, total: int | None) -> str:
+def render_kling(prompt_obj: dict, obj: dict, total: int | None,
+                 *, beats_sent: bool = False) -> str:
     """The creative object as the prose Kuaishou documents.
 
     Single shot: one paragraph, a sentence per component, in the order of the
     official formula — subject, movement, scene, camera, lighting, style,
-    audio — then dialogue, then `Avoid …`. Multi-shot: the globals as that
-    paragraph, then one `Shot N (Ns): …` line per beat, the shape the 3.0 Omni
-    user guide writes a multi-shot prompt in. Durations come from the same
-    `_shot_seconds` that fills `multi_prompt`, so the two never disagree; a
-    timeline without resolvable durations gets `Shot N:` alone.
+    audio — then dialogue, then `Avoid …`.
+
+    **Multi-shot: the globals, and the beats only when nothing else carries
+    them.** `beats_sent` says `multi_prompt` is going out with this prompt, and
+    then the paragraph is the whole of it — the setting, the cast, the grade,
+    the sound — because the beats are already on the wire as a typed array and
+    a second copy in prose buys nothing:
+
+    - The two copies are built by different code from the same `shots[]`, so
+      they say the same thing in two different wordings. Kling reads both.
+    - They are expensive. On a four-beat 15 s draft the shot block was 1,366
+      characters of a 2,500-character cap — 55% of the budget spent restating
+      what the field already held, six characters short of the hard refusal.
+    - Neither Kuaishou nor Replicate's README asks for it. The README's
+      multi-shot example is the array alone, beats carrying their own
+      `<<<image_N>>>` references. Kuaishou's "define the setting first, then
+      organize by shot order" describes a prompt with no structured field to
+      put the order in; with `multi_prompt` the order IS the field.
+
+    A timeline whose durations do not resolve sends no `multi_prompt`, and
+    then the `Shot N: …` lines are the only timeline there is and stay.
     """
-    shots = prompt_obj.get("shots")
+    shots = prompt_obj.get("shots") if not beats_sent else None
     lead = [_sentence(_subject_movement(prompt_obj))]
     if prompt_obj.get("scene"):
         lead.append(_sentence(prompt_obj["scene"]))
@@ -737,7 +778,8 @@ def serialize(prompt_obj: dict, obj: dict, engine: str, *, compact: bool = False
     spec = engines()[engine]
     if spec["prompt_format"] == "kling":
         tech = obj.get("technical") if isinstance(obj.get("technical"), dict) else {}
-        return render_kling(prompt_obj, obj, tech.get("duration"))
+        return render_kling(prompt_obj, obj, tech.get("duration"),
+                            beats_sent=bool(beats_as_a_field(obj, engine)))
     return json.dumps(
         prompt_obj, ensure_ascii=False,
         indent=None if compact else 2,

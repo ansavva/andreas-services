@@ -739,7 +739,26 @@ page and a plain textarea over its literal bytes, and never offers fields.
   static there too**: the slot publishes its height as `--sheet-h` and
   `ViewerFrame` starts under it, so the viewer shrinks to fit rather than
   being covered — it floated over the picture and the aside's actions
-  before. Then the chip row (`CreateChips`):
+  before.
+
+  **Multi-shot sits UNDER the prompt, not in the settings** (`ShotsPanel`).
+  A model whose registry entry names a `video.shots` field — Kling's
+  `multi_prompt`, and nothing else today — gets a switch under the prompt
+  box, and with it on, a box per cut: the beat's prose, its seconds, ↑↓×,
+  and `+ Add a shot` up to `video.max_cuts`. The running total against the
+  clip's duration sits on the switch's line, because beats whose seconds do
+  not sum to `duration` are what Kling refuses as E006 and studio refuses at
+  submit. **The field is a JSON array inside a string**, so as an ordinary
+  schema row it drew a thousand characters of escaped JSON in a one-line box
+  behind the gear — for text that is a prompt, read and rewritten as often as
+  the prompt above it. The switch writes nothing while it is off (an empty
+  array is not a value the model takes), turning it on splits the clip
+  between two beats, and turning it off remembers them for the way back. The
+  same `ShotCard` draws them read-only under the prompt in a feed row and in
+  the opened run (`ShotsRead`, from `RunPrompt`), so a run reads back in the
+  shape it was written.
+
+  Then the chip row (`CreateChips`):
   the model, opening `ModelList` (search + notes, one kind at a time), and one
   chip per input the model has out of a fixed six — aspect ratio, resolution,
   duration, quality, outputs, audio — each a glyph and a value opening a

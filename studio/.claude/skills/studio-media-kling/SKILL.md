@@ -43,7 +43,7 @@ The family:
 | `end_image` | Last frame; requires `start_image`. |
 | `reference_images` | "Elements, scenes, or styles" in the schema's own words — a character, a location plate, a prop, a style frame, and a request may mix them. **The cap of 7 counts the start frame too** — see below. 4 with a reference video. |
 | `reference_video` | 3–10s, `.mp4/.mov`, ≤200 MB; `video_reference_type` `feature` (style/camera) or `base` (editing). Binds with `--clip-run` / `--clip-key`, or the sheet's **Source video** tile. |
-| `multi_prompt` | JSON-encoded array `[{"prompt": "...", "duration": N}]`. **Max 6 shots, durations must sum to `duration`.** |
+| `multi_prompt` | JSON-encoded array `[{"prompt": "...", "duration": N}]`. **Max 6 shots, ≥1 s each, durations must sum to `duration`.** A beat's text may carry `<<<image_N>>>` — the README's own multi-shot example does. |
 | `mode` | `standard` = 720p · `pro` = 1080p · `4k`. |
 | `aspect_ratio` | `16:9` · `9:16` · `1:1`. **Required only when there is no start frame.** |
 | `duration` | 3–15 seconds. |
@@ -164,6 +164,16 @@ they are not interchangeable — `[Image1]` on Kling is literal text.
 The 1-based ordering is read off the schema's wording, not measured here.
 `studio runs show` prints the request's reference list in order, which is how
 to check after the fact what `<<<image_2>>>` actually pointed at.
+
+**What decides that order is the FLAG, and `--key` comes last.** `studio run`
+builds the list in a fixed sequence: `--image-run`, then every `--character`,
+then every `--location`, then `--ref-run`, then `--input`, then `--key`. So a character's picture bound with `--key` — the natural thing
+to reach for when it is not tagged `default` — lands *after* the location
+plate, and a prompt saying "the man from `<<<image_1>>>`" then points at an
+empty room. Measured 2026-09-22 on a dev stack, and it is silent: every image
+is valid, the caps pass, and only the render would show it. Bind identity with
+`--character` + `--pick` / `--pick-tag` so it sorts first, and read the order
+back off the dry run before submitting.
 
 ### More references is not more control
 
@@ -414,20 +424,54 @@ So the wire text is now:
 ```
 <subject> <action>. <scene>. <Shot type>, <movement>, <lens>mm lens. <lighting>. <style>. <audio>.
 
-Shot 1 (3s): Wide shot, static. <description>.
-Shot 2 (3s): Medium shot, slow dolly in. <description>.
-
 Speaker: "line"
 
 Avoid <negative>.
 ```
 
-The lead paragraph follows the formula's order; the shot lines carry the same
-durations `multi_prompt` does; the negative closes because Kling has nowhere
-else to put it. **Nothing about the locked template changes**: the object is
-still what you author, diff and hold byte-identical across a scene, and it is
-still what `prompt.json` records beside the run. Only the string built from it
-differs — and a byte-identical object serialises to a byte-identical string.
+The paragraph follows the formula's order and the negative closes it, because
+Kling has nowhere else to put it. **The beats are not in here** — they are in
+`multi_prompt`; see [below](#the-timeline-goes-out-once). `Shot N (Ns): …`
+lines are written into the prompt only when the durations do not resolve and
+no `multi_prompt` goes out, and then they are the only timeline there is.
+
+**Nothing about the locked template changes**: the object is still what you
+author, diff and hold byte-identical across a scene, and it is still what
+`prompt.json` records beside the run. Only the string built from it differs —
+and a byte-identical object serialises to a byte-identical string.
+
+### The timeline goes out ONCE
+
+Until 2026-09-22 the compiler wrote the beats **twice** — `Shot N (Ns): …`
+lines in the prompt *and* the same beats in `multi_prompt`. Measured on a
+four-beat 15 s draft on prod: 2,494 characters of a 2,500-character cap, of
+which the shot block was **1,366** — 55% of the budget spent restating what the
+typed field already held, six characters from the hard refusal, in a second
+wording built by different code from the same `shots[]`.
+
+Nothing asks for that. Replicate's README puts the beats in the array alone:
+
+> ### Multi-shot mode
+> Use the `multi_prompt` parameter for videos with multiple scenes. Pass a JSON
+> array of shot definitions, each with a prompt and duration (up to 6 shots).
+> ```json
+> [{"prompt": "<<<image_1>>> opens a door and steps inside", "duration": 5},
+>  {"prompt": "<<<image_1>>> looks around the room in surprise", "duration": 5}]
+> ```
+
+And Kuaishou's "define the setting first, then organize the scene by shot
+order" describes a prompt with **no structured field to put the order in**;
+with `multi_prompt` the order *is* the field. So the division of labour is:
+
+| | carries |
+|---|---|
+| `prompt` (required, always sent) | what is true of every cut — the setting, the cast and their `<<<image_N>>>` tags, lighting, style, audio, `Avoid …` |
+| `multi_prompt` | what happens, cut by cut, with each beat's seconds |
+
+Answering the question this arrangement provokes — *why am I sending a prompt
+AND a multi-prompt?* — `prompt` is `required` in the live schema, so something
+has to be in it, and the globals are what a per-beat array has nowhere to put.
+The app says the same thing on the create panel, under the switch.
 
 Not yet measured: whether the prose form tracks the brief better than the JSON
 did. It is the vendor's documented form, which is the reason to default to it;

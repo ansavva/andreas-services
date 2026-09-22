@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 
 import { Text } from "@ansavva/design-system";
 
+import { shotListOf } from "../create/ShotList";
+
 /**
  * A plan's parameters as chips, and the model beside them.
  *
@@ -69,7 +71,7 @@ export function ParamChips({
 /** The parameters a chip or a grid row draws: scalars, and not the prose ones. */
 export function scalarParams(params: Record<string, unknown> | undefined): Array<[string, string]> {
   return Object.entries(params ?? {})
-    .filter(([key, value]) => isScalar(value) && !PROSE.has(key))
+    .filter(([key, value]) => isScalar(value) && !PROSE.has(key) && shotListOf(value) === null)
     .map(([key, value]) => [key, String(value)]);
 }
 
@@ -78,6 +80,14 @@ export function scalarParams(params: Record<string, unknown> | undefined): Array
  * by `RunPrompt`, in the prompt's own shape, and not as a pill here.
  */
 const PROSE = new Set(["negative_prompt"]);
+
+/**
+ * A SHOT LIST is not a pill either, and it is filtered by shape rather than
+ * by name — see `shotListOf`. Kling's `multi_prompt` is a JSON array in a
+ * string field, so it passes `isScalar` and drew 1,500 characters of escaped
+ * JSON into a `key value` pill. Where there is room for it — the opened run's
+ * details — it is drawn as numbered beats instead.
+ */
 
 function isScalar(value: unknown): boolean {
   return (

@@ -352,9 +352,7 @@ def test_the_kling_alias_serializes_the_same_way():
             == P.assemble(kling_base(), "kling")["prompt"])
 
 
-def test_a_kling_timeline_is_shot_lines_with_durations():
-    """The 3.0 Omni guide writes multi-shot prompts as `Shot N (Ns): …`. The
-    durations are the ones `multi_prompt` carries, from the same arithmetic."""
+def timeline_base(**over):
     obj = {
         "subject": "a detective in a long coat",
         "style": "neo-noir grade",
@@ -364,12 +362,50 @@ def test_a_kling_timeline_is_shot_lines_with_durations():
         ],
         "technical": {"duration": 8},
     }
+    obj.update(over)
+    return obj
+
+
+def test_a_kling_timeline_goes_out_once_as_multi_prompt():
+    """`multi_prompt` IS the multi-shot mechanism — Replicate's README says so
+    and its example is the array alone. So the beats are in the field and the
+    prompt is the setting: a second copy as prose would spend half the
+    2,500-character cap restating what the field already holds, in a second
+    wording the model also reads."""
+    answer = P.assemble(timeline_base(), "kling")
+    assert answer["prompt"] == "A detective in a long coat. Neo-noir grade."
+    assert "Shot 1" not in answer["prompt"]
+    assert json.loads(answer["input"]["multi_prompt"]) == [
+        {"prompt": "Wide shot, static. Stands in the rain.", "duration": 5},
+        {"prompt": "Close shot, hold. He exhales.", "duration": 3},
+    ]
+
+
+def test_a_beat_reads_as_the_shot_line_it_used_to_print():
+    """Framing first, then what happens — the `[shot type]: [description]`
+    shape the 3.0 Omni guide writes. The beats used to trail their framing
+    behind the description as `…, shot type: wide, camera: static`, which is
+    nothing any Kuaishou document asks for."""
+    beats = json.loads(P.assemble(timeline_base(), "kling")["input"]["multi_prompt"])
+    assert beats[0]["prompt"].startswith("Wide shot, static.")
+
+
+def test_shot_lines_stay_when_no_field_carries_the_beats():
+    """Durations that do not resolve send no `multi_prompt` — and then the
+    prose lines are the only timeline there is."""
+    obj = timeline_base(technical={})
     answer = P.assemble(obj, "kling")
-    lines = answer["prompt"].splitlines()
-    assert lines[0] == "A detective in a long coat. Neo-noir grade."
-    assert "Shot 1 (5s): Wide shot, static. Stands in the rain." in lines
-    assert "Shot 2 (3s): Close shot, hold. He exhales." in lines
-    assert [s["duration"] for s in json.loads(answer["input"]["multi_prompt"])] == [5, 3]
+    assert "multi_prompt" not in answer["input"]
+    assert "Shot 1: Wide shot, static. Stands in the rain." in answer["prompt"].splitlines()
+
+
+def test_the_prompt_keeps_the_globals_a_beat_cannot_hold():
+    """What the paragraph is FOR once the beats have left it: the cast, the
+    grade, the sound and the negative, which are true of every cut."""
+    obj = timeline_base(audio="rain on tin", negative="jitter, extra fingers")
+    prompt = P.assemble(obj, "kling")["prompt"]
+    assert "Rain on tin." in prompt
+    assert prompt.endswith("Avoid jitter, extra fingers.")
 
 
 def test_kling_dialogue_carries_a_speaker_label_in_quotes():
@@ -402,3 +438,15 @@ def test_the_kling_prose_is_what_the_length_cap_measures():
 def test_prompt_format_defaults_to_json_for_an_engine_that_says_nothing():
     assert P.engines()["seedance"]["prompt_format"] == "json"
     assert P.engines()["kling"]["prompt_format"] == "kling"
+
+
+def test_a_timeline_prompt_keeps_the_setting():
+    """`scene` is true of every cut, so it belongs in the paragraph — and with
+    the beats gone to `multi_prompt` there is nowhere else for it. A
+    `<<<image_N>>>` naming the location plate lives in this field, so dropping
+    it sent the plate as an unaddressed hint."""
+    obj = timeline_base(scene="the coach's office of <<<image_9>>>, desk and whiteboard")
+    prompt = P.assemble(obj, "kling")["prompt"]
+    assert "The coach's office of <<<image_9>>>, desk and whiteboard." in prompt
+    # The framing stays per beat.
+    assert "Wide shot" not in prompt
