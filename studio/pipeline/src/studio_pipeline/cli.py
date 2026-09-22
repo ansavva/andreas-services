@@ -30,6 +30,7 @@ from studio_pipeline.domain import runs as _runs
 from studio_pipeline.domain import scenes as _scenes
 from studio_pipeline.engine import add_model as _add_model
 from studio_pipeline.engine import runner as _runner
+from studio_pipeline.objects import composite as _composite
 from studio_pipeline.objects import config_sync as _config_sync
 from studio_pipeline.objects import convert as _convert
 from studio_pipeline.objects import crop as _crop
@@ -61,7 +62,7 @@ class _Grouped(click.Group):
         ("subjects",    ["character", "location", "curate", "contact-sheet"]),
         ("authoring",   ["prompt", "phrasebook", "templates"]),
         ("objects",     ["upload", "download", "describe", "presign", "posters", "faststart",
-                         "retype", "convert", "crop", "config"]),
+                         "retype", "convert", "crop", "composite", "config"]),
     ]
 
     def format_commands(self, ctx, formatter):
@@ -173,6 +174,7 @@ for _name, _cmd in [
     ("retype", _retype.retype),
     ("convert", _convert.convert),
     ("crop", _crop.crop),
+    ("composite", _composite.composite),
     ("config", _config_sync.main),
     ("templates", _templates.main),
 ]:

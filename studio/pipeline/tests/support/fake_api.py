@@ -104,6 +104,23 @@ def _backend_service(name: str):
 
 
 @functools.lru_cache(maxsize=1)
+def _backend_media(name: str):
+    """A backend `media/<name>.py`, loaded the way `_backend_service` loads one.
+
+    `imaging` imports `studio_core.errors` and reaches for Pillow inside the
+    functions that need it, so this costs a unit test nothing it was not already
+    paying — `contact_sheet` and `frames` have wanted Pillow here for years.
+    """
+    import importlib
+    import sys
+
+    root = str(STUDIO_DIR / "backend")
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    return importlib.import_module(f"studio_core.media.{name}")
+
+
+@functools.lru_cache(maxsize=1)
 def _committed_registry() -> dict:
     """`backend/studio_core/models.json`, each entry carrying its own key.
 
@@ -603,6 +620,7 @@ class FakeApi:
             (r"/api/content-types", self._r_content_types),
             (r"/api/images/convert", self._r_image_convert),
             (r"/api/images/crop", self._r_image_crop),
+            (r"/api/images/composite", self._r_image_composite),
             (r"/api/phrasebook", self._r_phrasebook),
             (r"/api/phrasebook/([^/]+)/([^/]+)", self._r_phrasebook_term),
             (r"/api/templates", self._r_templates),
@@ -2202,6 +2220,46 @@ class FakeApi:
                 "requested": list(wanted), "box": list(inside),
                 "clamped": inside != wanted,
                 "width": cut.width, "height": cut.height}
+
+    def _r_image_composite(self, method, body, params):
+        """`POST /api/images/composite` — the BACKEND's geometry, not a copy of it.
+
+        `convert` and `crop` are restated above because each is three lines of
+        Pillow. A plate is not: the common edge, the downscale-only rule and the
+        gutter arithmetic are the whole behaviour, and a fake that approximated
+        them would let this package's tests pass against a layout the service
+        does not produce — which is the failure this file exists to prevent.
+        """
+        if method != "POST":
+            raise FakeError(405, method)
+        imaging = _backend_media("imaging")
+        nodes = body.get("nodes")
+        if not isinstance(nodes, list) or len(nodes) < 2:
+            raise FakeError(400, "nodes is a list of at least two node ids, "
+                                 "in the order they lay out")
+        records, bodies = [], []
+        for node_id in nodes:
+            record, data = self._image_source({"node": node_id})
+            records.append(record)
+            bodies.append(data)
+        ext, _fmt, dest, name = self._image_target(body, records[0])
+        if not body.get("name"):
+            stem = records[0]["name"].rsplit(".", 1)[0] \
+                if "." in records[0]["name"] else records[0]["name"]
+            name = f"{stem}-composite{ext}"
+        try:
+            plate, report = imaging.composite(
+                bodies, ext,
+                direction=body.get("direction") or "row",
+                gap_percent=body.get("gap", imaging.DEFAULT_GAP_PERCENT),
+                background=body.get("background") or "#ffffff",
+                quality=body.get("quality") or 95)
+        except Exception as exc:  # `ValidationError` -> the 400 the route sends
+            raise FakeError(400, str(exc)) from None
+        return {"image": self._image_write(dest, name, plate, ext),
+                "sources": [{"node": record["id"], "bytes": len(data)}
+                            for record, data in zip(records, bodies)],
+                **report}
 
     # ── phrasebook ──────────────────────────────────────────────────────────
 

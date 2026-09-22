@@ -144,9 +144,10 @@ WIRE_SURFACE = {
     # And the third, `studio retype`: the content type an image or clip's
     # extension says, on rows that said otherwise. Answered, not queued.
     "/api/content-types",
-    # the two operations that are NOT on that queue. Both are sub-second on a
-    # single image, so a queue round trip would cost more than the work — see
-    # `backend/studio_core/routes/images.py`.
+    # the three operations that are NOT on that queue. Each is sub-second on the
+    # images it touches, so a queue round trip would cost more than the work —
+    # see `backend/studio_core/routes/images.py`.
+    "/api/images/composite",
     "/api/images/convert",
     "/api/images/crop",
     # phrasebook

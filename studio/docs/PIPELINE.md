@@ -214,7 +214,7 @@ studio/pipeline/
         │
         └── objects/               raw object access
             └── upload.py  download.py  presign.py  describe.py
-                convert.py  crop.py  config_sync.py
+                convert.py  crop.py  composite.py  config_sync.py
 ```
 
 Dependencies point one way: `cli` → `domain` → `adapters`. The package's
@@ -488,9 +488,10 @@ out frozen (2026-09-18).
 (`backend/Dockerfile.render`) carries `ffmpeg`; `POST /api/renders` enqueues
 onto `studio-prod-render`, and a worker Lambda does the download, the stitch
 and the record. `domain/renders.py` is this side of that seam: it resolves
-inputs to node ids, posts one job and polls the row. `convert` and `crop` are
-**not** on that queue — both are sub-second on one image, so they are
-synchronous routes in the API image with Pillow and no ffmpeg.
+inputs to node ids, posts one job and polls the row. `convert`, `crop` and
+`composite` are **not** on that queue — each is sub-second on the images it
+touches, so they are synchronous routes in the API image with Pillow and no
+ffmpeg.
 
 ### Identity vs working material — never conflate them
 
@@ -742,15 +743,16 @@ and a colleague, which a per-machine file never could.
 **`objects/` — moving bytes.** `upload.py`, `download.py`, `presign.py`
 (how assets reach Replicate), `describe.py` (a caption and tags on a node,
 which is what makes a reference index selectable), `convert.py` (re-encode so
-a target engine accepts it), `crop.py` (cut a rectangle out of one) and
+a target engine accepts it), `crop.py` (cut a rectangle out of one),
+`composite.py` (lay several out as one multi-angle plate) and
 `config_sync.py` (`studio config sync` — push the repo's `config/` angle images
 into the library, the one command here whose source is this checkout rather
 than the tree).
 
-**`convert` and `crop` are one `POST` each, and Pillow is not in this wheel.**
-They are the two operations that deliberately are *not* on the render queue:
-both are sub-second on a single image, so an enqueue plus two polls would cost
-more wall clock than the work. `backend/studio_core/routes/images.py` argues
+**`convert`, `crop` and `composite` are one `POST` each, and Pillow is not in
+this wheel.** They are the three operations that deliberately are *not* on the
+render queue: each is sub-second on the images it touches, so an enqueue plus
+two polls would cost more wall clock than the work. `backend/studio_core/routes/images.py` argues
 the split. What stays here is the part a route should not decide. `--for kling`
 is a registry lookup answering "is a conversion needed at all", and an
 already-acceptable source makes no request. `--dest-key` ensures the
@@ -763,6 +765,17 @@ The box is parsed on both sides and that is not duplication worth removing: a
 refusal that arrives before a request beats one that arrives as a 400, and the
 route has to check anyway because the SPA is not this command. It contains no
 subject detection: a wrong box is worse than no command.
+
+`composite.py` reuses the same destination handling and is the one of the three
+that takes SEVERAL sources — repeated `--key`, in layout order. It sorts
+nothing and detects nothing, for `crop.py`'s reason: which angles carry a
+subject is a judgement about that subject, and a plate built from the wrong
+three is worse than no plate. The geometry is the route's — panels normalised
+to a common edge, downscale only, with a gutter stated as a percentage of that
+edge so it survives a change of source resolution — and what stays here is
+reporting it, because a silently rescaled plate is a plate nobody stated. The
+per-image byte cap the other two use becomes a cap on the TOTAL: a plate holds
+every panel decoded at once.
 
 A repeated conversion lands `frame (2).jpg` beside the first rather than
 overwriting it — `catalog.create_numbered` never clobbers. A `--dest-key` with

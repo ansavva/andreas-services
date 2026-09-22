@@ -786,3 +786,18 @@ def crop_image(node: str, box: str, *, to: str | None = None,
     """
     return api.post("/api/images/crop", _clean(
         node=node, box=box, to=to, dest=dest, name=name, quality=quality))
+
+
+def composite_image(nodes: list[str], *, direction: str | None = None,
+                    gap: int | None = None, background: str | None = None,
+                    to: str | None = None, dest: str | None = None,
+                    name: str | None = None, quality: int = 95) -> dict:
+    """Lay several images out as one plate, in the order given. -> the new node.
+
+    The reply carries the geometry — the gap, the margin, and each panel's size
+    beside the size it came in at — because normalising to a common edge is a
+    thing that silently happened to somebody's images.
+    """
+    return api.post("/api/images/composite", _clean(
+        nodes=nodes, direction=direction, gap=gap, background=background,
+        to=to, dest=dest, name=name, quality=quality))

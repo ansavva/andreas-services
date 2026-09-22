@@ -1372,7 +1372,7 @@ fan-out write this trade avoids.
 | `PATCH /api/scenes/<id>/runs` | The cut: an ordered list of run ids, replaced whole. Naming a run joins it to the scene; `PATCH /api/runs/<id>` with `scene` moves one in or out |
 | `POST /api/scenes/<id>/output` · `POST /api/movies/<id>/output` | Upload URL for a cut made elsewhere. The render path does not use it |
 | `POST /api/renders` · `GET /api/renders/<id>` | **Enqueue an encode, and poll the row.** A stitch, a frame grab, a contact grid or a contact sheet, done by a second container image with `ffmpeg` in it |
-| `POST /api/images/convert` · `/api/images/crop` | The two image operations that are **not** on that queue — sub-second, so synchronous, with Pillow and no ffmpeg |
+| `POST /api/images/convert` · `/api/images/crop` · `/api/images/composite` | The three image operations that are **not** on that queue — sub-second, so synchronous, with Pillow and no ffmpeg. `composite` is the one that takes several nodes: a multi-angle reference plate out of a turnaround |
 | `GET \| POST /api/movies` · `GET \| PATCH \| DELETE /api/movies/<id>` · `PATCH /api/movies/<id>/scenes` | The tier above |
 | `GET /api/models` · `GET /api/models/<name>` · `/schema` · `/readme` | The model registry |
 | `GET /api/templates` · `PATCH \| DELETE /api/templates/<id>` · `PATCH \| DELETE /api/templates/blocks/<name>` | The template library |

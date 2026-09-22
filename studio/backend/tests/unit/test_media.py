@@ -92,6 +92,109 @@ def test_something_that_is_not_an_image_is_a_400_and_not_a_traceback():
         imaging.convert(b"\x00\x00\x00\x18ftypmp42", ".png")
 
 
+# ── the plate ──────────────────────────────────────────────────────────────
+
+
+def test_a_row_is_the_panels_plus_the_gutters_plus_the_margins():
+    """The whole arithmetic, stated once: three 400x600 panels at the default
+    6% of 600 is a 36px gutter twice over and a 36px margin twice over."""
+    plate, report = imaging.composite([_png(), _png(), _png()], ".png")
+
+    assert report["gap"] == 36 and report["margin"] == 36
+    assert report["width"] == 400 * 3 + 36 * 2 + 36 * 2
+    assert report["height"] == 600 + 36 * 2
+    assert Image.open(io.BytesIO(plate)).size == (report["width"], report["height"])
+
+
+def test_panels_are_normalised_DOWN_to_the_shortest_never_up():
+    """A genuine render beside an upscaled one reads as two subjects, so the
+    smallest panel sets the edge and everything else shrinks to meet it."""
+    _plate, report = imaging.composite(
+        [_png(400, 600), _png(800, 1200), _png(200, 300)], ".png")
+
+    assert [p["height"] for p in report["panels"]] == [300, 300, 300]
+    assert [p["width"] for p in report["panels"]] == [200, 200, 200]
+    assert report["scaled"] is True
+    assert report["panels"][1]["source"] == {"width": 800, "height": 1200}
+
+
+def test_panels_that_already_match_are_not_reported_as_scaled():
+    _plate, report = imaging.composite([_png(), _png()], ".png")
+
+    assert report["scaled"] is False
+
+
+def test_a_column_lays_them_down_and_takes_its_edge_from_the_narrowest():
+    _plate, report = imaging.composite(
+        [_png(400, 600), _png(200, 300)], ".png", direction="column")
+
+    assert [p["width"] for p in report["panels"]] == [200, 200]
+    assert report["height"] == 300 + 300 + report["gap"] + report["margin"] * 2
+    assert report["width"] == 200 + report["margin"] * 2
+
+
+def test_the_gutter_is_a_percentage_so_it_survives_a_change_of_resolution():
+    """The reason it is not a pixel count: the same 6 lays the same-looking
+    sheet out of 600px panels and out of 1536px ones."""
+    _plate, small = imaging.composite([_png(400, 600), _png(400, 600)], ".png")
+    _plate, large = imaging.composite([_png(1024, 1536), _png(1024, 1536)], ".png")
+
+    assert small["gap"] == 36 and large["gap"] == 92
+
+
+def test_a_zero_gutter_is_allowed_because_someone_may_want_a_contact_strip():
+    _plate, report = imaging.composite([_png(), _png()], ".png", gap_percent=0)
+
+    assert report["gap"] == 0 and report["margin"] == 0
+    assert report["width"] == 800
+
+
+def test_one_image_composited_with_nothing_is_the_image_and_is_refused():
+    with pytest.raises(ValidationError) as refusal:
+        imaging.composite([_png()], ".png")
+
+    assert "at least two" in str(refusal.value)
+
+
+def test_more_panels_than_a_plate_holds_is_refused_as_a_contact_sheet():
+    with pytest.raises(ValidationError) as refusal:
+        imaging.composite([_png(20, 20)] * (imaging.MAX_PANELS + 1), ".png")
+
+    assert "contact sheet" in str(refusal.value)
+
+
+def test_the_ground_is_painted_where_the_gutter_is():
+    """A gutter the colour of the backdrop is invisible on a white plate and is
+    exactly what a coloured one is for — so the pixel between two panels is
+    asserted rather than assumed."""
+    plate, report = imaging.composite(
+        [_png(100, 100), _png(100, 100)], ".png", background="#ff0000")
+
+    drawn = Image.open(io.BytesIO(plate))
+    assert drawn.getpixel((report["margin"] + 100 + report["gap"] // 2,
+                           report["height"] // 2)) == (255, 0, 0)
+    assert drawn.getpixel((0, 0)) == (255, 0, 0), "the margin too"
+
+
+def test_a_background_that_is_not_a_colour_says_so():
+    with pytest.raises(ValidationError) as refusal:
+        imaging.composite([_png(), _png()], ".png", background="whiteish")
+
+    assert "hex colour" in str(refusal.value)
+
+
+def test_a_three_digit_hex_is_the_same_colour_as_its_six_digit_form():
+    assert imaging.parse_colour("#fff") == imaging.parse_colour("#ffffff")
+    assert imaging.parse_colour("abc") == (0xAA, 0xBB, 0xCC)
+
+
+def test_a_gap_outside_the_range_is_refused_rather_than_clamped():
+    """Unlike a crop's box, which is clamped: a box past the edge is what
+    padding a detection produces, and a 900% gutter is a typo."""
+    with pytest.raises(ValidationError):
+        imaging.composite([_png(), _png()], ".png", gap_percent=900)
+
+
 # ── the contact sheet ──────────────────────────────────────────────────────
 
 

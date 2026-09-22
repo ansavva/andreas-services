@@ -122,6 +122,124 @@ def crop(body: bytes, box: tuple[int, int, int, int], target_ext: str,
     }
 
 
+#: How many panels one plate may hold. A multi-angle reference plate is three
+#: or four views of one subject; the engines' own caps are 7 to 14 WHOLE images,
+#: so anything wider than this is not a plate but a contact sheet — which is a
+#: render job with a command of its own and a real disk under it.
+MAX_PANELS = 12
+
+#: The gutter, and the outer margin, as a percentage of the panel edge they run
+#: along. Six is what a reference plate wants: wide enough that two figures do
+#: not touch, narrow enough that the sheet still reads as one subject turning.
+DEFAULT_GAP_PERCENT = 6
+
+
+def parse_colour(text: str) -> tuple[int, int, int]:
+    """`#rrggbb` (or `rrggbb`, or `#rgb`) -> an RGB triple.
+
+    Its own function for `parse_box`'s reason: the ground a plate is laid on is
+    typed by a person, and a colour that does not parse should say so rather
+    than arriving as a Pillow `ValueError` about a string.
+    """
+    raw = (text or "").strip().lstrip("#")
+    if len(raw) == 3:
+        raw = "".join(c * 2 for c in raw)
+    if len(raw) != 6:
+        raise ValidationError(
+            f"background must be a hex colour like #ffffff — got {text!r}")
+    try:
+        return tuple(int(raw[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
+    except ValueError:
+        raise ValidationError(
+            f"background must be a hex colour like #ffffff — got {text!r}") from None
+
+
+def composite(bodies: list[bytes], target_ext: str, *, direction: str = "row",
+              gap_percent: int = DEFAULT_GAP_PERCENT, background: str = "#ffffff",
+              quality: int = 95) -> tuple[bytes, dict]:
+    """Lay several images out as one plate. -> (bytes, a report of the geometry).
+
+    **The operation that makes a multi-angle reference out of a turnaround.**
+    Several engines take one image where the identity ought to be several: a
+    front, a three-quarter and a back on one sheet carry a face and a build that
+    a single frontal view cannot, and they arrive in one slot.
+
+    Panels are laid in the order given, along `direction`, and normalised to a
+    common edge — the height of the shortest, laying a row; the width of the
+    narrowest, laying a column. **Downscale only.** A panel smaller than its
+    neighbours is the reason to shrink them, never to invent pixels for it, and
+    a plate of a genuine render beside an upscaled one reads as two subjects.
+
+    **The gutter is not decoration.** Panels butted edge to edge on a shared
+    white ground merge: two shoulders meet and one figure looks like it has four
+    arms. So the gap defaults to something visible, runs around the outside as
+    well, and is reported — the plate's arithmetic is as much a stated thing as
+    a crop's box.
+    """
+    if target_ext not in PIL_FORMAT:
+        raise ValidationError(f"cannot write {target_ext}")
+    if len(bodies) < 2:
+        raise ValidationError(
+            f"a plate takes at least two images — got {len(bodies)}. "
+            "One image composited with nothing is the image.")
+    if len(bodies) > MAX_PANELS:
+        raise ValidationError(
+            f"a plate holds at most {MAX_PANELS} panels — got {len(bodies)}. "
+            "More than that is a contact sheet, which is a render job.")
+    if not isinstance(gap_percent, int) or isinstance(gap_percent, bool) \
+            or not 0 <= gap_percent <= 50:
+        raise ValidationError("gap is a percentage of the panel edge, 0 to 50")
+    if direction not in ("row", "column"):
+        raise ValidationError(f"direction is 'row' or 'column' — got {direction!r}")
+
+    from PIL import Image
+
+    ground = parse_colour(background)
+    panels = [_open(body).convert("RGB") for body in bodies]
+    sources = [{"width": p.width, "height": p.height} for p in panels]
+
+    # The common edge, and it is the SMALLEST rather than the largest.
+    if direction == "row":
+        edge = min(p.height for p in panels)
+        panels = [p if p.height == edge else
+                  p.resize((max(1, round(p.width * edge / p.height)), edge),
+                           Image.Resampling.LANCZOS)
+                  for p in panels]
+    else:
+        edge = min(p.width for p in panels)
+        panels = [p if p.width == edge else
+                  p.resize((edge, max(1, round(p.height * edge / p.width))),
+                           Image.Resampling.LANCZOS)
+                  for p in panels]
+
+    gap = round(edge * gap_percent / 100)
+    margin = gap
+    if direction == "row":
+        width = sum(p.width for p in panels) + gap * (len(panels) - 1) + margin * 2
+        height = edge + margin * 2
+    else:
+        width = edge + margin * 2
+        height = sum(p.height for p in panels) + gap * (len(panels) - 1) + margin * 2
+
+    plate = Image.new("RGB", (width, height), ground)
+    offset = margin
+    for panel in panels:
+        plate.paste(panel, (offset, margin) if direction == "row" else (margin, offset))
+        offset += (panel.width if direction == "row" else panel.height) + gap
+
+    return _save(plate, target_ext, quality), {
+        "direction": direction,
+        "panels": [{"width": panel.width, "height": panel.height, "source": source}
+                   for source, panel in zip(sources, panels)],
+        "gap": gap,
+        "margin": margin,
+        "scaled": any(s["width"] != p.width or s["height"] != p.height
+                      for s, p in zip(sources, panels)),
+        "width": width,
+        "height": height,
+    }
+
+
 #: An account picture's edge. Drawn at 24–80 CSS pixels and nowhere else, so
 #: 512 is generous; the same number humbugg settles on.
 AVATAR_SIZE = 512
