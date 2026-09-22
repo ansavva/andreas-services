@@ -156,20 +156,44 @@ def resolve():
     convention.** `keys.clean_name` refuses a slash in a name, so no stored name
     can contain a separator and no escaping is needed on either side.
 
+    **A leading segment that is an entity id is the entity, not a folder
+    name.** `char-<uuid>/reference` and `proj-<uuid>/runs` start from the
+    record's own root node, wherever that folder sits and whatever it is
+    called. The convention names a root by its id, but it is a convention: a
+    root can be renamed, and one production character predates it. Walking
+    the id as a name found no such folder, and the CLI's ensure-the-folder
+    branch then built `char-<uuid>/reference/wardrobe/…` from the library root
+    — a tree outside the character, invisible to its selection. An id naming
+    no entity in this library is a 404, never a folder to make.
+
     **An absent or empty path is the library root**, which is the one node a
     client cannot otherwise reach: `/api/libraries` deliberately returns id, name
     and role and not the root node.
 
     No membership check on the result, because there is nothing left to check:
-    the walk starts at a library resolved from the caller's own memberships, and
-    every step is a child of the step before it.
+    the walk starts at a library resolved from the caller's own memberships, or
+    at an entity root checked against it, and every step is a child of the step
+    before it.
     """
     root_id = catalog.library(g.library)["root_node"]
 
     path = request.args.get("path") or ""
+    segments = [segment for segment in path.split("/") if segment]
     walked: list[str] = []
     node_id = root_id
-    for name in [segment for segment in path.split("/") if segment]:
+    if segments and catalog.is_entity_id(segments[0]):
+        entity_id = segments.pop(0)
+        walked.append(entity_id)
+        try:
+            root = catalog.entity_root(entity_id)
+        except NotFoundError as error:
+            raise NotFoundError(entity_id) from error
+        if root["lib"] != g.library:
+            # The path names nothing in THIS library; whether the id exists
+            # in another is not this caller's to learn.
+            raise NotFoundError(entity_id)
+        node_id = root["node_id"]
+    for name in segments:
         walked.append(name)
         try:
             node_id = catalog.child_by_name(node_id, name)["node_id"]

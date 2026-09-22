@@ -1271,6 +1271,127 @@ def test_resolve_reports_the_owner_too(catalog_table, signed_in):
     assert resolved["owner"]["id"] == character["id"]
 
 
+MISSING_CHARACTER = "char-00000000-0000-4000-8000-00000000dead"
+
+
+def test_resolve_reads_an_id_segment_off_the_record_not_the_folder_name(
+    catalog_table, signed_in
+):
+    """`char-<id>/reference` reaches the character's root however it is named.
+
+    The convention names a root by its id, and one production character
+    predates it. Walking the id as a folder name found nothing there, and the
+    CLI's ensure-the-folder branch built `char-<id>/reference/wardrobe/…` from
+    the library root instead — thirty-two uploads in a tree outside the
+    character, which its tag-based selection never saw. The id is an address
+    for the RECORD's `root`; the folder's name is not consulted.
+    """
+    character = _character()
+    catalog.rename_node(character["root"], "node-old-style-root")
+    reference = _child(character["root"], "reference")
+
+    resolved = _get(f"/api/resolve?path={character['id']}/reference")
+
+    assert resolved.status_code == 200, resolved.get_data(as_text=True)
+    assert resolved.get_json()["id"] == reference["node_id"]
+    assert resolved.get_json()["owner"]["id"] == character["id"]
+    # And the bare id is the root itself.
+    assert _get(f"/api/resolve?path={character['id']}").get_json()["id"] == character["root"]
+
+
+def test_resolve_prefers_the_record_over_a_folder_that_shares_the_id(
+    catalog_table, signed_in
+):
+    """A stray folder at the library root named like the id is not the entity.
+
+    Exactly the tree the bug left behind. With the root renamed, the stray
+    would otherwise be what `char-<id>/reference` walks into again.
+    """
+    character = _character()
+    catalog.rename_node(character["root"], "node-old-style-root")
+    reference = _child(character["root"], "reference")
+    # Written with the catalog's own steps: the API refuses to make this folder.
+    stray = catalog._new_node(catalog.node(CATALOG_ROOT), character["id"], catalog.KIND_FOLDER)
+    catalog._write(catalog._node_steps(stray))
+    stray_reference = _folder("reference", parent=stray["node_id"])
+
+    resolved = _get(f"/api/resolve?path={character['id']}/reference").get_json()
+
+    assert resolved["id"] == reference["node_id"]
+    assert resolved["id"] != stray_reference["node_id"]
+
+
+def test_resolve_under_a_missing_entity_is_404_and_makes_nothing(catalog_table, signed_in):
+    """No such character: a 404 naming the id, and the tree untouched.
+
+    The remaining segments are not walked and nothing is created — the
+    resolver only reads, and the id-shaped name is refused on create too
+    (below), so no caller's ensure-the-folder fallback can make the stray.
+    """
+    resp = _get(f"/api/resolve?path={MISSING_CHARACTER}/reference/wardrobe")
+
+    assert resp.status_code == 404
+    assert MISSING_CHARACTER in resp.get_json()["error"]
+    assert catalog.children(CATALOG_ROOT) == []
+
+
+def test_resolve_of_an_entity_in_another_library_is_404(catalog_table, signed_in):
+    """The id is global; the path is not. It names nothing in THIS library."""
+    character = _character()
+    _second_library(catalog_table)
+    catalog_table.put_item(
+        TableName=config.catalog_table(),
+        Item={
+            "pk": {"S": f"USER#{CATALOG_OWNER}"},
+            "sk": {"S": f"LIB#{OTHER_LIBRARY}"},
+            "role": {"S": "member"},
+            "created_at": {"S": _SEED_TIME},
+        },
+    )
+
+    resp = _get(f"/api/resolve?path={character['id']}", **{"X-Studio-Library": OTHER_LIBRARY})
+
+    assert resp.status_code == 404
+
+
+def test_resolve_by_id_still_works_for_an_id_named_root(catalog_table, signed_in):
+    """The convention's own case: the root IS named by the id, and the record
+    and the walk agree on the node. A project as well as a character."""
+    character = _character()
+    project = _project()
+    inputs = _child(project["root"], "input")
+
+    assert _get(f"/api/resolve?path={character['id']}").get_json()["id"] == character["root"]
+    assert _get(f"/api/resolve?path={project['id']}/input").get_json()["id"] == inputs["node_id"]
+
+
+def test_a_folder_shaped_like_an_entity_id_cannot_be_created_or_renamed_into(
+    catalog_table, signed_in
+):
+    """Only an entity's create names a folder like an id.
+
+    `POST /api/nodes` with `char-<uuid>` is how the stray tree was made; a
+    rename into that shape would shadow the same way. Both are 400. A root may
+    be renamed BACK to its own id — the repair for one that predates the
+    convention — and a merely id-like name (`char-photos`) is a name.
+    """
+    created = _post(
+        "/api/nodes", {"parent": CATALOG_ROOT, "name": MISSING_CHARACTER, "kind": "folder"}
+    )
+    assert created.status_code == 400
+    assert catalog.children(CATALOG_ROOT) == []
+
+    folder = _folder("char-photos")
+    renamed = _patch(f"/api/nodes/{folder['node_id']}", {"name": MISSING_CHARACTER})
+    assert renamed.status_code == 400
+
+    character = _character()
+    catalog.rename_node(character["root"], "node-old-style-root")
+    repaired = _patch(f"/api/nodes/{character['root']}", {"name": character["id"]})
+    assert repaired.status_code == 200, repaired.get_data(as_text=True)
+    assert catalog.node(character["root"])["name"] == character["id"]
+
+
 def test_an_entity_roots_crumb_carries_its_owner(catalog_table, signed_in):
     """The trail names a character by its name, not by the id its folder wears.
 

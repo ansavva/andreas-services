@@ -69,6 +69,14 @@ REEL_TYPES = ("image/", "video/")
 
 ORDER_GAP = 1000
 
+#: The strict entity-id shape `services/catalog.is_entity_id` tests. A name
+#: path leading with one resolves from the entity's root, and a client may not
+#: create or rename a node into it — both as the backend does.
+_ENTITY_ID_RE = re.compile(
+    r"^(?:char|proj|run|scene|movie)-"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+)
+
 
 @functools.lru_cache(maxsize=1)
 def _backend_service(name: str):
@@ -448,9 +456,22 @@ class FakeApi:
             node["blob_key"] = self._blob_key(node)
         return node
 
+    def _entity_root(self, entity_id: str) -> dict:
+        """The root node of the entity an id names, off the RECORD — never the
+        folder's name, which may differ; that is `GET /api/resolve`'s rule."""
+        for table, field in ((self.characters, "root"), (self.projects, "root"),
+                             (self.runs, "folder")):
+            record = table.get(entity_id)
+            if record is not None and record.get(field) in self.nodes:
+                return self.nodes[record[field]]
+        raise FakeError(404, f"no such entity: {entity_id}")
+
     def _resolve(self, path: str) -> dict:
         node = self.root
-        for segment in [p for p in (path or "").strip("/").split("/") if p]:
+        segments = [p for p in (path or "").strip("/").split("/") if p]
+        if segments and _ENTITY_ID_RE.match(segments[0]):
+            node = self._entity_root(segments.pop(0))
+        for segment in segments:
             found = self._child(node["id"], segment)
             if found is None:
                 raise FakeError(404, f"no such path: {path}")
@@ -724,6 +745,12 @@ class FakeApi:
         if method == "GET":
             return self._listing(params)
         if method == "POST":
+            # On the route, not in `_create_node`: the entity creates below
+            # name a root by its id through the same helper, as the backend's
+            # transaction does past `create_node`.
+            if _ENTITY_ID_RE.match(body.get("name") or ""):
+                raise FakeError(400, f"{body['name']!r} is shaped like an entity id; "
+                                     "an entity's root folder is made by creating the entity")
             return self._view(self._create_node(body["parent"], body["name"],
                                                 body.get("kind", "file")))
         if method == "DELETE":
@@ -759,6 +786,8 @@ class FakeApi:
                     else:
                         node.pop("tags", None)
             elif "name" in body:
+                if _ENTITY_ID_RE.match(body["name"]) and body["name"] != node.get("entity"):
+                    raise FakeError(400, f"{body['name']!r} is shaped like an entity id")
                 if self._child(node["parent_id"], body["name"]) not in (None, node):
                     raise FakeError(409, f"{body['name']!r} already exists here")
                 node["name"] = body["name"]

@@ -275,6 +275,16 @@ was meant to remove, arriving by a side door and with a worse message. So the id
 is the folder's name, the way it is already the S3 key's, and a listing hands
 back `owner` for an entity root — which is where a client gets a name to draw.
 
+**A name path that leads with an entity id addresses the record, never a
+folder of that name.** `GET /api/resolve?path=char-<uuid>/reference` starts
+from the record's `root` and walks `reference` under it, whatever the root
+folder is called — the id-named root is a convention a rename can break, and
+one production character predates it. An id naming no entity in the library
+is a 404, and `POST /api/nodes` and a rename refuse a name shaped like an id,
+so nothing can make the folder that would shadow one. That closed a bug where
+`studio upload --folder char-<uuid>/reference/wardrobe/x` walked the id as a
+name, found nothing, and built the whole path fresh at the library root.
+
 **The reverse pointer.** The root folder node carries `entity: "char-9f3c…"`,
 written once in the create transaction and never changed. It is what lets a
 listing draw a character card instead of a folder icon, and what
