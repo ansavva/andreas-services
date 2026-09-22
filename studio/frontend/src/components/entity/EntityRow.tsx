@@ -15,14 +15,18 @@ export type RowBadge = string | { label: string; intent?: BadgeIntent };
  *
  * A picture is the pointer, not a bare URL: a presigned URL expires and
  * re-signing addresses a **node**, so a row handed only a `url` could never
- * repair itself. A row with nothing to show draws the one placeholder the app
- * has — a blank box carrying the kind in mono — or, handed `null`, an empty
- * box that only holds the slot (see `thumb` on Props). Files and folders have
- * no picture and are not missing one, so they bring an icon.
+ * repair itself. A row with nothing to show draws one of two stand-ins: a
+ * character or a project with no picture yet draws its `initial`, the letter
+ * `EntityCard` draws for the same entity on the Characters and Projects
+ * pages; a run with no clip draws a short `placeholder` word — one word, or
+ * the box clips it. Handed `null`, the row draws an empty box that only
+ * holds the slot (see `thumb` on Props). Files and folders have no picture
+ * and are not missing one, so they bring an icon.
  */
 type RowThumb =
   | { node: string; url: string; isVideo?: boolean; poster?: Poster | null }
   | { placeholder: string }
+  | { initial: string }
   | { icon: ReactNode };
 
 interface Props {
@@ -155,10 +159,23 @@ export function EntityRow({
       )}
       {thumb && "placeholder" in thumb && (
         <span
-          className="flex size-14 shrink-0 items-center justify-center rounded-sm border border-line
-                     bg-surface-alt font-mono text-xs text-muted"
+          className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-sm
+                     border border-line bg-surface-alt px-0.5 text-center font-mono text-[11px]
+                     leading-tight text-muted"
         >
           {thumb.placeholder}
+        </span>
+      )}
+      {/* The same box `EntityCard` gives an entity with no hero, at the row's
+          size: the name's first letter, so a list of characters reads the
+          same whether it is drawn as cards on a page or as rows in a picker. */}
+      {thumb && "initial" in thumb && (
+        <span
+          aria-hidden
+          className="flex size-14 shrink-0 items-center justify-center rounded-sm border border-line
+                     bg-surface-alt font-heading text-xl text-muted"
+        >
+          {thumb.initial}
         </span>
       )}
       {/* The reserved slot — see `thumb` on Props. An icon rather than a word
