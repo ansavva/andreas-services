@@ -13,8 +13,8 @@ negative prompt, a seed, `shot_type` — over a start frame, which is where
 identity comes from: this model has **no reference list**.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model wan-2.6-i2v …`,
-> and `studio models show wan-2.6-i2v` for the schema. This page covers
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model runpod-wan-2.6-i2v …`,
+> and `studio models show runpod-wan-2.6-i2v` for the schema. This page covers
 > only what is specific to this model.
 
 ## What is specific to this model
@@ -39,13 +39,13 @@ identity comes from: this model has **no reference list**.
 
 ```bash
 # animate the last image run's output, five seconds at 720p
-studio run --model wan-2.6-i2v --project <project> \
+studio run --model runpod-wan-2.6-i2v --project <project> \
   --start-run <project>/latest#1 \
   --extra '{"duration":5,"resolution":"720p","seed":7}' \
   --prompt "…"
 
 # a named still, ten seconds at 1080p
-studio run --model wan-2.6-i2v --project <project> \
+studio run --model runpod-wan-2.6-i2v --project <project> \
   --start-key <node> \
   --extra '{"duration":10,"resolution":"1080p"}' \
   --prompt "…"

@@ -57,7 +57,7 @@ Iterate at `std`; the mistakes are in the pairing, not the resolution.
 
 | | |
 |---|---|
-| Still | `.jpg/.jpeg/.png` only — **`.webp` is refused up front**; `studio convert --for kling-v3-motion-control` fixes it |
+| Still | `.jpg/.jpeg/.png` only — **`.webp` is refused up front**; `studio convert --for replicate-kling-v3-motion-control` fixes it |
 | Still size | 340–3850 px, 1:2.5–2.5:1, ≤10 MB |
 | Clip | `.mp4/.mov`, ≤100 MB, 3–30 s |
 | Clip length at `character_orientation: image` | **≤10 s** |
@@ -74,7 +74,7 @@ list, and the API refuses it again at submit — before the run moves to
 ```bash
 # the look — a still already in the library — binds as the first frame (`image`);
 # the motion — a clip already in the library — binds as the clip (`video`)
-studio run --model kling-v3-motion-control --project <project> \
+studio run --model replicate-kling-v3-motion-control --project <project> \
   --start-run <project>/latest \
   --clip-key <project>/input/<clip>.mp4 \
   --prompt "<name> from the source image, performing the motion in the clip" \
@@ -92,7 +92,7 @@ act.**
 Both are **sends**: the run records the node, not a URL, so `request.json`
 says which clip drove it and the URL is minted at submit. A `.webm` or `.avi`
 clip is refused by name — the model takes `.mp4/.mov` — and a `.webp` still
-is refused with the `studio convert --for kling-v3-motion-control` line that
+is refused with the `studio convert --for replicate-kling-v3-motion-control` line that
 fixes it. In the app the same two are the **Start frame** and **Source video** tiles;
 the Source video tile's picker lists videos only.
 

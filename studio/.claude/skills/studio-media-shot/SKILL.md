@@ -63,7 +63,7 @@ step 1 instead of after three billed calls.
       "n": 2,
       "skill": "s3",
       "produces": "a Kling-compatible copy, only if needed",
-      "command": "studio convert --run {project}/latest#1 --for kling --add-input {project}",
+      "command": "studio convert --run {project}/latest#1 --for replicate-kling --add-input {project}",
       "gate": "none — no model call, nothing bills"
     },
     {
@@ -141,7 +141,7 @@ fabricated, not preserved.
 ### 5. Normalise the format
 
 ```bash
-studio convert --run {project}/latest#1 --for kling --add-input {project}
+studio convert --run {project}/latest#1 --for replicate-kling --add-input {project}
 ```
 
 Safe to run unconditionally: an already-accepted image is left untouched and its
@@ -160,7 +160,7 @@ frame already fixes background, lighting, and wardrobe, so:
 ### 7. Animate from the frame
 
 ```bash
-studio run --model kling --project {project} \
+studio run --model replicate-kling --project {project} \
   --input-file input.json --prompt-json prompt.json \
   --start-run {project}/latest#1 --name {file} --poll
 ```

@@ -18,6 +18,17 @@ kling-replicate`), which reuses the Replicate token, upload helper and S3 flow
 > here. A working client for it was removed in favour of Replicate; recover it
 > from git history if a package is ever purchased.
 
+**This page is the REPLICATE entry, and it cannot speak.** Replicate's proxy
+exposes `generate_audio` and nothing else about sound: the model invents a
+voice per run, so a character has no voice of its own and no two clips agree.
+Kling's other two halves of Omni — **elements** (a subject as an object, cited
+as `@Element1`) and **voice binding** (a 5–30 second sample cloned and locked
+to that subject) — are exposed by **fal**, and the entries for them are
+`fal-kling-v3-i2v` and `fal-kling-o3-r2v`. Both providers are registered on
+purpose, so a shot can be priced either way:
+[`studio-media-fal-kling`](../studio-media-fal-kling/SKILL.md) is the page for
+anything that has to be SAID.
+
 The family:
 - **`studio-media-prompt`** — authors the prompt. `--engine kling-replicate`
   compiles the object into the prose Kuaishou documents (see
@@ -31,6 +42,8 @@ The family:
 - **`studio-media-kling-v3-motion-control`** — the same house, a different
   job: the motion is copied from a reference clip rather than directed by a
   prompt. Reach for it when the movement already exists as footage.
+- **`studio-media-fal-kling`** — the same family on fal, where a character
+  gets a bound voice and each subject is an element.
 
 ## The model
 
@@ -229,7 +242,7 @@ studio prompt shot.json \
 #    Prefer:wait (a timed-out wait retries internally and bills duplicates),
 #    and archives the finished video into the run.
 studio run \
-  --model kling --project <project> --input-file input.json \
+  --model replicate-kling --project <project> --input-file input.json \
   --character <name> --name <file> --poll
 ```
 

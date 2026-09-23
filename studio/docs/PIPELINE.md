@@ -33,7 +33,7 @@ on any character, so it never needs to know one by name.
 Use the placeholder `<name>` in every example and help string:
 
 ```bash
-studio run --model nano-banana-pro --project <project> \
+studio run --model replicate-nano-banana-pro --project <project> \
   --prompt "..." --character <name>
 studio runs outputs <project>/latest --presign
 ```
@@ -753,7 +753,7 @@ than the tree).
 this wheel.** They are the three operations that deliberately are *not* on the
 render queue: each is sub-second on the images it touches, so an enqueue plus
 two polls would cost more wall clock than the work. `backend/studio_core/routes/images.py` argues
-the split. What stays here is the part a route should not decide. `--for kling`
+the split. What stays here is the part a route should not decide. `--for replicate-kling`
 is a registry lookup answering "is a conversion needed at all", and an
 already-acceptable source makes no request. `--dest-key` ensures the
 destination folder first, since the catalog has no folder until something asks

@@ -13,8 +13,8 @@ stops at 8 seconds, takes no end frame and no size, and cannot finish a
 garment change or a long action. This one takes a **director's controls**.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model wan-2.2-i2v-studio …`,
-> and `studio models show wan-2.2-i2v-studio` for the schema. LoRA
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model runpod-wan-2.2-i2v-studio …`,
+> and `studio models show runpod-wan-2.2-i2v-studio` for the schema. LoRA
 > handling is the same as [`studio-media-wan-2-2-i2v-lora`](../studio-media-wan-2-2-i2v-lora/SKILL.md);
 > this page covers what is different.
 
@@ -42,7 +42,7 @@ garment change or a long action. This one takes a **director's controls**.
 
 ```bash
 # 7.5 s, portrait, the character's newest trained pair, landing on a chosen frame
-studio run --model wan-2.2-i2v-studio --project <project> \
+studio run --model runpod-wan-2.2-i2v-studio --project <project> \
   --start-run <project>/latest#1 \
   --end-key <project>/input/last-frame.png \
   --lora-high-key "<name>/models/<pair>_high_noise.safetensors" \

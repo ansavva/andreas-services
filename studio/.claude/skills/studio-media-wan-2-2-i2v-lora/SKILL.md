@@ -13,8 +13,8 @@ that decides detail — and each takes its own adapter, which is why the
 endpoint has two lists and a trained Wan 2.2 LoRA ships as a pair.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model wan-2.2-i2v-lora …`,
-> and `studio models show wan-2.2-i2v-lora` for the schema. This page covers
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model runpod-wan-2.2-i2v-lora …`,
+> and `studio models show runpod-wan-2.2-i2v-lora` for the schema. This page covers
 > only what is specific to this model.
 
 ## What is specific to this model
@@ -48,7 +48,7 @@ studio upload --folder <project>/input ./orbit_high.safetensors ./orbit_low.safe
 
 ```bash
 # the frame from the last image run, a public camera-move LoRA pair at 0.8
-studio run --model wan-2.2-i2v-lora --project <project> \
+studio run --model runpod-wan-2.2-i2v-lora --project <project> \
   --start-run <project>/latest#1 \
   --lora-high-key <project>/input/orbit_high.safetensors \
   --lora-low-key  <project>/input/orbit_low.safetensors \

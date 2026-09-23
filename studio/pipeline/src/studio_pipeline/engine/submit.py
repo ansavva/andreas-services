@@ -201,7 +201,7 @@ def presign(ref: str) -> str:
 # 1. gather — every image input, as node ids, never URLs
 # --------------------------------------------------------------------------
 
-def gather(entry: dict, args) -> dict:
+def gather(entry: dict, args, roles: dict | None = None) -> dict:
     """Resolve all image inputs to node ids and bind them to this model's fields.
 
     Returns `{field: node | [nodes]}`. Order matters for the reference list: an
@@ -210,6 +210,15 @@ def gather(entry: dict, args) -> dict:
 
     `args.project` is the project RECORD, not a name: a runref defaults against
     the project's id, and the id is what the run record stores.
+
+    **`roles` is an out-parameter, and it exists for exactly one case.**
+    `sends_for` reads a node's role off the FIELD it was bound to, which works
+    while every field means one thing. On a model with elements it does not: a
+    subject's pictures and the voice it speaks in are bound to the same field,
+    because the voice id lives inside the element object. A caller that needs
+    the distinction — the runner, which records the send rows — passes a dict
+    here and gets `{node: role}` for the ones the field cannot say. Optional,
+    so nothing that only wants the bindings has to change.
     """
     imgs = entry.get("images") or {}
     refs_field = imgs.get("refs")
@@ -306,19 +315,33 @@ def gather(entry: dict, args) -> dict:
     slots = [int(s) for s in args.slots.split(",")] if getattr(args, "slots", None) else None
     pick = [x.strip() for x in args.pick.split(",")] if getattr(args, "pick", None) else None
     tags = [t.strip() for t in args.pick_tag.split(",")] if getattr(args, "pick_tag", None) else None
+    # **On an element model the cap is per SUBJECT, not on the list.**
+    # `max_refs` is 4 elements there, and reading it as four images would
+    # refuse two characters with three views each — well inside what the model
+    # takes — with a message about a limit that is not the one being hit. So
+    # each character is narrowed to what ONE element holds, and the flat list
+    # is capped at everything all the elements could hold between them. The
+    # real check is the API's `_check_elements`, which runs before anything
+    # bills and can see which subject each picture came from; this one is the
+    # early word in the terminal.
+    block = REG.elements(entry)
     cap = imgs.get("max_refs")
+    per_subject = cap
+    if block:
+        per_subject = block.get("max_images_each") or cap
+        cap = (block.get("max") or 1) * (block.get("max_images_each") or 1)
     nodes: list[str] = []
     if getattr(args, "image_run", None):
         nodes += R.resolve_output_nodes(args.image_run, project["id"], kinds=exts)
     for character in (args.character or []):
         nodes += REFS.character_ref_nodes(character, slots, pick, tags,
-                                          cap=cap, cap_name=entry["key"])
+                                          cap=per_subject, cap_name=entry["key"])
     # Where the frame is, after who is in it: a location's views join the same
     # reference list, so the prompt cites them by the slot they land in.
     location_tags = ([t.strip() for t in args.location_tag.split(",")]
                      if getattr(args, "location_tag", None) else None)
     for location in (getattr(args, "location", None) or []):
-        nodes += REFS.location_ref_nodes(location, location_tags, cap=cap)
+        nodes += REFS.location_ref_nodes(location, location_tags, cap=per_subject)
     for ref in getattr(args, "ref_run", None) or []:
         nodes += R.resolve_output_nodes(ref, project["id"], kinds=exts)
     # `input_`, because `input` shadows the builtin and Click was given the safe
@@ -401,7 +424,47 @@ def gather(entry: dict, args) -> dict:
                 f"character's default_set) rather than hoping the extras are dropped.")
         bindings[refs_field] = nodes
 
-    _warn_total_bytes(entry, bindings)
+    # --- the voice (a model that binds one to a subject) --------------------
+    # **Last, and on purpose.** A voice lands on the same field as the
+    # references on every model that takes one — an element carries both — so
+    # binding it before `bindings[refs_field]` is assigned above would have it
+    # overwritten by the pictures, silently, which is the failure this order
+    # exists to make impossible.
+    voices = [as_node(k) for k in (getattr(args, "voice_key", None) or ())]
+    voice_field = REG.voice_field(entry)
+    if voices and not voice_field:
+        raise SubmitError(
+            f"{entry['key']} takes no voice — --voice-key does not apply to it.\n"
+            f"       The models that bind a voice to a character are the ones "
+            f"with elements: fal-kling-v3-i2v and fal-kling-o3-r2v."
+        )
+    if voices:
+        voice_exts = REG.voice_accepts_ext(entry)
+        bad = [n for n in voices if _ext(n) not in voice_exts]
+        if bad:
+            low, high = REG.voice_seconds(entry)
+            raise SubmitError(
+                f"{entry['key']} clones a voice from {sorted(voice_exts)}; "
+                f"{[_label(n) for n in bad]} are not.\n"
+                f"       It wants {low}–{high} seconds of ONE clean voice."
+            )
+        held = bindings.get(voice_field)
+        held = [held] if isinstance(held, str) else list(held or [])
+        bindings[voice_field] = held + voices
+        if roles is not None:
+            for node in voices:
+                roles[node] = "voice"
+
+    # The warning is about how much IMAGE data a payload carries, measured on
+    # runs that succeeded and runs that hung; a voice sample is neither an
+    # image nor part of that measurement, so it is taken out rather than
+    # allowed to push a perfectly ordinary payload over the line. Taken out by
+    # value, because on an element model it shares a field with the pictures.
+    _warn_total_bytes(entry, {
+        field: [node for node in value if node not in voices]
+               if isinstance(value, list) else value
+        for field, value in bindings.items()
+    })
     return bindings
 
 
@@ -545,7 +608,12 @@ def preflight(entry: dict, payload: dict, bindings: dict) -> None:
     see `engine/schema.py` for why the credential left this package.
     """
     model = entry["model"]
-    _check_image_budget(entry, bindings)
+    # Not on an element model: `max_refs` counts subjects there, and the field
+    # it would count holds a subject's views and its voice sample together.
+    # `services/generate._check_elements` is the check that applies, and it
+    # runs on the API before the run leaves `draft`.
+    if not REG.elements(entry):
+        _check_image_budget(entry, bindings)
     MS.check_denied(payload, entry, model)
     props, schemas = MS.fetch(model)
     alts: dict[str, dict] = {}
@@ -599,7 +667,7 @@ def predictions_endpoint(model: str) -> str:
 
 
 def render(entry: dict, run: str, payload: dict, bindings: dict, as_json: bool,
-           ui: str = "") -> str:
+           ui: str = "", roles: dict | None = None) -> str:
     """The two-document payload render, or raw JSON for machines.
 
     **Hard rule #2's surface.** Image inputs appear as what will be signed into
@@ -621,9 +689,18 @@ def render(entry: dict, run: str, payload: dict, bindings: dict, as_json: bool,
             "run": run, "model": entry["model"], "endpoint": endpoint,
             "input": payload, "bindings": bindings,
         }, ui), indent=2, ensure_ascii=False)
+    # **A bound file says what it is for where the field cannot.** On an
+    # element model the pictures and the voice share one input, so a payload
+    # reading `elements: [a.png, take.mp3]` would leave the one thing worth
+    # checking — that the voice is the voice — to be inferred from a file
+    # extension. Hard rule #2 is about a document a person can actually check.
+    def label(node: str) -> str:
+        role = (roles or {}).get(node)
+        return f"{_label(node)} — {role}" if role else _label(node)
+
     readable = {
-        field: ([_label(one) for one in value] if isinstance(value, list)
-                else _label(value))
+        field: ([label(one) for one in value] if isinstance(value, list)
+                else label(value))
         for field, value in bindings.items()
     }
     return R.render_payload(run, entry["model"], endpoint, payload, readable)
@@ -651,7 +728,7 @@ def plan_of(entry: dict, payload: dict) -> dict:
     }
 
 
-def sends_for(entry: dict, bindings: dict) -> list[dict]:
+def sends_for(entry: dict, bindings: dict, roles: dict | None = None) -> list[dict]:
     """Every bound image as an ordered send, with the ROLE the registry gives it.
 
     **The role is the half `bindings` threw away.** `gather` decides an image is
@@ -672,8 +749,13 @@ def sends_for(entry: dict, bindings: dict) -> list[dict]:
         role_of[REG.clip_field(entry)] = "clip"
     for lora_field in REG.lora_fields(entry).values():
         role_of[lora_field] = "lora"
+    # A per-NODE role beats the field's, and only ever supplies one the field
+    # genuinely cannot: see `gather`'s `roles` out-parameter.
+    per_node = roles or {}
     return [
-        {"field": field, "role": role_of.get(field, "input"), "node": node}
+        {"field": field,
+         "role": per_node.get(node) or role_of.get(field, "input"),
+         "node": node}
         for field, value in bindings.items()
         for node in (value if isinstance(value, list) else [value])
     ]
@@ -745,7 +827,11 @@ def draft(entry: dict, payload: dict, bindings: dict, args) -> dict:
             model=entry["model"], input=payload,
             bindings=recorded(bindings),
             plan=plan_of(entry, payload),
-            sends=sends_for(entry, bindings),
+            # `send_roles` is what `gather` could not say with a field name
+            # alone — a voice bound to the same input as the pictures. It
+            # rides on `args` because that is what `draft` is handed; an
+            # empty one (every model but Kling on fal) changes nothing.
+            sends=sends_for(entry, bindings, getattr(args, "send_roles", None)),
             characters=REFS.character_ids(characters),
             locations=REFS.location_ids(locations),
             prompt_source=prompt_source,

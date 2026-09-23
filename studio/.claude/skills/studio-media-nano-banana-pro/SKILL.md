@@ -12,8 +12,8 @@ here when a frame needs 4K, more than a handful of blended references, or a
 tunable safety filter.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model nano-banana-pro …`,
-> and `studio models show nano-banana-pro` for the live schema. This page covers
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model replicate-nano-banana-pro …`,
+> and `studio models show replicate-nano-banana-pro` for the live schema. This page covers
 > only what is specific to this model. [`nano-banana-2`](../studio-media-nano-banana-2/SKILL.md) is the fast/cheap sibling.
 
 ## What is specific to this model
@@ -61,7 +61,7 @@ first, references after, and name the roles in the prompt rather than trusting
 inference.
 
 ```bash
-studio run --model nano-banana-pro --project <project> --name <file> \
+studio run --model replicate-nano-banana-pro --project <project> --name <file> \
   --key <name>/reference/face/<file>.png \
   --key <name>/reference/face/<other>.png \
   --aspect-ratio match_input_image \
@@ -85,7 +85,7 @@ person is added afterwards by a Sunburst edit. The chain is in
 [`studio-media-image`](../studio-media-image/SKILL.md#re-pose-one-person-per-generation).
 
 ```bash
-studio run --model nano-banana-pro --project <project> \
+studio run --model replicate-nano-banana-pro --project <project> \
   --input <N> --aspect-ratio match_input_image --name repose \
   --extra '{"resolution":"2K","safety_filter_level":"block_only_high"}' \
   --prompt "Reproduce the image exactly … change only his pose: …"

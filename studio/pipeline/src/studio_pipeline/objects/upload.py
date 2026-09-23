@@ -26,8 +26,21 @@ import click
 from studio_pipeline.adapters import store
 
 # mimetypes doesn't know some media types on every platform; pin the ones we use.
+# The same pins the API keeps, and for the same two reasons: a type the platform
+# has never heard of is stored `application/octet-stream`, and two of the audio
+# ones a Mac DOES know it knows by their pre-standard names — `audio/x-wav`,
+# `audio/mp4a-latm` — the second of which Safari will not play. A voice sample
+# uploaded from here and the same file uploaded through the app have to land
+# under one type, or a character's take plays in the browser and its twin does
+# not.
 mimetypes.add_type("image/webp", ".webp")
 mimetypes.add_type("video/mp4", ".mp4")
+mimetypes.add_type("audio/mpeg", ".mp3")
+mimetypes.add_type("audio/wav", ".wav")
+mimetypes.add_type("audio/mp4", ".m4a")
+mimetypes.add_type("audio/aac", ".aac")
+mimetypes.add_type("audio/flac", ".flac")
+mimetypes.add_type("audio/ogg", ".ogg")
 
 
 def content_type(path: str) -> str:

@@ -53,7 +53,10 @@ export function FileRow({
   onCopyTo,
   onDelete,
 }: Props) {
-  const viewable = file.kind === "text";
+  // Text and audio both have a page. Everything else here — weights, an
+  // archive — opens `FilePage`, which is a page about the file rather than
+  // a view of it, so the row stays unlinked.
+  const viewable = file.kind === "text" || file.kind === "audio";
   const [renaming, setRenaming] = useState(false);
   const stopRenaming = useCallback(() => setRenaming(false), []);
 

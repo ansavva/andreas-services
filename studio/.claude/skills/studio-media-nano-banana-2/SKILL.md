@@ -10,8 +10,8 @@ counterpart to Nano Banana Pro: Pro-level visual quality at Flash speed and
 price. Reach for it when iterating fast or generating in volume.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model nano-banana-2 …`,
-> and `studio models show nano-banana-2` for the live schema. This page covers
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model replicate-nano-banana-2 …`,
+> and `studio models show replicate-nano-banana-2` for the live schema. This page covers
 > only what is specific to this model. [`nano-banana-pro`](../studio-media-nano-banana-pro/SKILL.md) is the stronger sibling.
 
 ## What is specific to this model

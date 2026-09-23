@@ -36,6 +36,14 @@ from studio_core.services import keys
         ("a/b.jpeg", "image"),
         ("a/b.png", "image"),
         ("a/b.mp4", "video"),
+        ("a/b.mp3", "audio"),
+        ("a/b.wav", "audio"),
+        ("a/b.M4A", "audio"),
+        # A voice sample can be handed over as a video and Kling will read it,
+        # but a file is ONE kind and this is the answer about what to draw.
+        # `registry.voice_accepts_ext` is where a model says what it will
+        # accept, which is a different question.
+        ("a/take.mov", "video"),
         ("a/b.json", "text"),
         ("a/b.yaml", "text"),  # profile.yaml, phrasebook/wording.yaml
         ("a/b.md", "text"),

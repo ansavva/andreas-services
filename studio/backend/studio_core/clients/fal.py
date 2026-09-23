@@ -89,6 +89,13 @@ logger = logging.getLogger(__name__)
 
 UA = "xharness-studio/1.0"
 API_ROOT = "https://queue.fal.run"
+#: The SYNCHRONOUS host, and the one call that is allowed to use it.
+#: `create_voice` registers a ≤30-second sample and answers an id; it renders
+#: nothing, so the trap the queue exists to avoid — a socket held open for the
+#: length of a generation — does not apply, and queueing it would mean a
+#: webhook, a run row and a second closing path for a value that is ready
+#: before the request returns.
+SYNC_ROOT = "https://fal.run"
 #: Where fal publishes each endpoint's OpenAPI document — unauthenticated, and
 #: the same document its model page renders. `model_schema` reads it.
 OPENAPI_URL = "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id={endpoint}"
@@ -220,7 +227,7 @@ def _fake_settled(request_id: str) -> dict:
 
 
 def _request(method: str, url: str, *, body: dict | None = None,
-             auth: bool = True) -> tuple[int, dict]:
+             auth: bool = True, timeout: int = TIMEOUT) -> tuple[int, dict]:
     """One call. Answers `(status, document)` for any HTTP status.
 
     Returns the error body rather than raising on it, because on fal an HTTP
@@ -235,7 +242,7 @@ def _request(method: str, url: str, *, body: dict | None = None,
     if data is not None:
         request.add_header("Content-Type", "application/json")
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.status, json.loads(
                 response.read().decode(errors="replace") or "{}", strict=False)
     except urllib.error.HTTPError as exc:
@@ -276,6 +283,46 @@ def _error_text(document: dict) -> str:
             for item in detail
         )
     return detail if isinstance(detail, str) else json.dumps(detail)
+
+
+#: How long to wait for a voice to be registered. Longer than `TIMEOUT`
+#: because this one really is waiting for work — fal fetches the sample and
+#: Kling extracts its pitch and tone — rather than for a queue to say yes.
+VOICE_TIMEOUT = 120
+
+
+def create_voice(model: str, audio_url: str) -> str:
+    """Register a voice sample and answer the id a run cites it by.
+
+    **The other half of voice binding, and it is not a generation.** Kling
+    binds a voice to an element by id, so something has to turn a file into an
+    id first; on fal that is an endpoint of its own
+    (`fal-ai/kling-video/create-voice`) taking one URL and answering one
+    string. `services/generate.dispatch` calls it at submit, on the presigned
+    URL it was about to send anyway, and caches the result on the node — see
+    `catalog.set_voice_id` for why caching is the point rather than a saving.
+
+    Synchronous, deliberately: see `SYNC_ROOT`.
+
+    The sample must be 5–30 seconds of one clean voice, and fal refuses
+    anything else with a `detail` this raises as it stands. That refusal
+    happens while the run is still a draft — `dispatch` runs before the
+    prediction is created — so a bad sample costs nothing.
+    """
+    if mode() == FAKE:
+        logger.info("[fal:FAKE] create_voice %s — nothing billed", model)
+        return f"fake-voice-{hashlib.sha256(audio_url.encode()).hexdigest()[:16]}"
+
+    url = f"{SYNC_ROOT}/{endpoint_of(model)}"
+    status, document = _request("POST", url, body={"voice_url": audio_url},
+                                timeout=VOICE_TIMEOUT)
+    if status >= 400:
+        raise _refused("POST", url, status, document)
+    voice = document.get("voice_id")
+    if not voice:
+        raise FalError(
+            f"POST {url} -> {status} carried no voice_id: {json.dumps(document)[:500]}")
+    return voice
 
 
 def create_prediction(model: str, payload: dict, *, webhook: str | None = None) -> dict:

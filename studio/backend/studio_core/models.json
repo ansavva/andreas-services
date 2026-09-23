@@ -5,6 +5,15 @@
     "characters are: adding one is an entry here plus a generated skill doc, never",
     "an edit to five scripts.",
     "",
+    "EVERY KEY STARTS WITH ITS PROVIDER — `replicate-kling`, `fal-kling-v3-i2v`,",
+    "`runpod-wan-2.6-i2v`, `openrouter-wan-3.0`. One model is often hosted by two",
+    "providers at different prices, with different inputs and different bills, and",
+    "a bare `kling` in a model picker said nothing about which of them was about to",
+    "be charged. The old bare name is kept as an ALIAS on its entry, so every run",
+    "ever recorded, every draft, and every `--model kling` typed from memory still",
+    "resolves — `registry.get` reads aliases — while what a person reads in the app",
+    "and in `studio models list` says where the money goes.",
+    "",
     "`provider` says which API runs an entry: `replicate` (the default when the",
     "key is absent — every entry written before there was a second provider) or",
     "`runpod`, whose `model` is `runpod/<public endpoint id>`, or `fal`, whose `model`",
@@ -42,7 +51,7 @@
   ],
   "version": 1,
   "models": {
-    "nano-banana-pro": {
+    "replicate-nano-banana-pro": {
       "model": "google/nano-banana-pro",
       "kind": "image",
       "skill": "studio-media-nano-banana-pro",
@@ -110,9 +119,12 @@
           "default": false
         },
         "refreshed": "2026-08-15"
-      }
+      },
+      "aliases": [
+        "nano-banana-pro"
+      ]
     },
-    "nano-banana-2": {
+    "replicate-nano-banana-2": {
       "model": "google/nano-banana-2",
       "kind": "image",
       "skill": "studio-media-nano-banana-2",
@@ -179,9 +191,12 @@
           "default": "jpg"
         },
         "refreshed": "2026-08-15"
-      }
+      },
+      "aliases": [
+        "nano-banana-2"
+      ]
     },
-    "gpt-image-2": {
+    "replicate-gpt-image-2": {
       "model": "openai/gpt-image-2",
       "kind": "image",
       "skill": "studio-media-gpt-image-2",
@@ -278,9 +293,12 @@
           "maximum": 100
         },
         "refreshed": "2026-08-15"
-      }
+      },
+      "aliases": [
+        "gpt-image-2"
+      ]
     },
-    "gpt-image-1.5": {
+    "replicate-gpt-image-1.5": {
       "model": "openai/gpt-image-1.5",
       "kind": "image",
       "skill": "studio-media-gpt-image-1-5",
@@ -364,13 +382,18 @@
           "maximum": 100
         },
         "refreshed": "2026-08-15"
-      }
+      },
+      "aliases": [
+        "gpt-image-1.5"
+      ]
     },
-    "seedance": {
+    "replicate-seedance": {
       "model": "bytedance/seedance-2.0",
       "kind": "video",
       "skill": "studio-media-seedance",
-      "aliases": [],
+      "aliases": [
+        "seedance"
+      ],
       "images": {
         "refs": "reference_images",
         "max_refs": 9,
@@ -443,7 +466,7 @@
         "refreshed": "2026-08-15"
       }
     },
-    "seedance-2.5": {
+    "replicate-seedance-2.5": {
       "model": "bytedance/seedance-2.5",
       "kind": "video",
       "skill": "studio-media-seedance-2-5",
@@ -527,13 +550,16 @@
         "resolution_map": null,
         "allow_intelligent_duration": true
       },
-      "aliases": []
+      "aliases": [
+        "seedance-2.5"
+      ]
     },
-    "kling": {
+    "replicate-kling": {
       "model": "kwaivgi/kling-v3-omni-video",
       "kind": "video",
       "skill": "studio-media-kling",
       "aliases": [
+        "kling",
         "kling-replicate"
       ],
       "images": {
@@ -614,7 +640,207 @@
         "refreshed": "2026-08-15"
       }
     },
-    "veo-3.1": {
+    "fal-kling-v3-i2v": {
+      "model": "fal/fal-ai/kling-video/v3/pro/image-to-video",
+      "provider": "fal",
+      "kind": "video",
+      "skill": "studio-media-fal-kling",
+      "images": {
+        "refs": "elements",
+        "max_refs": 4,
+        "start": "start_image_url",
+        "end": "end_image_url",
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png"
+        ],
+        "start_counts_toward_max_refs": false,
+        "end_excludes_refs": false
+      },
+      "elements": {
+        "field": "elements",
+        "frontal": "frontal_image_url",
+        "refs": "reference_image_urls",
+        "clip": "video_url",
+        "voice": "voice_id",
+        "max": 4,
+        "max_images_each": 4
+      },
+      "audio": {
+        "voice": "elements",
+        "create": "fal/fal-ai/kling-video/create-voice",
+        "accepts_ext": [
+          ".mp3",
+          ".wav",
+          ".m4a",
+          ".flac",
+          ".mp4",
+          ".mov"
+        ],
+        "min_seconds": 5,
+        "max_seconds": 30
+      },
+      "prompt": {
+        "max_chars": 2500
+      },
+      "video": {
+        "negative": "negative_prompt",
+        "technical": "api",
+        "prompt_format": "kling",
+        "max_cuts": 6,
+        "image_tokens": false,
+        "resolution_field": null,
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "defaults": {
+        "generate_audio": true
+      },
+      "aliases": [],
+      "note": "Kling 3.0 pro, image-to-video, on fal.ai's queue API (`provider: fal`) — the SAME MODEL FAMILY as `replicate-kling` on a provider that exposes two things Replicate's proxy does not: ELEMENTS and VOICE BINDING. An element is a subject — `{frontal_image_url, reference_image_urls, video_url, voice_id}` — addressed in the prompt as `@Element1`, `@Element2`, in bind order, and studio builds one PER CHARACTER OR LOCATION a send comes from: the images bound off one character become that character's element, its first image the frontal view and the rest its other angles (1-3 of them). That grouping is `catalog.source_of`, so it is the same answer a run page already gives for where each image came from. A voice sample bound with --voice-key is minted into a `voice_id` at submit and lands on its own character's element, so `@Element1` speaks in that voice with lip-sync in the same pass — the persistent-identity half of Kling 3.0 Omni. Up to 4 elements, and a run carrying a voice must also carry `generate_audio: true` or the voice is paid for and never heard. A REQUIRED start frame (`start_image_url`) and an optional end frame; native multi-shot to 6 cuts (`multi_prompt`, a list of `{prompt, duration}` objects — fal's is a real array, not Replicate's JSON string — whose durations must sum to `duration`). `duration` is a STRING enum, \"3\"-\"15\", not an integer: the same field is an int on the Replicate entry, which is exactly why the two are registered separately. A real `negative_prompt`, and `cfg_scale` 0-1. No `mode` field — the tier is the endpoint, so 1080p is this entry and `fal-kling-o3-r2v` is the reference engine; 720p and 4K are two more endpoints, unregistered until something needs them. Live schema from fal's OpenAPI document. Priced per second of output: $0.112/s with audio off, $0.168/s with audio on, and $0.196/s when a bound voice is used (fal, September 2026) — a 5 s clip with a bound voice is $0.98. fal's body carries no price, so `cost.amount` stays null and fal's dashboard is the bill.",
+      "snapshot": {
+        "duration": {
+          "enum": [
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15"
+          ],
+          "default": "5"
+        },
+        "shot_type": {
+          "enum": [
+            "customize",
+            "intelligent"
+          ],
+          "default": "customize"
+        },
+        "cfg_scale": {
+          "default": 0.5,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "negative_prompt": {
+          "default": "blur, distort, and low quality"
+        },
+        "generate_audio": {
+          "default": true
+        },
+        "refreshed": "2026-09-22"
+      }
+    },
+    "fal-kling-o3-r2v": {
+      "model": "fal/fal-ai/kling-video/o3/pro/reference-to-video",
+      "provider": "fal",
+      "kind": "video",
+      "skill": "studio-media-fal-kling",
+      "images": {
+        "refs": "elements",
+        "max_refs": 4,
+        "start": "start_image_url",
+        "end": "end_image_url",
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png"
+        ],
+        "start_counts_toward_max_refs": false,
+        "end_excludes_refs": false
+      },
+      "elements": {
+        "field": "elements",
+        "frontal": "frontal_image_url",
+        "refs": "reference_image_urls",
+        "clip": "video_url",
+        "voice": "voice_id",
+        "max": 4,
+        "max_images_each": 4
+      },
+      "audio": {
+        "voice": "elements",
+        "create": "fal/fal-ai/kling-video/create-voice",
+        "accepts_ext": [
+          ".mp3",
+          ".wav",
+          ".m4a",
+          ".flac",
+          ".mp4",
+          ".mov"
+        ],
+        "min_seconds": 5,
+        "max_seconds": 30
+      },
+      "prompt": {
+        "max_chars": 2500
+      },
+      "video": {
+        "negative": "prompt",
+        "technical": "api",
+        "prompt_format": "kling",
+        "max_cuts": 6,
+        "image_tokens": false,
+        "resolution_field": null,
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "defaults": {
+        "generate_audio": true
+      },
+      "aliases": [],
+      "note": "Kling O3 pro, reference-to-video, on fal.ai's queue API (`provider: fal`) — the ELEMENT engine: no frame is required, so a character renders as itself from its own reference images, and the prompt addresses each subject as `@Element1`, `@Element2`. Same element and voice machinery as `fal-kling-v3-i2v`, and the cheaper of the two with a voice bound: audio is $0.14/s against $0.196/s, because O3 does not price voice control as its own tier (fal, September 2026; $0.112/s with audio off). An optional start and end frame, `aspect_ratio` 16:9 / 9:16 / 1:1, `duration` a STRING enum \"3\"-\"15\", multi-shot to 6 cuts. TWO differences from the v3 entry worth knowing before a payload is written: there is NO `negative_prompt` here, so keep-outs go in the prompt, and its second reference list — `image_urls`, style references cited as `@Image1` — is deliberately NOT bound by studio. A registry entry names one reference field and this one names `elements`, because that is the list a voice and an identity attach to; a style reference that is nobody's identity belongs in the prompt or on a still. Live schema from fal's OpenAPI document. **studio defaults `generate_audio` to TRUE here**, where fal's own default is false: this is the entry a speaking character is cheapest on, and a voice bound with the sound off is billed and never heard. Pass `{\"generate_audio\": false}` for a silent clip.",
+      "snapshot": {
+        "duration": {
+          "enum": [
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15"
+          ],
+          "default": "5"
+        },
+        "shot_type": {
+          "enum": [
+            "customize",
+            "intelligent"
+          ],
+          "default": "customize"
+        },
+        "aspect_ratio": {
+          "enum": [
+            "16:9",
+            "9:16",
+            "1:1"
+          ],
+          "default": "16:9"
+        },
+        "generate_audio": {
+          "default": false
+        },
+        "refreshed": "2026-09-22"
+      }
+    },
+    "replicate-veo-3.1": {
       "model": "google/veo-3.1",
       "kind": "video",
       "skill": "studio-media-veo-3-1",
@@ -675,9 +901,11 @@
         "resolution_map": null,
         "allow_intelligent_duration": false
       },
-      "aliases": []
+      "aliases": [
+        "veo-3.1"
+      ]
     },
-    "grok-imagine-video": {
+    "replicate-grok-imagine-video": {
       "model": "xai/grok-imagine-video",
       "kind": "video",
       "skill": "studio-media-grok-imagine-video",
@@ -742,9 +970,11 @@
         "resolution_map": null,
         "allow_intelligent_duration": false
       },
-      "aliases": []
+      "aliases": [
+        "grok-imagine-video"
+      ]
     },
-    "image-upscale": {
+    "replicate-image-upscale": {
       "model": "topazlabs/image-upscale",
       "kind": "image",
       "skill": "studio-media-image-upscale",
@@ -812,9 +1042,12 @@
           "minimum": 0,
           "maximum": 1
         }
-      }
+      },
+      "aliases": [
+        "image-upscale"
+      ]
     },
-    "seedream-5-pro": {
+    "replicate-seedream-5-pro": {
       "model": "bytedance/seedream-5-pro",
       "kind": "image",
       "skill": "studio-media-seedream-5-pro",
@@ -881,9 +1114,12 @@
           ],
           "default": "2K"
         }
-      }
+      },
+      "aliases": [
+        "seedream-5-pro"
+      ]
     },
-    "krea-2-large": {
+    "replicate-krea-2-large": {
       "model": "krea/krea-2-large",
       "kind": "image",
       "skill": "studio-media-krea-2-large",
@@ -940,9 +1176,12 @@
           "minimum": 0,
           "maximum": 1
         }
-      }
+      },
+      "aliases": [
+        "krea-2-large"
+      ]
     },
-    "gpt-image-2.5-sunburst": {
+    "replicate-gpt-image-2.5-sunburst": {
       "model": "openai/gpt-image-2.5-sunburst",
       "kind": "image",
       "skill": "studio-media-gpt-image-2-5-sunburst",
@@ -1035,9 +1274,12 @@
           ],
           "default": "auto"
         }
-      }
+      },
+      "aliases": [
+        "gpt-image-2.5-sunburst"
+      ]
     },
-    "gpt-image-2.5-flare": {
+    "replicate-gpt-image-2.5-flare": {
       "model": "openai/gpt-image-2.5-flare",
       "kind": "image",
       "skill": "studio-media-gpt-image-2-5-flare",
@@ -1130,9 +1372,12 @@
           ],
           "default": "auto"
         }
-      }
+      },
+      "aliases": [
+        "gpt-image-2.5-flare"
+      ]
     },
-    "kling-v3-motion-control": {
+    "replicate-kling-v3-motion-control": {
       "model": "kwaivgi/kling-v3-motion-control",
       "kind": "video",
       "skill": "studio-media-kling-v3-motion-control",
@@ -1193,9 +1438,12 @@
           "1080p": "pro"
         },
         "allow_intelligent_duration": false
-      }
+      },
+      "aliases": [
+        "kling-v3-motion-control"
+      ]
     },
-    "flux-2-pro": {
+    "replicate-flux-2-pro": {
       "model": "black-forest-labs/flux-2-pro",
       "kind": "image",
       "skill": "studio-media-flux-2-pro",
@@ -1273,9 +1521,12 @@
           "minimum": 256,
           "maximum": 2048
         }
-      }
+      },
+      "aliases": [
+        "flux-2-pro"
+      ]
     },
-    "z-image-turbo": {
+    "runpod-z-image-turbo": {
       "model": "runpod/z-image-turbo",
       "provider": "runpod",
       "kind": "image",
@@ -1386,9 +1637,12 @@
           "maximum": 1
         },
         "refreshed": "2026-09-14"
-      }
+      },
+      "aliases": [
+        "z-image-turbo"
+      ]
     },
-    "wan-2.6-t2v": {
+    "runpod-wan-2.6-t2v": {
       "model": "runpod/wan-2-6-t2v",
       "provider": "runpod",
       "kind": "video",
@@ -1413,7 +1667,9 @@
         "resolution_map": null,
         "allow_intelligent_duration": false
       },
-      "aliases": [],
+      "aliases": [
+        "wan-2.6-t2v"
+      ],
       "note": "Alibaba's Wan 2.6, text-to-video, on Runpod's public endpoint (not Replicate) — the first open-weight video model here and the first video model that takes no image at all. Prose prompt in, a 5/10/15 s clip out at 720p or 1080p, landscape or portrait (`size` is W*H); `shot_type: multi` lets it cut between shots inside one clip; a real `negative_prompt`; a repeatable `seed`. `enable_prompt_expansion` hands the prompt to a rewriter first and is off by default. No reference images, no start or end frame — for those use wan-2.6-i2v. Priced per clip, not per second: 720p $0.50 / $1.00 / $1.50 and 1080p $0.75 / $1.50 / $2.25 for 5 / 10 / 15 s (Runpod, September 2026); the run records the price. The endpoint's optional `audio` URL is not wired — studio binds nodes, never URLs. Output URL lasts seven days; the run stores the bytes. The worker validates `size` (the four W*H values) and `duration` (5/10/15) and IGNORES any field it does not know — a misspelt input is not refused, it renders at the default and bills, so the registry's check is the only one there is.",
       "input": {
         "required": [
@@ -1511,7 +1767,7 @@
         "refreshed": "2026-09-15"
       }
     },
-    "wan-2.6-i2v": {
+    "runpod-wan-2.6-i2v": {
       "model": "runpod/wan-2-6-i2v",
       "provider": "runpod",
       "kind": "video",
@@ -1544,7 +1800,9 @@
       "defaults": {
         "shot_type": "single"
       },
-      "aliases": [],
+      "aliases": [
+        "wan-2.6-i2v"
+      ],
       "note": "Alibaba's Wan 2.6, image-to-video, on Runpod's public endpoint (not Replicate): one still in (`image`, bound with --start-run / --start-key), a 5/10/15 s clip out that opens on that frame, at `resolution` 720p or 1080p, landscape. **Runpod's own page is wrong about this endpoint's inputs** — it documents `size` as W*H; the worker (`Wan_2.6_I2VInput`) takes `resolution` in `720p`/`1080p` and refuses anything else, and it REQUIRES `shot_type`, which the registry defaults to `single`. Measured 2026-09-16 from the worker's validation errors, after a run sent `size: 1920*1080` and failed. Same other controls as wan-2.6-t2v — a real `negative_prompt`, a repeatable `seed`, `enable_prompt_expansion` off by default — plus `enable_safety_checker`. No reference list: identity comes from the frame, which is the frame-first workflow every other video engine here uses. Priced per second of output: $0.10/s at 720p, $0.15/s at 1080p (Runpod, September 2026), so a 5 s 720p clip is $0.50; the run records the price. The endpoint's optional `audio` URL is not wired — studio binds nodes, never URLs. Output URL lasts seven days; the run stores the bytes.",
       "input": {
         "required": [
@@ -1655,7 +1913,7 @@
         "refreshed": "2026-09-16"
       }
     },
-    "wan-2.2-i2v-lora": {
+    "runpod-wan-2.2-i2v-lora": {
       "model": "runpod/wan-2-2-t2v-720-lora",
       "provider": "runpod",
       "kind": "video",
@@ -1693,7 +1951,9 @@
         "resolution_map": null,
         "allow_intelligent_duration": false
       },
-      "aliases": [],
+      "aliases": [
+        "wan-2.2-i2v-lora"
+      ],
       "note": "Wan 2.2 image-to-video at 720p WITH YOUR OWN LoRA, on Runpod's public endpoint (its id is `wan-2-2-t2v-720-lora` although it takes an image — the docs' table links a name that does not exist). The one model here that loads weights that are not its own: `high_noise_loras` and `low_noise_loras` each take a list of `{path, scale}`, one adapter per denoising stage the way Wan 2.2's two-expert sampler wants them. In studio a LoRA is a SEND — a `.safetensors` node in the library, bound with --lora-high-key / --lora-low-key, presigned at submit — never a pasted URL (hard rule #3); `lora_scale` is studio's one number for every adapter's `scale`. One required start frame (`image`), no reference list, no negative prompt, no size field (720p landscape). 5 or 8 seconds; $0.35 / $0.56 per clip (Runpod, September 2026). The destination for a trained character LoRA, and the untrained-with-a-public-LoRA baseline before one exists.",
       "input": {
         "required": [
@@ -1804,7 +2064,7 @@
         "refreshed": "2026-09-15"
       }
     },
-    "wan-2.2-i2v-studio": {
+    "runpod-wan-2.2-i2v-studio": {
       "model": "runpod/unrxp9badsq4g2",
       "provider": "runpod",
       "kind": "video",
@@ -1848,7 +2108,9 @@
         "content_type": "video/mp4",
         "ext": ".mp4"
       },
-      "aliases": [],
+      "aliases": [
+        "wan-2.2-i2v-studio"
+      ],
       "note": "Wan 2.2 I2V A14B on STUDIO'S OWN Runpod serverless endpoint (`worker/wan22/`, ComfyUI on the stock `runpod/worker-comfyui` image, fp16 weights on a network volume), not a public one. Same LoRA contract as `wan-2.2-i2v-lora` — `high_noise_loras` / `low_noise_loras` are lists of `{path, scale}`, one adapter per denoising expert, bound with --lora-high-key / --lora-low-key and presigned at submit, `lora_scale` studio's one number for every `scale` — plus everything the public endpoint refuses: an END FRAME (`end_image`, bound with --end-run / --end-key, Wan 2.2's own first-last-frame conditioning), any length in frames (`num_frames`, 4k+1, 81 = 5 s at 16 fps, 121 = 7.5 s, the registry caps at 161; 121 and 129 measured on an H100 80GB), `fps`, `width`/`height` (unset: 1280x720 for a landscape still, 720x1280 for a portrait one; the still is centre-cropped to the aspect), `steps`, `guidance` (cfg), `shift`, a real `negative_prompt` (Wan's own when unset), a repeatable `seed`, and a `mode`: `quality` (Wan's 20 steps) or `fast` (the Wan 2.2 Lightning 4-step distillation pair loaded ahead of yours; about a fifth of the time and cost). No safety checker, no prompt expansion. The worker PUTs the mp4 to a grant `dispatch` mints on `scratch/<run>/` (`output_grant`) and answers `result` + `cost`; the closing path files it under `output/` like any Runpod clip. Cost is worker-seconds x the GPU's flex price (H100: $0.00116/s): $1.66 measured for 121 frames at 720p in quality mode with an end frame (24 min on the serverless worker; a dev pod on the same GPU type ran twice as fast, unexplained yet), about a third of that in fast mode, plus a cold start of ~1 min plus the first model load (~2 min) when no worker is warm (max 1 worker, scales to zero; the 100 GB volume is the standing cost, ~$7/month). `studio/scripts/runpod-endpoint-up.sh` creates it, `-down.sh` removes it.",
       "input": {
         "required": [
@@ -2034,7 +2296,7 @@
         "refreshed": "2026-09-20"
       }
     },
-    "wan-3.0-t2v": {
+    "fal-wan-3.0-t2v": {
       "model": "fal/alibaba/wan-3.0/text-to-video",
       "provider": "fal",
       "kind": "video",
@@ -2062,7 +2324,9 @@
       "defaults": {
         "resolution": "720p"
       },
-      "aliases": [],
+      "aliases": [
+        "wan-3.0-t2v"
+      ],
       "note": "Alibaba's Wan 3.0, text-to-video, on fal.ai's queue API (the third provider: `provider: fal`, `model: fal/<endpoint>`; neither Replicate nor Runpod hosts Wan 3.0 in September 2026). Prose prompt in, a clip of 2–30 s out at 480p/720p/1080p in any of five aspect ratios, with native audio. No image input of any kind — for a start or end frame use wan-3.0-i2v, for reference images wan-3.0-r2v. The schema is live: fal publishes an OpenAPI document per endpoint and `models show`/`refresh` read it. Priced per second of output by resolution: $0.05/s at 480p, $0.10/s at 720p, $0.20/s at 1080p (fal, September 2026) — a 5 s clip is $0.25 / $0.50 / $1.00 — and fal's body carries no price, so `cost.amount` stays null; fal's dashboard is the bill. The registry defaults `resolution` to 720p for that reason (fal's own default is 1080p). `duration` is any integer 2–30, or null for the model to pick a length from the prompt; `aspect_ratio` is `adaptive` by default and takes 16:9 / 4:3 / 1:1 / 3:4 / 9:16. `audio` (on by default) generates a soundtrack in the same pass. `enable_prompt_expansion` is left ON, unlike the Wan 2.6 entries, because fal says turning it off degrades the result — the rewritten prompt comes back as `actual_prompt` and the run stores the response, so what was actually sent to the model is on the record. `enable_thinking` (off) adds a reasoning pass and latency. A repeatable `seed`; no negative prompt field — keep-outs go in the prompt. Output URL is fal's CDN; the run stores the bytes.",
       "snapshot": {
         "resolution": {
@@ -2108,7 +2372,7 @@
         "refreshed": "2026-09-16"
       }
     },
-    "wan-3.0-i2v": {
+    "fal-wan-3.0-i2v": {
       "model": "fal/alibaba/wan-3.0/image-to-video",
       "provider": "fal",
       "kind": "video",
@@ -2141,7 +2405,9 @@
       "defaults": {
         "resolution": "720p"
       },
-      "aliases": [],
+      "aliases": [
+        "wan-3.0-i2v"
+      ],
       "note": "Alibaba's Wan 3.0, image-to-video, on fal.ai's queue API (`provider: fal`). One REQUIRED start frame (`start_image_url`, bound with --start-run / --start-key) and an optional last frame (`end_image_url`, --end-run / --end-key) the clip lands on — the frame-first workflow every other video engine here uses, plus the interpolation only Veo and Seedance also offer. 2–30 s, 480p/720p/1080p, native audio; `aspect_ratio: adaptive` follows the frame. No reference list: identity comes from the frame. Live schema from fal's OpenAPI document. Priced per second of output by resolution: $0.05/s at 480p, $0.10/s at 720p, $0.20/s at 1080p (fal, September 2026) — a 5 s clip is $0.25 / $0.50 / $1.00 — and fal's body carries no price, so `cost.amount` stays null; fal's dashboard is the bill. The registry defaults `resolution` to 720p for that reason (fal's own default is 1080p). `duration` is any integer 2–30, or null for the model to pick a length from the prompt; `aspect_ratio` is `adaptive` by default and takes 16:9 / 4:3 / 1:1 / 3:4 / 9:16. `audio` (on by default) generates a soundtrack in the same pass. `enable_prompt_expansion` is left ON, unlike the Wan 2.6 entries, because fal says turning it off degrades the result — the rewritten prompt comes back as `actual_prompt` and the run stores the response, so what was actually sent to the model is on the record. `enable_thinking` (off) adds a reasoning pass and latency. A repeatable `seed`; no negative prompt field — keep-outs go in the prompt. Output URL is fal's CDN; the run stores the bytes.",
       "snapshot": {
         "resolution": {
@@ -2187,7 +2453,7 @@
         "refreshed": "2026-09-16"
       }
     },
-    "wan-3.0-r2v": {
+    "fal-wan-3.0-r2v": {
       "model": "fal/alibaba/wan-3.0/reference-to-video",
       "provider": "fal",
       "kind": "video",
@@ -2220,7 +2486,9 @@
       "defaults": {
         "resolution": "720p"
       },
-      "aliases": [],
+      "aliases": [
+        "wan-3.0-r2v"
+      ],
       "note": "Alibaba's Wan 3.0, reference-to-video, on fal.ai's queue API (`provider: fal`). Up to 10 reference images (`reference_image_urls`, bound with --character / --ref-run / --key) that the prompt addresses positionally — 'the subject in Image 1 walks past…' — which is what makes it the Wan engine for a character on-model, the role Kling's and Seedance's reference lists play. No start or end frame: the references steer identity and the prompt steers the shot. 2–30 s, 480p/720p/1080p, native audio. The endpoint also takes up to 5 reference videos and 5 reference audios and a `web_url`/`file_url` to build from; none is wired — studio binds image nodes, never URLs, and no clip or audio send exists for this entry yet. Live schema from fal's OpenAPI document. Priced per second of output by resolution: $0.05/s at 480p, $0.10/s at 720p, $0.20/s at 1080p (fal, September 2026) — a 5 s clip is $0.25 / $0.50 / $1.00 — and fal's body carries no price, so `cost.amount` stays null; fal's dashboard is the bill. The registry defaults `resolution` to 720p for that reason (fal's own default is 1080p). `duration` is any integer 2–30, or null for the model to pick a length from the prompt; `aspect_ratio` is `adaptive` by default and takes 16:9 / 4:3 / 1:1 / 3:4 / 9:16. `audio` (on by default) generates a soundtrack in the same pass. `enable_prompt_expansion` is left ON, unlike the Wan 2.6 entries, because fal says turning it off degrades the result — the rewritten prompt comes back as `actual_prompt` and the run stores the response, so what was actually sent to the model is on the record. `enable_thinking` (off) adds a reasoning pass and latency. A repeatable `seed`; no negative prompt field — keep-outs go in the prompt. Output URL is fal's CDN; the run stores the bytes.",
       "snapshot": {
         "resolution": {
@@ -2266,7 +2534,7 @@
         "refreshed": "2026-09-16"
       }
     },
-    "wan-3.0-openrouter": {
+    "openrouter-wan-3.0": {
       "model": "openrouter/alibaba/wan-3.0",
       "provider": "openrouter",
       "kind": "video",
@@ -2300,7 +2568,9 @@
         "resolution": "720p",
         "duration": 5
       },
-      "aliases": [],
+      "aliases": [
+        "wan-3.0-openrouter"
+      ],
       "note": "Alibaba's Wan 3.0 through OpenRouter (the fourth provider: `provider: openrouter`, `model: openrouter/<slug>`), the same model as the fal `wan-3.0-*` entries routed straight to Alibaba — registered beside them so a run can be priced on either. ONE entry for two modes: text-to-video with no image, image-to-video with an optional `first_frame` (bound with --start-run / --start-key; sent as OpenRouter's `frame_images`). No end frame and no reference list — OpenRouter's card for this model offers `first_frame` only, so for an end frame use wan-3.0-i2v and for references wan-3.0-r2v, both on fal. No `negative_prompt`, no prompt-expansion switch, no thinking pass: OpenRouter forwards no passthrough parameters for this model, so keep-outs go in the prompt. 2–30 s (`duration`, an integer; the registry defaults 5), 480p/720p/1080p (`resolution`, defaulted to 720p), five aspect ratios (16:9 / 4:3 / 1:1 / 3:4 / 9:16, no `adaptive`), `generate_audio` on by default, a repeatable `seed`. Schema is live, synthesised from OpenRouter's model card. List price per second of output: $0.05 at 480p, $0.10 at 720p, $0.20 at 1080p (OpenRouter, September 2026), with a 15% discount OpenRouter advertises on this route that the card does not print. Measured 2026-09-18 on the first live run: a 2 s 480p clip cost $0.2125 = 5 s × $0.05 × 0.85 — the discount is real and the clip is BILLED AS AT LEAST 5 SECONDS, so anything shorter costs the same as 5 s; at 5 s and above this is 15% under fal. The body carries `usage.cost`, so every run records what was actually charged. Output is fetched from OpenRouter's own content route with the key; the run stores the bytes.",
       "snapshot": {
         "aspect_ratio": {
@@ -2360,7 +2630,7 @@
         "refreshed": "2026-09-18"
       }
     },
-    "wan-2.2-lora-train": {
+    "runpod-wan-2.2-lora-train": {
       "model": "runpod-pod/ai-toolkit-wan22-14b",
       "provider": "runpod-pod",
       "kind": "training",
@@ -2398,7 +2668,9 @@
         "sample_seed": 42,
         "sample_steps": 20
       },
-      "aliases": [],
+      "aliases": [
+        "wan-2.2-lora-train"
+      ],
       "note": "Not a model: a TRAINER. Rents a Runpod GPU pod from the official ai-toolkit image, trains a Wan 2.2 14B LoRA pair (high-noise and low-noise experts, the pair `wan-2.2-i2v-lora` loads) on the character's images tagged `dataset`, uploads every checkpoint pair into `<character>/models/` and, at every save point, one sample still per `sample_prompts` entry into `<character>/models/samples/` (the run page shows them beside the pair), and terminates the pod. Captions are each file's description with the trigger in front — scene only, never the face. No prompt. Billed by the hour: an A100 80GB is ~$1.59/h and 2000 steps take roughly 1–2 h plus ~15 min of setup, so ~$3–5 an attempt; the run records pod-hours × rate. `max_hours` caps it on the pod itself. Runs ONLY where the API can reach Runpod's pod API and receive a callback; locally `studio runs reconcile` reads the pod's result from the bucket.",
       "input": {
         "required": [
@@ -2616,7 +2888,7 @@
         "refreshed": "2026-09-16"
       }
     },
-    "ltx-2.3-lora-train": {
+    "runpod-ltx-2.3-lora-train": {
       "model": "runpod-pod/ai-toolkit-ltx23-22b",
       "provider": "runpod-pod",
       "kind": "training",
@@ -2654,9 +2926,10 @@
         "sample_steps": 20
       },
       "aliases": [
+        "ltx-2.3-lora-train",
         "ltx-2-lora-train"
       ],
-      "note": "Not a model: a TRAINER. Rents a Runpod GPU pod from the official ai-toolkit image and trains an LTX-2.3 22B LoRA (Lightricks/LTX-2.3, `ltx-2.3-22b-dev.safetensors`, quantised to fit the 80 GB card beside its Gemma 3 text encoder) on the character's images tagged `dataset`. ONE FILE per checkpoint, not a pair \u2014 LTX is one transformer \u2014 uploaded into `<character>/models/` as it lands, and at every save point one text-only sample still per `sample_prompts` entry into `<character>/models/samples/`. Captions are each file's description with the trigger in front \u2014 scene only, never the face. No prompt. Billed by the hour: an H100 80GB is ~$3.49/h and 1500 steps took 1 h 36 min and $5.57 on 32 images with two sample prompts (measured 2026-09-20; the first checkpoint 22 min in, then one every ~15 min), so ~$5\u20137 an attempt; the run records pod-hours \u00d7 rate. `max_hours` caps it on the pod itself. The file loads into `ltx-2.3-i2v-lora` (fal) with --lora-key. Runs ONLY where the API can reach Runpod's pod API and receive a callback; locally `studio runs reconcile` reads the pod's result from the bucket.",
+      "note": "Not a model: a TRAINER. Rents a Runpod GPU pod from the official ai-toolkit image and trains an LTX-2.3 22B LoRA (Lightricks/LTX-2.3, `ltx-2.3-22b-dev.safetensors`, quantised to fit the 80 GB card beside its Gemma 3 text encoder) on the character's images tagged `dataset`. ONE FILE per checkpoint, not a pair — LTX is one transformer — uploaded into `<character>/models/` as it lands, and at every save point one text-only sample still per `sample_prompts` entry into `<character>/models/samples/`. Captions are each file's description with the trigger in front — scene only, never the face. No prompt. Billed by the hour: an H100 80GB is ~$3.49/h and 1500 steps took 1 h 36 min and $5.57 on 32 images with two sample prompts (measured 2026-09-20; the first checkpoint 22 min in, then one every ~15 min), so ~$5–7 an attempt; the run records pod-hours × rate. `max_hours` caps it on the pod itself. The file loads into `ltx-2.3-i2v-lora` (fal) with --lora-key. Runs ONLY where the API can reach Runpod's pod API and receive a callback; locally `studio runs reconcile` reads the pod's result from the bucket.",
       "input": {
         "required": [
           "trigger"
@@ -2669,12 +2942,12 @@
               "type": "string",
               "format": "uri"
             },
-            "description": "The stills the LoRA learns from \u2014 the character's images tagged `dataset`, bound with --character <name> --pick-tag dataset. Each file's description is its caption (scene only, never the face), prefixed with the trigger."
+            "description": "The stills the LoRA learns from — the character's images tagged `dataset`, bound with --character <name> --pick-tag dataset. Each file's description is its caption (scene only, never the face), prefixed with the trigger."
           },
           "trigger": {
             "type": "string",
             "title": "Trigger",
-            "description": "The token every caption starts with and every prompt will say \u2014 the word the identity is bound to. One made-up word, e.g. `ohwx_pt`."
+            "description": "The token every caption starts with and every prompt will say — the word the identity is bound to. One made-up word, e.g. `ohwx_pt`."
           },
           "steps": {
             "type": "integer",
@@ -2692,7 +2965,7 @@
               500
             ],
             "default": 250,
-            "description": "A checkpoint pair is written every this many steps \u2014 the candidates the evaluation compares."
+            "description": "A checkpoint pair is written every this many steps — the candidates the evaluation compares."
           },
           "rank": {
             "type": "integer",
@@ -2765,7 +3038,7 @@
               "{trigger}, in a dark suit and tie at a formal event, head and shoulders",
               "{trigger}, sitting on a beach at sunset, full body"
             ],
-            "description": "One still per prompt at every save point, rendered by the trainer with the checkpoint just written and filed beside it under `<character>/models/samples/` \u2014 the face emerging, without a video run by hand. `{trigger}` is replaced with the run's trigger. Text-only on this model (one transformer does both modes), so scenes the dataset does NOT contain show whether the face travels rather than whether a photo was memorised. `[]` disables sampling. Each prompt adds ~20 sampler steps of a 22B model per save point."
+            "description": "One still per prompt at every save point, rendered by the trainer with the checkpoint just written and filed beside it under `<character>/models/samples/` — the face emerging, without a video run by hand. `{trigger}` is replaced with the run's trigger. Text-only on this model (one transformer does both modes), so scenes the dataset does NOT contain show whether the face travels rather than whether a photo was memorised. `[]` disables sampling. Each prompt adds ~20 sampler steps of a 22B model per save point."
           },
           "sample_seed": {
             "type": "integer",
@@ -2856,7 +3129,7 @@
         "refreshed": "2026-09-20"
       }
     },
-    "hunyuan-video-lora-train": {
+    "runpod-hunyuan-video-lora-train": {
       "model": "runpod-pod/musubi-hunyuan-video",
       "provider": "runpod-pod",
       "kind": "training",
@@ -2888,8 +3161,10 @@
         "sample_seed": 42,
         "sample_steps": 20
       },
-      "aliases": [],
-      "note": "Not a model: a TRAINER, and the one here that studio cannot yet USE the output of. Rents a Runpod GPU pod from a plain PyTorch image, installs kohya-ss/musubi-tuner (ai-toolkit has no HunyuanVideo arch) and trains a HunyuanVideo 13B LoRA (tencent/HunyuanVideo, the official 720p T2V transformer, with ComfyUI's repackaged text encoders) on the character's images tagged `dataset`: latents and text embeddings cached first, then `hv_train_network.py`. ONE FILE per checkpoint, converted on the pod to the diffusers/ComfyUI key layout and uploaded into `<character>/models/` as it lands. No samples (`sample_prompts` must be `[]`). NO HOSTED ENDPOINT loads a HunyuanVideo LoRA into image-to-video as of 2026-09-20 \u2014 fal retired `hunyuan-video-lora` and `hunyuan-video-img2vid-lora`, Replicate's `zsxkib/hunyuan-video-lora` is text-to-video only and takes a bare URL \u2014 so a file this trains has no `--lora-key` destination in studio yet, and the job has not been run on a real pod. Billed by the hour; `max_hours` caps it on the pod itself.",
+      "aliases": [
+        "hunyuan-video-lora-train"
+      ],
+      "note": "Not a model: a TRAINER, and the one here that studio cannot yet USE the output of. Rents a Runpod GPU pod from a plain PyTorch image, installs kohya-ss/musubi-tuner (ai-toolkit has no HunyuanVideo arch) and trains a HunyuanVideo 13B LoRA (tencent/HunyuanVideo, the official 720p T2V transformer, with ComfyUI's repackaged text encoders) on the character's images tagged `dataset`: latents and text embeddings cached first, then `hv_train_network.py`. ONE FILE per checkpoint, converted on the pod to the diffusers/ComfyUI key layout and uploaded into `<character>/models/` as it lands. No samples (`sample_prompts` must be `[]`). NO HOSTED ENDPOINT loads a HunyuanVideo LoRA into image-to-video as of 2026-09-20 — fal retired `hunyuan-video-lora` and `hunyuan-video-img2vid-lora`, Replicate's `zsxkib/hunyuan-video-lora` is text-to-video only and takes a bare URL — so a file this trains has no `--lora-key` destination in studio yet, and the job has not been run on a real pod. Billed by the hour; `max_hours` caps it on the pod itself.",
       "input": {
         "required": [
           "trigger"
@@ -2902,12 +3177,12 @@
               "type": "string",
               "format": "uri"
             },
-            "description": "The stills the LoRA learns from \u2014 the character's images tagged `dataset`, bound with --character <name> --pick-tag dataset. Each file's description is its caption (scene only, never the face), prefixed with the trigger."
+            "description": "The stills the LoRA learns from — the character's images tagged `dataset`, bound with --character <name> --pick-tag dataset. Each file's description is its caption (scene only, never the face), prefixed with the trigger."
           },
           "trigger": {
             "type": "string",
             "title": "Trigger",
-            "description": "The token every caption starts with and every prompt will say \u2014 the word the identity is bound to. One made-up word, e.g. `ohwx_pt`."
+            "description": "The token every caption starts with and every prompt will say — the word the identity is bound to. One made-up word, e.g. `ohwx_pt`."
           },
           "steps": {
             "type": "integer",
@@ -2925,7 +3200,7 @@
               500
             ],
             "default": 250,
-            "description": "A checkpoint pair is written every this many steps \u2014 the candidates the evaluation compares."
+            "description": "A checkpoint pair is written every this many steps — the candidates the evaluation compares."
           },
           "rank": {
             "type": "integer",
@@ -3079,7 +3354,7 @@
         "refreshed": "2026-09-20"
       }
     },
-    "ltx-2.3-i2v-lora": {
+    "fal-ltx-2.3-i2v-lora": {
       "model": "fal/fal-ai/ltx-2.3-22b/image-to-video/lora",
       "provider": "fal",
       "kind": "video",
@@ -3122,9 +3397,10 @@
         "enable_prompt_expansion": false
       },
       "aliases": [
+        "ltx-2.3-i2v-lora",
         "ltx-2-i2v-lora"
       ],
-      "note": "Lightricks' LTX-2.3 22B, image-to-video WITH YOUR OWN LoRA, on fal.ai's queue API (`provider: fal`). The destination for a LoRA `ltx-2.3-lora-train` leaves: `loras` takes a list of `{path, scale}`, one file per adapter (LTX is one transformer, so a checkpoint is one file, not Wan 2.2's pair). In studio a LoRA is a SEND \u2014 a `.safetensors` node in the library, bound with --lora-key, presigned at submit \u2014 never a pasted URL (hard rule #3); `lora_scale` is studio's one number for every adapter's `scale` (0\u20134 on this endpoint). One REQUIRED start frame (`image_url`, --start-run / --start-key) and an optional end frame (`end_image_url`); `video_size: auto` follows the frame. Length is `num_frames` at `fps` (24): 121 frames is 5 s, 193 is 8 s; the endpoint rounds to 8n+1. `generate_audio` is OFF here by default (the model makes a soundtrack; a character test does not want one) and so is `enable_prompt_expansion`, so the trigger word reaches the model as written. `negative_prompt` carries a long default of its own. `seed` repeats a draw. Live schema from fal's OpenAPI document. Priced per megapixel of output (width \u00d7 height \u00d7 frames): $0.001805/MP (fal, September 2026) \u2014 a 5 s 720p clip is ~$0.20, 8 s ~$0.32 \u2014 and fal's body carries no price, so `cost.amount` stays null. `fal-ai/ltx-2/*` and `fal-ai/ltx-2-19b/*` are deprecated since 2026-08-15 (fal's banner: migrate to LTX-2.3), which is why this is the 2.3 endpoint and the trainer is the 2.3 arch.",
+      "note": "Lightricks' LTX-2.3 22B, image-to-video WITH YOUR OWN LoRA, on fal.ai's queue API (`provider: fal`). The destination for a LoRA `ltx-2.3-lora-train` leaves: `loras` takes a list of `{path, scale}`, one file per adapter (LTX is one transformer, so a checkpoint is one file, not Wan 2.2's pair). In studio a LoRA is a SEND — a `.safetensors` node in the library, bound with --lora-key, presigned at submit — never a pasted URL (hard rule #3); `lora_scale` is studio's one number for every adapter's `scale` (0–4 on this endpoint). One REQUIRED start frame (`image_url`, --start-run / --start-key) and an optional end frame (`end_image_url`); `video_size: auto` follows the frame. Length is `num_frames` at `fps` (24): 121 frames is 5 s, 193 is 8 s; the endpoint rounds to 8n+1. `generate_audio` is OFF here by default (the model makes a soundtrack; a character test does not want one) and so is `enable_prompt_expansion`, so the trigger word reaches the model as written. `negative_prompt` carries a long default of its own. `seed` repeats a draw. Live schema from fal's OpenAPI document. Priced per megapixel of output (width × height × frames): $0.001805/MP (fal, September 2026) — a 5 s 720p clip is ~$0.20, 8 s ~$0.32 — and fal's body carries no price, so `cost.amount` stays null. `fal-ai/ltx-2/*` and `fal-ai/ltx-2-19b/*` are deprecated since 2026-08-15 (fal's banner: migrate to LTX-2.3), which is why this is the 2.3 endpoint and the trainer is the 2.3 arch.",
       "input": {
         "required": [],
         "properties": {

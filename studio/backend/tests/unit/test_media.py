@@ -309,6 +309,23 @@ def test_a_webp_is_an_image_on_every_platform():
     assert mime.content_type_of("weights.safetensors") == "application/octet-stream"
 
 
+def test_an_audio_file_is_typed_so_a_browser_will_play_it():
+    """The `.webp` failure, one media type over — and two of these OVERRIDE
+    the platform rather than filling a hole.
+
+    A Mac reads `/etc/apache2/mime.types` at import and calls a `.wav`
+    `audio/x-wav` and an `.m4a` `audio/mp4a-latm`, both pre-standard, the
+    second of which Safari will not play. The Lambda's table knows `.mp3` and
+    none of the rest, so without these a voice sample uploaded through the
+    deployed API would be stored `application/octet-stream` and the page
+    would draw a dead control over it.
+    """
+    assert mime.content_type_of("take.mp3") == "audio/mpeg"
+    assert mime.content_type_of("take.wav") == "audio/wav"
+    assert mime.content_type_of("take.m4a") == "audio/mp4"
+    assert mime.content_type_of("take.flac") == "audio/flac"
+
+
 def test_what_the_provider_served_wins_when_it_names_a_media_type():
     assert mime.content_type_of("image.webp", "image/webp") == "image/webp"
     assert mime.content_type_of("tmpabc.jpg", "image/png") == "image/png", \

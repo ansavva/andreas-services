@@ -9,8 +9,8 @@ description: Train a character LoRA for Tencent's HunyuanVideo 13B as a recorded
 the limits of before spending on it.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model hunyuan-video-lora-train …`,
-> and `studio models show hunyuan-video-lora-train` for the knobs. The
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model runpod-hunyuan-video-lora-train …`,
+> and `studio models show runpod-hunyuan-video-lora-train` for the knobs. The
 > dataset, captions and trigger are exactly as
 > [`studio-media-lora-train`](../studio-media-lora-train/SKILL.md) describes.
 
@@ -51,7 +51,7 @@ fails.
 ## Invoke
 
 ```bash
-studio run --model hunyuan-video-lora-train --project <project> \
+studio run --model runpod-hunyuan-video-lora-train --project <project> \
   --character <name> --pick-tag dataset \
   --extra '{"trigger":"ohwx_pt","steps":1500}' \
   --dry-run

@@ -39,14 +39,19 @@ def over_the_wire(library, monkeypatch):
 def test_the_registry_is_fetched_from_the_api(over_the_wire):
     """The whole move, in one assertion: the entries come from the service."""
     entries = REG.all()
-    assert "gpt-image-2" in entries
-    assert entries["gpt-image-2"]["model"] == "openai/gpt-image-2"
+    assert "replicate-gpt-image-2" in entries
+    assert entries["replicate-gpt-image-2"]["model"] == "openai/gpt-image-2"
 
 
 def test_an_alias_and_a_replicate_id_both_resolve(over_the_wire):
-    """`get` follows aliases; `by_model_id` answers the `owner/name` spelling."""
-    assert REG.get("gpt-image-2")["key"] == "gpt-image-2"
-    assert REG.by_model_id("openai/gpt-image-2")["key"] == "gpt-image-2"
+    """`get` follows aliases; `by_model_id` answers the `owner/name` spelling.
+
+    `gpt-image-2` is the alias now — every key carries its provider — which is
+    what keeps a year of skill pages, drafts and recorded runs resolving.
+    """
+    assert REG.get("gpt-image-2")["key"] == "replicate-gpt-image-2"
+    assert REG.get("replicate-gpt-image-2")["key"] == "replicate-gpt-image-2"
+    assert REG.by_model_id("openai/gpt-image-2")["key"] == "replicate-gpt-image-2"
 
 
 def test_an_unknown_model_names_the_registered_ones(over_the_wire):

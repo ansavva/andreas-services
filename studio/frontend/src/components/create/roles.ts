@@ -14,7 +14,10 @@ import type { ModelEntry, RunKind, RunSendInput } from "../../types";
  */
 export const ROLES_BY_KIND: Record<RunKind, readonly AttachRole[]> = {
   image: ["reference", "input"],
-  video: ["start", "end", "reference", "clip"],
+  // `voice` last, and only on the models that bind one — a tile is drawn for a
+  // role the chosen model has a field for and for no other, so this list is
+  // what MAY appear rather than what does.
+  video: ["start", "end", "reference", "clip", "voice"],
   // A training run's images are its dataset, bound from the CLI; the sheet
   // does not make one, so it offers nothing.
   training: [],
@@ -42,11 +45,21 @@ export const ROLE_WORDS: Record<AttachRole, { label: string; hint: string; choos
     hint: "The video this model works from — the motion it copies, or the footage it edits. Not what it makes.",
     choose: "Choose a source video",
   },
+  // "Voice", not "Audio": what is bound is not a soundtrack laid over the clip
+  // but a sample the model reads a voice out of and gives to a character. The
+  // difference is the whole feature, and a tile labelled Audio would have read
+  // as the first.
+  voice: {
+    label: "Voice",
+    hint: "5–30 seconds of one clean voice. The model clones it and speaks that character in it, lip-synced. A sample stored under a character binds to that character.",
+    choose: "Choose a voice sample",
+  },
 };
 
 /**
  * The model input a role binds to, or `null` where this model has no such
- * input — which is when the strip hides the role.
+ * input — which is when the strip hides the role. `voice` is the one that is
+ * null nearly everywhere: two entries in the registry take one.
  *
  * Read off the registry entry's `images`, never guessed: the frame-first
  * workflow's whole bargain is that a start frame lands on the field the model
@@ -70,6 +83,11 @@ export function fieldFor(role: AttachRole, entry: ModelEntry | null): string | n
       return images.start ?? null;
     case "clip":
       return entry?.clips?.source ?? null;
+    // The elements field, not a field of its own: the id the provider reads
+    // sits inside the element object beside that subject's pictures, which is
+    // what binds the voice to the character rather than to the run.
+    case "voice":
+      return entry?.audio?.voice ?? null;
   }
 }
 

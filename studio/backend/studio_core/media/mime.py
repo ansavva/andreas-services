@@ -40,6 +40,30 @@ import mimetypes
 #: it the same way.
 mimetypes.add_type("image/webp", ".webp")
 
+#: **Audio, for the same reason and with one difference.** A voice sample is
+#: a stored file like any other and its type decides whether a browser will
+#: play it: an `<audio>` element handed `application/octet-stream` shows a
+#: dead control. The Lambda's table knows `.mp3` and nothing else here, so the
+#: rest would each be an octet-stream — the `.webp` failure, one media type
+#: over.
+#:
+#: The difference is that two of these OVERRIDE a platform answer rather than
+#: filling a hole. A Mac's `/etc/apache2/mime.types` calls a `.wav`
+#: `audio/x-wav` and an `.m4a` `audio/mp4a-latm`, both of them the pre-standard
+#: spellings, and Safari will not play the second. Registering the current
+#: names means a file uploaded on a laptop and the same file uploaded through
+#: the deployed API are stored under one type.
+for _suffix, _type in (
+    (".mp3", "audio/mpeg"),
+    (".wav", "audio/wav"),
+    (".m4a", "audio/mp4"),
+    (".aac", "audio/aac"),
+    (".flac", "audio/flac"),
+    (".ogg", "audio/ogg"),
+    (".opus", "audio/ogg"),
+):
+    mimetypes.add_type(_type, _suffix)
+
 OCTET_STREAM = "application/octet-stream"
 
 #: The top-level types a provider's `Content-Type` is believed for.

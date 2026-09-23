@@ -14,8 +14,8 @@ a callback or a reconcile, a cost. What is different is that the cost is
 hours on a machine and the outputs are weights.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model wan-2.2-lora-train …`,
-> and `studio models show wan-2.2-lora-train` for the knobs. This page covers
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model runpod-wan-2.2-lora-train …`,
+> and `studio models show runpod-wan-2.2-lora-train` for the knobs. This page covers
 > what is specific to training.
 
 ## What a LoRA is, in one paragraph
@@ -43,7 +43,7 @@ Write the captions in the app (the file's Description) or with `studio describe 
 
 ```bash
 # read the payload — which images, which captions, which card, the cost cap — and draft
-studio run --model wan-2.2-lora-train --project <project> \
+studio run --model runpod-wan-2.2-lora-train --project <project> \
   --character <name> --pick-tag dataset \
   --extra '{"trigger":"ohwx_pt","steps":2000,"gpu":"a100"}' \
   --dry-run
@@ -129,7 +129,7 @@ them. Write your own with `{trigger}` where the token goes, and no `--` in
 them — the trainer reads `--x` as a flag, and the job appends its own:
 
 ```bash
-studio run --model wan-2.2-lora-train --project <project> \
+studio run --model runpod-wan-2.2-lora-train --project <project> \
   --character <name> --pick-tag dataset \
   --extra '{"trigger":"ohwx_pt","sample_prompts":["{trigger}, on a ski slope, goggles up, medium shot"],"sample_seed":7}' \
   --dry-run

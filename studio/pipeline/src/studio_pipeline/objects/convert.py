@@ -129,7 +129,7 @@ def _source_name(key: str) -> str:
 # of the CLI surface and `test_help_text_survived` compares these strings against
 # it, so correcting the wording here is a contract change and not a comment fix.
 @click.option("--dest-key", help="Explicit destination S3 key instead.")
-@click.option("--for", "for_", type=click.Choice(["flux-2-pro", "gpt-image-1.5", "gpt-image-2", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "kling", "kling-v3-motion-control", "krea-2-large", "ltx-2.3-i2v-lora", "nano-banana-2", "nano-banana-pro", "seedance", "seedance-2.5", "seedream-5-pro", "wan-2.2-i2v-lora", "wan-2.6-i2v", "wan-2.6-t2v", "wan-3.0-i2v", "wan-3.0-openrouter", "wan-3.0-r2v", "wan-3.0-t2v", "z-image-turbo"]), help="Convert only if this engine would reject the current format.")
+@click.option("--for", "for_", type=click.Choice(["fal-kling-o3-r2v", "fal-kling-v3-i2v", "fal-ltx-2.3-i2v-lora", "fal-wan-3.0-i2v", "fal-wan-3.0-r2v", "fal-wan-3.0-t2v", "openrouter-wan-3.0", "replicate-flux-2-pro", "replicate-gpt-image-1.5", "replicate-gpt-image-2", "replicate-gpt-image-2.5-flare", "replicate-gpt-image-2.5-sunburst", "replicate-kling", "replicate-kling-v3-motion-control", "replicate-krea-2-large", "replicate-nano-banana-2", "replicate-nano-banana-pro", "replicate-seedance", "replicate-seedance-2.5", "replicate-seedream-5-pro", "runpod-wan-2.2-i2v-lora", "runpod-wan-2.6-i2v", "runpod-wan-2.6-t2v", "runpod-z-image-turbo"]), help="Convert only if this engine would reject the current format.")
 @click.option("--key", help="Source S3 key (full).")
 @click.option("--project", help="Default project for a bare runref.")
 @click.option("--quality", type=int, default=95, help="JPEG/WebP quality (default 95).")

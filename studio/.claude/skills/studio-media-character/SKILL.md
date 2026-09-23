@@ -327,6 +327,44 @@ position N in the resolved selection, which is what a model actually receives.
 5. **Verify against `consistency`** — every `must` present, every `never` absent;
    regenerate if any hard cue is off, using the matching `drift_modes[].fix`.
 
+## A character can have a VOICE, and it lives in the same folder
+
+A character's identity is images and a bible — and, on the two Kling entries
+hosted by fal, a **voice**. Keep the sample in the character's own tree:
+
+```bash
+studio upload --folder <name>/voice ~/takes/line-read.mp3
+```
+
+`.mp3 .wav .m4a .flac .mp4 .mov`, **5–30 seconds of one clean voice**, no
+music under it and nobody else talking. One take, not a compilation: the model
+reads pitch, timbre and manner out of it and gives them to whoever the sample
+belongs to.
+
+Why the folder matters more than it looks: a bound sample attaches to a
+subject by **where the file sits**, the same way a bound picture reports which
+character it came from. A sample stored under the character binds to that
+character; one dropped into a project binds to nobody in particular. Then any
+later run says:
+
+```bash
+studio run --model fal-kling-v3-i2v --project <project> \
+  --character <name> --start-key <node> \
+  --voice-key <name>/voice/line-read.mp3 \
+  --extra '{"duration":"8","generate_audio":true}' \
+  --prompt "..."
+```
+
+The sample is registered with the provider once and the id is remembered on
+the file, so next week's clip is the **same voice** rather than a new one that
+sounds like it. Full rules — what the preflight refuses, what it costs, why
+`generate_audio` must be on — are in
+[`studio-media-fal-kling`](../studio-media-fal-kling/SKILL.md).
+
+**A voice is identity, so the gate above applies to it.** Adding one to a
+character is the same kind of decision as tagging an image `default`: ask
+first, then upload.
+
 ## Carrying a character to an engine with no reference system
 
 Both Seedance and Kling-on-Replicate hold identity through `reference_images`,

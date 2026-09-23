@@ -24,9 +24,9 @@ skill:
 
 | Engine skill | Model | Access | `--engine` |
 |---|---|---|---|
-| **`studio-media-seedance`** | Seedance 2.0 | Replicate, via `studio run --model seedance` | `seedance` (default) |
-| **`studio-media-seedance-2-5`** | Seedance 2.5 | Replicate, via `studio run --model seedance-2.5` | `seedance` — same engine profile |
-| **`studio-media-kling`** | Kling 3.0 Omni | Replicate, via `studio run --model kling` | `kling-replicate` |
+| **`studio-media-seedance`** | Seedance 2.0 | Replicate, via `studio run --model replicate-seedance` | `seedance` (default) |
+| **`studio-media-seedance-2-5`** | Seedance 2.5 | Replicate, via `studio run --model replicate-seedance-2.5` | `seedance` — same engine profile |
+| **`studio-media-kling`** | Kling 3.0 Omni | Replicate, via `studio run --model replicate-kling` | `kling-replicate` |
 
 Use this skill when the user wants precise, repeatable control, a multi-shot
 timeline, or a template they can tweak. For a quick one-off, writing the prose
@@ -334,15 +334,15 @@ and hand it to the runner, which records the run, submits without
 
 ```bash
 studio prompt prompt.json --emit input > input.json
-studio run --model seedance --project <project> --input-file input.json \
+studio run --model replicate-seedance --project <project> --input-file input.json \
   --character <name> --name <file> --poll
 ```
 
-- **Seedance** → **`studio-media-seedance`** (`--model seedance`). Bind identity
+- **Seedance** → **`studio-media-seedance`** (`--model replicate-seedance`). Bind identity
   with `--character` (it resolves the selection and presigns it); a first frame
   goes on `--start-run` / `--start-key` and **cannot** be combined with
   references here.
-- **Kling** → **`studio-media-kling`** (`--model kling`). Same flags, and a start
+- **Kling** → **`studio-media-kling`** (`--model replicate-kling`). Same flags, and a start
   frame **does** combine with references. Kling takes only `.jpg/.jpeg/.png`.
 
 **Never add an image to the payload as an https URL you produced yourself, and

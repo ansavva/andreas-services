@@ -334,7 +334,13 @@ export function ObjectPage() {
   // went to the text route and spun on its 400. `kindOfFile` says which of the
   // two a non-media file is, the way the API decides it.
   const isText = open?.kind === "text";
-  const isBinary = open?.kind === "other";
+  // **Audio goes to `FilePage` too, and that is not a demotion.** The viewer
+  // feed is pictures and clips — `useViewerFeed` collects those two kinds — so
+  // a voice sample reaching the player would be a `current` of `null` and a
+  // screen reading "no images or videos here" about a file that plainly
+  // exists. `FilePage` draws it with a player, which is the whole of what
+  // there is to do with one.
+  const isBinary = open?.kind === "other" || open?.kind === "audio";
 
   /**
    * ←/→ walk the feed; Space, `m` and `f` are the player's.

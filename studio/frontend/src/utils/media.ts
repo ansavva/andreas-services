@@ -12,11 +12,17 @@ import type { MediaKind } from "../types";
  * anyone opened: a `.safetensors`, `application/octet-stream`, which the page
  * sent to the text route, got a 400 for, and drew as a spinner forever.
  *
- * So the same four sets, spelled here once. The content type is the fallback
- * for a name with no telling extension, not the first word.
+ * So the same sets, spelled here once — and they have to stay the same sets:
+ * `AUDIO` is `keys.AUDIO_EXTENSIONS`, which deliberately does not list `.mp4`
+ * even though Kling will read a voice out of one. A file is one kind, and the
+ * kind decides what gets drawn.
+ *
+ * The content type is the fallback for a name with no telling extension, not
+ * the first word.
  */
 const IMAGE = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".bmp"]);
 const VIDEO = new Set([".mp4", ".webm", ".mov", ".m4v"]);
+const AUDIO = new Set([".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"]);
 const TEXT = new Set([".json", ".md", ".txt", ".yaml", ".yml", ".csv", ".log"]);
 
 export function extensionOf(name: string): string {
@@ -28,10 +34,12 @@ export function kindOfFile(name: string, contentType?: string | null): MediaKind
   const ext = extensionOf(name);
   if (IMAGE.has(ext)) return "image";
   if (VIDEO.has(ext)) return "video";
+  if (AUDIO.has(ext)) return "audio";
   if (TEXT.has(ext)) return "text";
   const type = contentType ?? "";
   if (type.startsWith("image/")) return "image";
   if (type.startsWith("video/")) return "video";
+  if (type.startsWith("audio/")) return "audio";
   if (type.startsWith("text/") || type === "application/json") return "text";
   return "other";
 }
@@ -40,6 +48,7 @@ export function kindOfFile(name: string, contentType?: string | null): MediaKind
 export function describeBinary(name: string): string {
   const ext = extensionOf(name);
   if (ext === ".safetensors") return "LoRA / model weights";
+  if (AUDIO.has(ext)) return "Audio";
   if (ext === ".zip") return "Archive";
   if (ext === ".pdf") return "PDF document";
   return "File";

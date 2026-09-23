@@ -27,7 +27,7 @@ from studio_core.services import registry
 def test_every_registered_model_is_listed(api):
     body = api.get("/api/models").get_json()
     assert set(body["models"]) == set(registry.keys())
-    assert body["models"]["gpt-image-2"]["model"] == "openai/gpt-image-2"
+    assert body["models"]["replicate-gpt-image-2"]["model"] == "openai/gpt-image-2"
 
 
 def test_each_entry_carries_its_own_key(api):
@@ -41,10 +41,16 @@ def test_one_model_resolves_by_key_alias_and_replicate_id(api):
 
     `<path:name>` rather than `<name>` is what makes `openai/gpt-image-2` work —
     a plain converter 404s on the slash before the view runs.
+
+    The middle one is the alias, and it is the whole reason the provider
+    prefix could be added to every key without breaking anything: `gpt-image-2`
+    is what a year of runs, drafts and skill pages say, and it still lands on
+    the entry that is now called `replicate-gpt-image-2`.
     """
-    by_key = api.get("/api/models/gpt-image-2").get_json()
+    by_key = api.get("/api/models/replicate-gpt-image-2").get_json()
+    by_alias = api.get("/api/models/gpt-image-2").get_json()
     by_id = api.get("/api/models/openai/gpt-image-2").get_json()
-    assert by_key["key"] == by_id["key"] == "gpt-image-2"
+    assert by_key["key"] == by_alias["key"] == by_id["key"] == "replicate-gpt-image-2"
 
 
 def test_an_unknown_model_is_404(api):
@@ -75,9 +81,9 @@ def test_the_registry_is_not_writable():
 
 
 @pytest.mark.parametrize("engine,expected", [
-    ("kling", 7),
-    ("seedance", 9),
-    ("nano-banana-pro", 14),
+    ("replicate-kling", 7),
+    ("replicate-seedance", 9),
+    ("replicate-nano-banana-pro", 14),
 ])
 def test_the_caps_the_old_dict_got_right_are_unchanged(engine, expected):
     """Whatever else changed, the three families that had a number keep it.
@@ -122,8 +128,8 @@ def test_a_family_is_resolved_rather_than_prefix_matched():
     stopped two members of a family from differing, and a `--model` alias
     resolved only when it happened to share the prefix of its key.
     """
-    assert registry.get("nano-banana-2")["key"] == "nano-banana-2"
-    assert registry.get("nano-banana-pro")["key"] == "nano-banana-pro"
+    assert registry.get("nano-banana-2")["key"] == "replicate-nano-banana-2"
+    assert registry.get("nano-banana-pro")["key"] == "replicate-nano-banana-pro"
 
 
 def test_a_null_max_refs_reads_as_no_cap_not_as_zero():

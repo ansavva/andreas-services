@@ -87,6 +87,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+import wave
 
 HERE = pathlib.Path(__file__).resolve().parent
 STUDIO = HERE.parents[2]
@@ -201,6 +202,32 @@ def video() -> None:
         raise SystemExit("ffmpeg is not on PATH; `brew install ffmpeg`")
     out = HERE / "e2e-asset.mp4"
     subprocess.run([*FFMPEG, str(out)], check=True, timeout=120)  # noqa: S603
+    print(f"  {out.name} ({out.stat().st_size} bytes)")
+
+
+def audio() -> None:
+    """The second made fixture: a voice sample, for the Voice tile's picker.
+
+    **Made rather than taken for the same reason the clip is, plus one.** The
+    published seed is 54 stills and holds no sound at all; and a voice sample
+    is a person's voice, which is not a thing to commit to a repository even
+    if one were there to capture. Six seconds of silence is enough: what the
+    specs read off it is that the tile drew a player and a duration, not what
+    it sounds like.
+
+    Written with `wave` rather than ffmpeg — no dependency, byte-identical
+    every run, and the header is the only part anything here parses.
+    """
+    out = HERE / "e2e-asset.wav"
+    with wave.open(str(out), "w") as handle:
+        # 8-bit mono at 8 kHz: the smallest shape every browser decodes, and
+        # a third of what 16-bit costs in the repository. Six seconds because
+        # the duration is the one thing a spec reads off it, and a sample
+        # bound to a character is documented as 5–30.
+        handle.setnchannels(1)
+        handle.setsampwidth(1)
+        handle.setframerate(8000)
+        handle.writeframes(b"\x80" * 8000 * 6)
     print(f"  {out.name} ({out.stat().st_size} bytes)")
 
 
@@ -366,6 +393,7 @@ def seed_group(bearer: str, library: str) -> dict:
 def main() -> None:
     print(f"generating into {HERE}")
     video()
+    audio()
     if "--video" in sys.argv:
         return
 

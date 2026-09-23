@@ -254,6 +254,82 @@ def _scalar_fields(entry: dict) -> set[str]:
     return {images.get("start"), images.get("end"), clips.get("source")} - {None}
 
 
+#: What a send with no role at all is taken to be inside an element. Every
+#: send written by the CLI or the app carries one; a run reconstructed from
+#: `bindings` alone does not (`routes/runs.sends_from_bindings` says why), and
+#: a reference image is what the elements field is mostly made of.
+DEFAULT_ELEMENT_ROLE = "reference"
+
+#: The key a send with no subject behind it is grouped under. One bucket, not
+#: one per node: three images a person dropped in from a folder are three
+#: views of one thing far more often than they are three separate subjects,
+#: and a prompt citing `@Element1` can say which.
+LOOSE = "#loose"
+
+
+def _subject_of(send: dict) -> str:
+    """Which SUBJECT a send belongs to — the key its element is grouped under.
+
+    **This is the whole trick, and it is not new machinery.** `catalog.source_of`
+    already answers "why is this file being sent", derived from where the file
+    sits in the tree, and for a character's reference photograph the answer is
+    that character's id. An element is a subject. So grouping the sends by the
+    provenance the run already records gives exactly the elements a person
+    means — one per character, its images together, its voice with it — with no
+    second place to say which pictures belong to whom and no way for the two to
+    disagree.
+
+    A file that belongs to nobody in particular (`kind: object`, an input-pool
+    still, a run's own output) groups under `LOOSE`.
+    """
+    source = send.get("source") or {}
+    return source.get("character") or source.get("location") or LOOSE
+
+
+def element_groups(block: dict, send_entries: list[dict]) -> list[dict]:
+    """The sends bound to the elements field, gathered into one object each.
+
+    Ordered by first appearance, because `@Element1` is positional and bind
+    order is the order a person put them on the bar.
+
+    Within one element: the send that says `frontal` is the main view, and
+    otherwise the FIRST image is — Kling wants one and would otherwise get an
+    element that is all angles and no face. The rest are its other views, one
+    clip at most, one voice at most.
+    """
+    field = block["field"]
+    order: list[str] = []
+    groups: dict[str, dict] = {}
+    for send in send_entries:
+        if send.get("field") != field:
+            continue
+        subject = _subject_of(send)
+        if subject not in groups:
+            order.append(subject)
+            groups[subject] = {"subject": subject, "frontal": None, "refs": [],
+                               "clip": None, "voice": None, "claimed": False}
+        group = groups[subject]
+        role = send.get("role") or DEFAULT_ELEMENT_ROLE
+        node = send["node"]
+        if role == "voice":
+            group["voice"] = node
+        elif role == "clip":
+            group["clip"] = node
+        elif role == "frontal":
+            # An explicit frontal wins over the one picked for having been
+            # first, and the one it displaces keeps its place at the head of
+            # the other views rather than being dropped.
+            if group["frontal"] is not None and not group["claimed"]:
+                group["refs"].insert(0, group["frontal"])
+            group["frontal"] = node
+            group["claimed"] = True
+        elif group["frontal"] is None:
+            group["frontal"] = node
+        else:
+            group["refs"].append(node)
+    return [groups[subject] for subject in order]
+
+
 # ───────────────────────────────── preflight ─────────────────────────────────
 
 
@@ -302,6 +378,87 @@ def _check_image_budget(entry: dict, bindings: dict) -> None:
         )
 
 
+def _check_elements(entry: dict, send_entries: list[dict], payload: dict) -> None:
+    """The rules an ELEMENT model has and a per-field schema cannot express.
+
+    Every one of these fails at the provider otherwise, after `pending`, with
+    a message about a JSON path rather than about the run:
+
+    * **More subjects than the model takes.** Four is Kling's ceiling, and
+      the fifth is `Error code 1201`.
+    * **More views of one subject than it takes.** The element's own
+      `reference_image_urls` is documented 1–3 alongside the frontal.
+    * **Two clips.** "A request can only have one element with a video",
+      says the schema, and nothing enforces it until the request is made.
+    * **A voice with the sound turned off.** This one costs real money for
+      nothing: `generate_audio: false` produces a silent clip and the voice
+      tier is billed anyway, which is the worst kind of mistake to leave to
+      the provider — it does not fail, it just silently wastes the spend.
+    * **A voice on a file the model will not read.** Checked against the
+      entry's `audio.accepts_ext` rather than against what the library calls
+      audio; see `registry.voice_accepts_ext`.
+    """
+    block = registry.elements(entry)
+    voices = [send for send in send_entries if send.get("role") == "voice"]
+    if block is None:
+        if voices:
+            raise ValidationError(
+                f"{entry['key']} has no voice input — it takes no elements, so "
+                "there is nothing for a voice to be bound to. "
+                "fal-kling-v3-i2v and fal-kling-o3-r2v do."
+            )
+        return
+
+    groups = element_groups(block, send_entries)
+    cap = block.get("max")
+    if cap and len(groups) > cap:
+        raise schema.SchemaError(
+            f"{entry['key']} takes at most {cap} elements and this run binds "
+            f"{len(groups)} — one per character or location the images came "
+            f"from. Bind fewer subjects."
+        )
+    each = block.get("max_images_each")
+    for index, group in enumerate(groups, start=1):
+        images = len(group["refs"]) + (1 if group["frontal"] else 0)
+        if each and images > each:
+            raise schema.SchemaError(
+                f"{entry['key']}: @Element{index} carries {images} images and "
+                f"an element takes at most {each} — a frontal view and its "
+                f"other angles."
+            )
+        if group["voice"] and not group["frontal"] and not group["clip"]:
+            raise ValidationError(
+                f"{entry['key']}: @Element{index} is a voice with nobody to "
+                "speak it. A voice binds to a subject, so bind that "
+                "character's images in the same run."
+            )
+    clips = [group for group in groups if group["clip"]]
+    if len(clips) > 1:
+        raise schema.SchemaError(
+            f"{entry['key']} allows ONE element with a video and this run binds "
+            f"{len(clips)}."
+        )
+
+    if not voices:
+        return
+    if payload.get("generate_audio") is False:
+        raise ValidationError(
+            f"{entry['key']}: a bound voice with `generate_audio: false` is a "
+            "silent clip billed at the voice rate. Turn the audio on, or take "
+            "the voice off."
+        )
+    allowed = registry.voice_accepts_ext(entry)
+    if allowed:
+        bad = [send["node"] for send in voices
+               if not (catalog.node(send["node"]).get("name") or "")
+               .lower().endswith(tuple(allowed))]
+        if bad:
+            raise schema.SchemaError(
+                f"{entry['key']} clones a voice from {sorted(allowed)}; "
+                f"{bad} is not one of those."
+            )
+
+
 def _check_payload_rules(entry: dict, payload: dict) -> None:
     """Cross-field rules a per-field schema check cannot express.
 
@@ -316,8 +473,20 @@ def _check_payload_rules(entry: dict, payload: dict) -> None:
             shots = json.loads(raw) if isinstance(raw, str) else raw
         except json.JSONDecodeError as exc:
             raise schema.SchemaError(f"multi_prompt is not valid JSON: {exc}") from exc
-        total = sum(shot.get("duration", 0) for shot in shots)
-        if payload.get("duration") is not None and total != payload["duration"]:
+        # **A shot's duration is a string on fal and an integer on Replicate**,
+        # and the same registry field `multi_prompt` is on both. Summed as
+        # written, `"3" + "2"` is `TypeError` inside a preflight — a 500 about
+        # a payload whose only fault was being spelled the way its own
+        # provider spells it.
+        want = payload.get("duration")
+        try:
+            total = sum(int(shot.get("duration", 0)) for shot in shots)
+            want = None if want is None else int(want)
+        except (TypeError, ValueError) as exc:
+            raise schema.SchemaError(
+                f"multi_prompt needs a number of seconds per shot: {exc}"
+            ) from exc
+        if want is not None and total != want:
             raise schema.SchemaError(
                 f"multi_prompt shot durations sum to {total}s but duration is "
                 f"{payload['duration']}s — they must be equal (this is E006)."
@@ -411,8 +580,16 @@ def preflight(entry: dict, payload: dict, bindings: dict,
     model = entry["model"]
     if send_entries is not None:
         _check_scalar_fields(entry, send_entries)
+        _check_elements(entry, send_entries, payload)
     _check_exclusive_images(entry, bindings)
-    _check_image_budget(entry, bindings)
+    # **Not on an element model.** `max_refs` counts entries in a flat list of
+    # reference images, and on one of these the same field holds subjects —
+    # with a voice sample among them, which is not an image at all. Counting
+    # them together would refuse a run with two characters and four views
+    # each, which is well inside what Kling takes. `_check_elements` is the
+    # cap that applies, and it counts both of the things there are to count.
+    if registry.elements(entry) is None:
+        _check_image_budget(entry, bindings)
     _check_payload_rules(entry, payload)
     schema.check_denied(payload, entry, model)
     props, schemas = schema.fetch(model)
@@ -478,7 +655,68 @@ def callback_url(run_id: str, provider: str = registry.REPLICATE) -> str | None:
     return url
 
 
-def dispatch(record: dict, entry: dict, payload: dict, bindings: dict) -> dict:
+def voice_id_for(entry: dict, node_id: str, *, expires_in: int | None = None) -> str:
+    """The provider's id for this voice sample, minted once and remembered.
+
+    **Not a generation, and not billed as one.** Registering a sample is a
+    separate endpoint (`registry.voice_endpoint`) that answers a string; the
+    run that cites the string is what bills. It happens here, inside
+    `dispatch`, because this is the moment the file has a URL a provider can
+    fetch — hard rule #3 again, with a voice in place of a picture.
+
+    The id is cached on the node, so a character registered for one clip is
+    the SAME voice in the next one. That is not an optimisation: a fresh id
+    per run would mean a fresh voice per run, and the entire point of binding
+    one is that `@Element1` sounds the same across every scene it appears in.
+    """
+    endpoint = registry.voice_endpoint(entry)
+    if not endpoint:
+        raise registry.RegistryError(
+            f"{entry['key']} binds a voice but names no `audio.create` endpoint")
+    record = catalog.node(node_id)
+    cached = catalog.voice_id(record, endpoint)
+    if cached:
+        logger.info("Reusing voice %s for %s", cached, node_id)
+        return cached
+    client = client_for(registry.provider_of(entry))
+    if not hasattr(client, "create_voice"):
+        raise registry.RegistryError(
+            f"{registry.provider_of(entry)} has no way to register a voice")
+    minted = client.create_voice(endpoint, presign_node(node_id, expires_in=expires_in))
+    catalog.set_voice_id(node_id, endpoint, minted)
+    return minted
+
+
+def elements_payload(entry: dict, block: dict, send_entries: list[dict],
+                     *, expires_in: int | None = None) -> list[dict]:
+    """The `elements` array, presigned and with every bound voice registered.
+
+    One object per subject, in bind order, so `@Element1` in the prompt is the
+    first thing the run was given. An empty group is dropped rather than sent
+    as `{}`: the provider reads an element with nothing in it as a validation
+    error, and it can only arise from a send whose role the model has no slot
+    for.
+    """
+    out: list[dict] = []
+    for group in element_groups(block, send_entries):
+        one: dict = {}
+        if group["frontal"]:
+            one[block["frontal"]] = presign_node(group["frontal"], expires_in=expires_in)
+        if group["refs"]:
+            one[block["refs"]] = [presign_node(node, expires_in=expires_in)
+                                  for node in group["refs"]]
+        if group["clip"] and block.get("clip"):
+            one[block["clip"]] = presign_node(group["clip"], expires_in=expires_in)
+        if group["voice"] and block.get("voice"):
+            one[block["voice"]] = voice_id_for(entry, group["voice"],
+                                               expires_in=expires_in)
+        if one:
+            out.append(one)
+    return out
+
+
+def dispatch(record: dict, entry: dict, payload: dict, bindings: dict,
+             send_entries: list[dict] | None = None) -> dict:
     """Presign, then create the prediction. **This is the call that bills.**
 
     Called only after the run has been moved to `pending`, so the gate stands in
@@ -488,6 +726,13 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict) -> dict:
     raise leaves nothing behind: a hosted provider has no side effect before
     `create_prediction`, and `training.dispatch` takes back its nodes, its
     manifest and its pod before re-raising.
+
+    **One exception, and it is deliberate.** Registering a voice
+    (`voice_id_for`) happens before the prediction and is remembered on the
+    node, so a dispatch that fails afterwards leaves a voice id behind. That
+    is the point of caching it: the sample has not changed, the id is still
+    true, and the next attempt reuses it instead of paying the round trip and
+    handing the character a different voice.
     """
     provider = registry.provider_of(entry)
     if provider == registry.RUNPOD_POD:
@@ -517,8 +762,18 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict) -> dict:
     # URL had expired — a 403, a failed run, and a paid render of nothing.
     grant = registry.output_grant(entry)
     ttl = OUTPUT_GRANT_TTL if grant else None
+    # **An element model's reference field is not a list of URLs**, so it is
+    # built rather than presigned in place: one object per subject, each with
+    # its own views and, where one is bound, its own registered voice. It
+    # needs the ROLE and the PROVENANCE of each send, which `bindings` threw
+    # away — hence `send_entries` reaching this far down.
+    block = registry.elements(entry)
+    element_field = block["field"] if block else None
     for field, value in bindings.items():
-        if field in loras:
+        if field == element_field:
+            payload[field] = elements_payload(entry, block, send_entries or [],
+                                              expires_in=ttl)
+        elif field in loras:
             nodes = value if isinstance(value, list) else [value]
             payload[field] = [{"path": presign_node(one, expires_in=ttl), "scale": scale}
                               for one in nodes]

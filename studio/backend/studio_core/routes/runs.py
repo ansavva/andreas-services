@@ -1445,7 +1445,7 @@ def submit_run(run_id: str):
     )
 
     try:
-        created = generate.dispatch(record, entry, payload, bindings)
+        created = generate.dispatch(record, entry, payload, bindings, send_entries)
         if not created.get("id"):
             # The provider answered and named no prediction. Nothing is in
             # flight; the draft is handed back like any other failed dispatch.

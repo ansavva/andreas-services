@@ -1,440 +1,113 @@
 {
   "models": {
-    "gpt-image-1.5": {
-      "defaults": {
-        "moderation": "low",
-        "quality": "medium"
-      },
-      "images": {
-        "accepts_ext": [
-          ".jpg",
-          ".jpeg",
-          ".png",
-          ".webp"
-        ],
-        "end": null,
-        "max_refs": null,
-        "refs": "input_images",
-        "start": null,
-        "start_excludes_refs": false
-      },
-      "key": "gpt-image-1.5",
+    "replicate-nano-banana-pro": {
+      "model": "google/nano-banana-pro",
       "kind": "image",
-      "model": "openai/gpt-image-1.5",
-      "note": "OpenAI. Explicit input_fidelity ('high' to hold a face, 'low' to dial it down \u2014 gpt-image-2 cannot). Aspect limited to 1:1/3:2/2:3. The one that does transparent backgrounds.",
-      "prompt": {
-        "max_chars": null
-      },
-      "skill": "studio-media-gpt-image-1-5",
-      "snapshot": {
-        "aspect_ratio": {
-          "default": "1:1",
-          "enum": [
-            "1:1",
-            "3:2",
-            "2:3"
-          ]
-        },
-        "background": {
-          "default": "auto",
-          "enum": [
-            "auto",
-            "transparent",
-            "opaque"
-          ]
-        },
-        "input_fidelity": {
-          "default": "low",
-          "enum": [
-            "low",
-            "high"
-          ]
-        },
-        "moderation": {
-          "default": "auto",
-          "enum": [
-            "auto",
-            "low"
-          ]
-        },
-        "number_of_images": {
-          "default": 1,
-          "maximum": 10,
-          "minimum": 1
-        },
-        "output_compression": {
-          "default": 90,
-          "maximum": 100,
-          "minimum": 0
-        },
-        "output_format": {
-          "default": "webp",
-          "enum": [
-            "png",
-            "jpeg",
-            "webp"
-          ]
-        },
-        "quality": {
-          "default": "auto",
-          "enum": [
-            "low",
-            "medium",
-            "high",
-            "auto"
-          ]
-        },
-        "refreshed": "2026-08-15"
-      }
-    },
-    "gpt-image-2": {
-      "defaults": {
-        "moderation": "low",
-        "quality": "medium"
-      },
-      "denied": {
-        "background": {
-          "transparent": "gpt-image-2 does not support transparent backgrounds (its schema still lists the value). Use gpt-image-1.5 for transparent PNGs."
-        }
-      },
+      "skill": "studio-media-nano-banana-pro",
       "images": {
-        "accepts_ext": [
-          ".jpg",
-          ".jpeg",
-          ".png",
-          ".webp"
-        ],
-        "end": null,
-        "max_refs": null,
-        "refs": "input_images",
+        "refs": "image_input",
+        "max_refs": 14,
         "start": null,
-        "start_excludes_refs": false
-      },
-      "key": "gpt-image-2",
-      "kind": "image",
-      "model": "openai/gpt-image-2",
-      "note": "OpenAI; the default for character frames. Strong instruction-following and legible text; widest aspect list, including explicit pixel sizes. Reference images are held at HIGH FIDELITY AUTOMATICALLY \u2014 the input_fidelity knob is absent because it is always on, not because it was lost.",
-      "prompt": {
-        "max_chars": null
-      },
-      "skill": "studio-media-gpt-image-2",
-      "snapshot": {
-        "aspect_ratio": {
-          "default": "1:1",
-          "enum": [
-            "1:1",
-            "3:2",
-            "2:3",
-            "4:3",
-            "3:4",
-            "16:9",
-            "9:16",
-            "auto",
-            "1024x1024",
-            "1536x1024",
-            "1024x1536",
-            "1536x1152",
-            "1152x1536",
-            "2048x2048",
-            "2048x1152",
-            "1152x2048",
-            "3840x2160",
-            "2160x3840"
-          ]
-        },
-        "background": {
-          "default": "auto",
-          "enum": [
-            "auto",
-            "transparent",
-            "opaque"
-          ]
-        },
-        "moderation": {
-          "default": "auto",
-          "enum": [
-            "auto",
-            "low"
-          ]
-        },
-        "number_of_images": {
-          "default": 1,
-          "maximum": 10,
-          "minimum": 1
-        },
-        "output_compression": {
-          "default": 90,
-          "maximum": 100,
-          "minimum": 0
-        },
-        "output_format": {
-          "default": "webp",
-          "enum": [
-            "png",
-            "jpeg",
-            "webp"
-          ]
-        },
-        "quality": {
-          "default": "auto",
-          "enum": [
-            "low",
-            "medium",
-            "high",
-            "auto"
-          ]
-        },
-        "refreshed": "2026-08-15"
-      }
-    },
-    "grok-imagine-video": {
-      "aliases": [],
-      "clips": {
-        "accepts_ext": [
-          ".mp4",
-          ".mov",
-          ".webm"
-        ],
-        "source": "video"
-      },
-      "images": {
+        "end": null,
+        "start_excludes_refs": false,
         "accepts_ext": [
           ".jpg",
           ".jpeg",
           ".png",
           ".webp"
-        ],
-        "end": null,
-        "max_refs": 0,
-        "refs": null,
-        "start": "image",
-        "start_excludes_refs": false
+        ]
       },
-      "key": "grok-imagine-video",
-      "kind": "video",
-      "model": "xai/grok-imagine-video",
-      "note": "xAI Grok Imagine Video (Aurora). Native synced audio incl. lip-sync. Two things nothing else here does: a true duration RANGE (1-15s, not an enum) and a video-EDITING mode via the `video` input (max 8.7s in, output matches its duration/ratio/resolution). No reference images and no last frame. NEGATIVE DIRECTION IS IGNORED \u2014 the model has no negative_prompt field and the README says prompt-embedded negatives are dropped too; describe what you want instead. accepts_ext confirmed by the README.",
       "prompt": {
         "max_chars": null
       },
-      "skill": "studio-media-grok-imagine-video",
+      "note": "Google, built on Gemini 3 Pro. 2K default, up to 4K. Tunable safety_filter_level and match_input_image aspect. Docs: holds resemblance for up to 5 people across a composition.",
       "snapshot": {
-        "aspect_ratio": {
-          "default": "auto",
-          "enum": [
-            "auto",
-            "16:9",
-            "4:3",
-            "1:1",
-            "9:16",
-            "3:4",
-            "3:2",
-            "2:3"
-          ]
-        },
-        "duration": {
-          "default": 5,
-          "maximum": 15,
-          "minimum": 1
-        },
         "resolution": {
-          "default": "720p",
           "enum": [
-            "720p",
-            "480p"
-          ]
-        }
-      },
-      "video": {
-        "allow_intelligent_duration": false,
-        "image_tokens": false,
-        "max_cuts": null,
-        "negative": "prompt",
-        "resolution_field": "resolution",
-        "resolution_map": null,
-        "technical": "api"
-      }
-    },
-    "image-upscale": {
-      "images": {
-        "accepts_ext": [
-          ".jpg",
-          ".jpeg",
-          ".png",
-          ".webp"
-        ],
-        "end": null,
-        "max_refs": null,
-        "refs": null,
-        "start": "image",
-        "start_excludes_refs": false
-      },
-      "key": "image-upscale",
-      "kind": "image",
-      "model": "topazlabs/image-upscale",
-      "note": "The only model here that RESTORES rather than generates: it enlarges an image that already exists and invents nothing, so it is what seed and reference material goes through. `High Fidelity V2` preserves detail, `Low Resolution V2` is for badly degraded sources, and `face_enhancement_creativity: 0` sharpens a face without redrawing it. Priced on OUTPUT megapixels, not runtime.",
-      "prompt": null,
-      "skill": "studio-media-image-upscale",
-      "snapshot": {
-        "enhance_model": {
-          "default": "Standard V2",
+            "1K",
+            "2K",
+            "4K"
+          ],
+          "default": "2K"
+        },
+        "image_input": {
+          "default": []
+        },
+        "aspect_ratio": {
           "enum": [
-            "Standard V2",
-            "Low Resolution V2",
-            "CGI",
-            "High Fidelity V2",
-            "Text Refine"
-          ]
-        },
-        "face_enhancement": {
-          "default": false
-        },
-        "face_enhancement_creativity": {
-          "default": 0,
-          "maximum": 1,
-          "minimum": 0
-        },
-        "face_enhancement_strength": {
-          "default": 0.8,
-          "maximum": 1,
-          "minimum": 0
+            "match_input_image",
+            "1:1",
+            "2:3",
+            "3:2",
+            "3:4",
+            "4:3",
+            "4:5",
+            "5:4",
+            "9:16",
+            "16:9",
+            "21:9"
+          ],
+          "default": "match_input_image"
         },
         "output_format": {
-          "default": "jpg",
           "enum": [
             "jpg",
             "png"
-          ]
+          ],
+          "default": "jpg"
         },
-        "subject_detection": {
-          "default": "None",
+        "safety_filter_level": {
           "enum": [
-            "None",
-            "All",
-            "Foreground",
-            "Background"
-          ]
+            "block_low_and_above",
+            "block_medium_and_above",
+            "block_only_high"
+          ],
+          "default": "block_only_high"
         },
-        "upscale_factor": {
-          "default": "None",
-          "enum": [
-            "None",
-            "2x",
-            "4x",
-            "6x"
-          ]
-        }
-      }
-    },
-    "kling": {
-      "aliases": [
-        "kling-replicate"
-      ],
-      "clips": {
-        "accepts_ext": [
-          ".mp4",
-          ".mov"
-        ],
-        "source": "reference_video"
-      },
-      "images": {
-        "accepts_ext": [
-          ".jpg",
-          ".jpeg",
-          ".png"
-        ],
-        "end": "end_image",
-        "end_excludes_refs": true,
-        "max_refs": 7,
-        "refs": "reference_images",
-        "start": "start_image",
-        "start_counts_toward_max_refs": true,
-        "start_excludes_refs": false
-      },
-      "key": "kling",
-      "kind": "video",
-      "model": "kwaivgi/kling-v3-omni-video",
-      "note": "Kling 3.0 / O3 Omni. Pay-per-second, no resource package. Start frame AND reference images can be combined. Native multi-shot to 6 cuts (durations must sum to `duration`, else E006). Rejects .webp.",
-      "prompt": {
-        "max_chars": 2500
-      },
-      "skill": "studio-media-kling",
-      "snapshot": {
-        "aspect_ratio": {
-          "default": "16:9",
-          "enum": [
-            "16:9",
-            "9:16",
-            "1:1"
-          ]
-        },
-        "duration": {
-          "default": 5,
-          "maximum": 15,
-          "minimum": 3
-        },
-        "generate_audio": {
+        "allow_fallback_model": {
           "default": false
         },
-        "keep_original_sound": {
-          "default": true
-        },
-        "mode": {
-          "default": "pro",
-          "enum": [
-            "standard",
-            "pro",
-            "4k"
-          ]
-        },
-        "refreshed": "2026-08-15",
-        "video_reference_type": {
-          "default": "feature",
-          "enum": [
-            "feature",
-            "base"
-          ]
-        }
+        "refreshed": "2026-08-15"
       },
-      "video": {
-        "allow_intelligent_duration": false,
-        "image_tokens": false,
-        "max_cuts": 6,
-        "negative": "prompt",
-        "resolution_field": "mode",
-        "resolution_map": {
-          "1080p": "pro",
-          "4k": "4k",
-          "720p": "standard"
-        },
-        "technical": "replicate_kling"
-      }
+      "aliases": [
+        "nano-banana-pro"
+      ],
+      "key": "replicate-nano-banana-pro"
     },
-    "nano-banana-2": {
+    "replicate-nano-banana-2": {
+      "model": "google/nano-banana-2",
+      "kind": "image",
+      "skill": "studio-media-nano-banana-2",
       "images": {
+        "refs": "image_input",
+        "max_refs": 14,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
         "accepts_ext": [
           ".jpg",
           ".jpeg",
           ".png",
           ".webp"
-        ],
-        "end": null,
-        "max_refs": 14,
-        "refs": "image_input",
-        "start": null,
-        "start_excludes_refs": false
+        ]
       },
-      "key": "nano-banana-2",
-      "kind": "image",
-      "model": "google/nano-banana-2",
-      "note": "Google, Gemini 3.1 Flash Image. Faster/cheaper sibling of Pro; 1K default. Adds the extreme 1:4/4:1/1:8/8:1 aspect ratios and Google Search / Image Search grounding.",
       "prompt": {
         "max_chars": null
       },
-      "skill": "studio-media-nano-banana-2",
+      "note": "Google, Gemini 3.1 Flash Image. Faster/cheaper sibling of Pro; 1K default. Adds the extreme 1:4/4:1/1:8/8:1 aspect ratios and Google Search / Image Search grounding.",
       "snapshot": {
+        "resolution": {
+          "enum": [
+            "1K",
+            "2K",
+            "4K"
+          ],
+          "default": "1K"
+        },
+        "image_input": {
+          "default": []
+        },
         "aspect_ratio": {
-          "default": "match_input_image",
           "enum": [
             "match_input_image",
             "1:1",
@@ -451,109 +124,235 @@
             "9:16",
             "16:9",
             "21:9"
-          ]
-        },
-        "google_search": {
-          "default": false
-        },
-        "image_input": {
-          "default": []
+          ],
+          "default": "match_input_image"
         },
         "image_search": {
           "default": false
         },
+        "google_search": {
+          "default": false
+        },
         "output_format": {
-          "default": "jpg",
           "enum": [
             "jpg",
             "png"
-          ]
+          ],
+          "default": "jpg"
         },
-        "refreshed": "2026-08-15",
-        "resolution": {
-          "default": "1K",
-          "enum": [
-            "1K",
-            "2K",
-            "4K"
-          ]
-        }
-      }
+        "refreshed": "2026-08-15"
+      },
+      "aliases": [
+        "nano-banana-2"
+      ],
+      "key": "replicate-nano-banana-2"
     },
-    "nano-banana-pro": {
+    "replicate-gpt-image-2": {
+      "model": "openai/gpt-image-2",
+      "kind": "image",
+      "skill": "studio-media-gpt-image-2",
       "images": {
+        "refs": "input_images",
+        "max_refs": null,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
         "accepts_ext": [
           ".jpg",
           ".jpeg",
           ".png",
           ".webp"
-        ],
-        "end": null,
-        "max_refs": 14,
-        "refs": "image_input",
-        "start": null,
-        "start_excludes_refs": false
+        ]
       },
-      "key": "nano-banana-pro",
-      "kind": "image",
-      "model": "google/nano-banana-pro",
-      "note": "Google, built on Gemini 3 Pro. 2K default, up to 4K. Tunable safety_filter_level and match_input_image aspect. Docs: holds resemblance for up to 5 people across a composition.",
+      "defaults": {
+        "quality": "medium",
+        "moderation": "low"
+      },
+      "denied": {
+        "background": {
+          "transparent": "gpt-image-2 does not support transparent backgrounds (its schema still lists the value). Use gpt-image-1.5 for transparent PNGs."
+        }
+      },
       "prompt": {
         "max_chars": null
       },
-      "skill": "studio-media-nano-banana-pro",
+      "note": "OpenAI; the default for character frames. Strong instruction-following and legible text; widest aspect list, including explicit pixel sizes. Reference images are held at HIGH FIDELITY AUTOMATICALLY — the input_fidelity knob is absent because it is always on, not because it was lost.",
       "snapshot": {
-        "allow_fallback_model": {
-          "default": false
+        "quality": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "auto"
+          ],
+          "default": "auto"
+        },
+        "background": {
+          "enum": [
+            "auto",
+            "transparent",
+            "opaque"
+          ],
+          "default": "auto"
+        },
+        "moderation": {
+          "enum": [
+            "auto",
+            "low"
+          ],
+          "default": "auto"
         },
         "aspect_ratio": {
-          "default": "match_input_image",
           "enum": [
-            "match_input_image",
             "1:1",
-            "2:3",
             "3:2",
-            "3:4",
+            "2:3",
             "4:3",
-            "4:5",
-            "5:4",
-            "9:16",
+            "3:4",
             "16:9",
-            "21:9"
-          ]
-        },
-        "image_input": {
-          "default": []
+            "9:16",
+            "auto",
+            "1024x1024",
+            "1536x1024",
+            "1024x1536",
+            "1536x1152",
+            "1152x1536",
+            "2048x2048",
+            "2048x1152",
+            "1152x2048",
+            "3840x2160",
+            "2160x3840"
+          ],
+          "default": "1:1"
         },
         "output_format": {
-          "default": "jpg",
           "enum": [
-            "jpg",
-            "png"
-          ]
+            "png",
+            "jpeg",
+            "webp"
+          ],
+          "default": "webp"
         },
-        "refreshed": "2026-08-15",
-        "resolution": {
-          "default": "2K",
-          "enum": [
-            "1K",
-            "2K",
-            "4K"
-          ]
+        "number_of_images": {
+          "default": 1,
+          "minimum": 1,
+          "maximum": 10
         },
-        "safety_filter_level": {
-          "default": "block_only_high",
-          "enum": [
-            "block_low_and_above",
-            "block_medium_and_above",
-            "block_only_high"
-          ]
-        }
-      }
+        "output_compression": {
+          "default": 90,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "refreshed": "2026-08-15"
+      },
+      "aliases": [
+        "gpt-image-2"
+      ],
+      "key": "replicate-gpt-image-2"
     },
-    "seedance": {
-      "aliases": [],
+    "replicate-gpt-image-1.5": {
+      "model": "openai/gpt-image-1.5",
+      "kind": "image",
+      "skill": "studio-media-gpt-image-1-5",
       "images": {
+        "refs": "input_images",
+        "max_refs": null,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "defaults": {
+        "quality": "medium",
+        "moderation": "low"
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "note": "OpenAI. Explicit input_fidelity ('high' to hold a face, 'low' to dial it down — gpt-image-2 cannot). Aspect limited to 1:1/3:2/2:3. The one that does transparent backgrounds.",
+      "snapshot": {
+        "quality": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "auto"
+          ],
+          "default": "auto"
+        },
+        "background": {
+          "enum": [
+            "auto",
+            "transparent",
+            "opaque"
+          ],
+          "default": "auto"
+        },
+        "moderation": {
+          "enum": [
+            "auto",
+            "low"
+          ],
+          "default": "auto"
+        },
+        "aspect_ratio": {
+          "enum": [
+            "1:1",
+            "3:2",
+            "2:3"
+          ],
+          "default": "1:1"
+        },
+        "output_format": {
+          "enum": [
+            "png",
+            "jpeg",
+            "webp"
+          ],
+          "default": "webp"
+        },
+        "input_fidelity": {
+          "enum": [
+            "low",
+            "high"
+          ],
+          "default": "low"
+        },
+        "number_of_images": {
+          "default": 1,
+          "minimum": 1,
+          "maximum": 10
+        },
+        "output_compression": {
+          "default": 90,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "refreshed": "2026-08-15"
+      },
+      "aliases": [
+        "gpt-image-1.5"
+      ],
+      "key": "replicate-gpt-image-1.5"
+    },
+    "replicate-seedance": {
+      "model": "bytedance/seedance-2.0",
+      "kind": "video",
+      "skill": "studio-media-seedance",
+      "aliases": [
+        "seedance"
+      ],
+      "images": {
+        "refs": "reference_images",
+        "max_refs": 9,
+        "start": "image",
+        "end": "last_frame_image",
+        "start_excludes_refs": true,
         "accepts_ext": [
           ".jpg",
           ".jpeg",
@@ -561,25 +360,38 @@
           ".webp",
           ".gif",
           ".bmp"
-        ],
-        "end": "last_frame_image",
-        "max_refs": 9,
-        "refs": "reference_images",
-        "start": "image",
-        "start_excludes_refs": true
+        ]
       },
-      "key": "seedance",
-      "kind": "video",
-      "model": "bytedance/seedance-2.0",
-      "note": "ByteDance Seedance 2.0. Native audio, first/last frame, reference images/videos/audio. A first frame and a reference set CANNOT be combined.",
       "prompt": {
         "max_chars": 4000,
         "recommended_words": 600
       },
-      "skill": "studio-media-seedance",
+      "video": {
+        "negative": "prompt",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": true,
+        "resolution_field": "resolution",
+        "resolution_map": null,
+        "allow_intelligent_duration": true
+      },
+      "note": "ByteDance Seedance 2.0. Native audio, first/last frame, reference images/videos/audio. A first frame and a reference set CANNOT be combined.",
       "snapshot": {
+        "duration": {
+          "default": 5,
+          "minimum": -1,
+          "maximum": 15
+        },
+        "resolution": {
+          "enum": [
+            "480p",
+            "720p",
+            "1080p",
+            "4k"
+          ],
+          "default": "720p"
+        },
         "aspect_ratio": {
-          "default": "16:9",
           "enum": [
             "16:9",
             "4:3",
@@ -589,12 +401,8 @@
             "21:9",
             "9:21",
             "adaptive"
-          ]
-        },
-        "duration": {
-          "default": 5,
-          "maximum": 15,
-          "minimum": -1
+          ],
+          "default": "16:9"
         },
         "generate_audio": {
           "default": true
@@ -608,30 +416,20 @@
         "reference_videos": {
           "default": []
         },
-        "refreshed": "2026-08-15",
-        "resolution": {
-          "default": "720p",
-          "enum": [
-            "480p",
-            "720p",
-            "1080p",
-            "4k"
-          ]
-        }
+        "refreshed": "2026-08-15"
       },
-      "video": {
-        "allow_intelligent_duration": true,
-        "image_tokens": true,
-        "max_cuts": null,
-        "negative": "prompt",
-        "resolution_field": "resolution",
-        "resolution_map": null,
-        "technical": "api"
-      }
+      "key": "replicate-seedance"
     },
-    "seedance-2.5": {
-      "aliases": [],
+    "replicate-seedance-2.5": {
+      "model": "bytedance/seedance-2.5",
+      "kind": "video",
+      "skill": "studio-media-seedance-2-5",
       "images": {
+        "refs": "reference_images",
+        "max_refs": 30,
+        "start": "image",
+        "end": "last_frame_image",
+        "start_excludes_refs": true,
         "accepts_ext": [
           ".jpg",
           ".jpeg",
@@ -639,25 +437,15 @@
           ".webp",
           ".gif",
           ".bmp"
-        ],
-        "end": "last_frame_image",
-        "max_refs": 30,
-        "refs": "reference_images",
-        "start": "image",
-        "start_excludes_refs": true
+        ]
       },
-      "key": "seedance-2.5",
-      "kind": "video",
-      "model": "bytedance/seedance-2.5",
-      "note": "ByteDance Seedance 2.5, the successor to seedance (2.0): native synced audio with better dialogue timing and lip-sync, a true 30 s ceiling in one pass (duration 4-30, or -1 to let the model choose), reference sets of up to 30 images / 10 videos / 10 audios, and an `adaptive` aspect ratio. On Replicate it renders at 480p or 720p ONLY - no 1080p or 4k tier - at $0.1028/s and $0.2312/s (about x4 with a reference video). A first frame still CANNOT be combined with references; first+last-frame, editing and extension modes require aspect_ratio adaptive. Has a seed (not guaranteed). Prefer it over seedance for anything spoken.",
       "prompt": {
         "max_chars": 4000,
         "recommended_words": 600
       },
-      "skill": "studio-media-seedance-2-5",
+      "note": "ByteDance Seedance 2.5, the successor to seedance (2.0): native synced audio with better dialogue timing and lip-sync, a true 30 s ceiling in one pass (duration 4-30, or -1 to let the model choose), reference sets of up to 30 images / 10 videos / 10 audios, and an `adaptive` aspect ratio. On Replicate it renders at 480p or 720p ONLY - no 1080p or 4k tier - at $0.1028/s and $0.2312/s (about x4 with a reference video). A first frame still CANNOT be combined with references; first+last-frame, editing and extension modes require aspect_ratio adaptive. Has a seed (not guaranteed). Prefer it over seedance for anything spoken.",
       "snapshot": {
         "aspect_ratio": {
-          "default": "16:9",
           "enum": [
             "16:9",
             "4:3",
@@ -666,22 +454,23 @@
             "9:16",
             "21:9",
             "adaptive"
-          ]
+          ],
+          "default": "16:9"
         },
         "duration": {
           "default": 5,
-          "maximum": 30,
-          "minimum": -1
+          "minimum": -1,
+          "maximum": 30
         },
         "generate_audio": {
           "default": true
         },
         "output_format": {
-          "default": "mp4",
           "enum": [
             "mp4",
             "mov"
-          ]
+          ],
+          "default": "mp4"
         },
         "prompt": {
           "default": ""
@@ -696,57 +485,557 @@
           "default": []
         },
         "resolution": {
-          "default": "720p",
           "enum": [
             "480p",
             "720p"
-          ]
+          ],
+          "default": "720p"
         },
         "watermark": {
           "default": false
         }
       },
       "video": {
-        "allow_intelligent_duration": true,
-        "image_tokens": true,
-        "max_cuts": null,
         "negative": "prompt",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": true,
         "resolution_field": "resolution",
         "resolution_map": null,
-        "technical": "api"
-      }
+        "allow_intelligent_duration": true
+      },
+      "aliases": [
+        "seedance-2.5"
+      ],
+      "key": "replicate-seedance-2.5"
     },
-    "seedream-5-pro": {
+    "replicate-kling": {
+      "model": "kwaivgi/kling-v3-omni-video",
+      "kind": "video",
+      "skill": "studio-media-kling",
+      "aliases": [
+        "kling",
+        "kling-replicate"
+      ],
+      "images": {
+        "refs": "reference_images",
+        "max_refs": 7,
+        "start": "start_image",
+        "end": "end_image",
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png"
+        ],
+        "start_counts_toward_max_refs": true,
+        "end_excludes_refs": true
+      },
+      "clips": {
+        "source": "reference_video",
+        "accepts_ext": [
+          ".mp4",
+          ".mov"
+        ]
+      },
+      "prompt": {
+        "max_chars": 2500
+      },
+      "video": {
+        "negative": "prompt",
+        "technical": "replicate_kling",
+        "prompt_format": "kling",
+        "max_cuts": 6,
+        "image_tokens": false,
+        "resolution_field": "mode",
+        "resolution_map": {
+          "720p": "standard",
+          "1080p": "pro",
+          "4k": "4k"
+        },
+        "allow_intelligent_duration": false
+      },
+      "note": "Kling 3.0 / O3 Omni. Pay-per-second, no resource package. Start frame AND reference images can be combined. Native multi-shot to 6 cuts (durations must sum to `duration`, else E006). Rejects .webp.",
+      "snapshot": {
+        "mode": {
+          "enum": [
+            "standard",
+            "pro",
+            "4k"
+          ],
+          "default": "pro"
+        },
+        "duration": {
+          "default": 5,
+          "minimum": 3,
+          "maximum": 15
+        },
+        "aspect_ratio": {
+          "enum": [
+            "16:9",
+            "9:16",
+            "1:1"
+          ],
+          "default": "16:9"
+        },
+        "generate_audio": {
+          "default": false
+        },
+        "keep_original_sound": {
+          "default": true
+        },
+        "video_reference_type": {
+          "enum": [
+            "feature",
+            "base"
+          ],
+          "default": "feature"
+        },
+        "refreshed": "2026-08-15"
+      },
+      "key": "replicate-kling"
+    },
+    "fal-kling-v3-i2v": {
+      "model": "fal/fal-ai/kling-video/v3/pro/image-to-video",
+      "provider": "fal",
+      "kind": "video",
+      "skill": "studio-media-fal-kling",
+      "images": {
+        "refs": "elements",
+        "max_refs": 4,
+        "start": "start_image_url",
+        "end": "end_image_url",
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png"
+        ],
+        "start_counts_toward_max_refs": false,
+        "end_excludes_refs": false
+      },
+      "elements": {
+        "field": "elements",
+        "frontal": "frontal_image_url",
+        "refs": "reference_image_urls",
+        "clip": "video_url",
+        "voice": "voice_id",
+        "max": 4,
+        "max_images_each": 4
+      },
+      "audio": {
+        "voice": "elements",
+        "create": "fal/fal-ai/kling-video/create-voice",
+        "accepts_ext": [
+          ".mp3",
+          ".wav",
+          ".m4a",
+          ".flac",
+          ".mp4",
+          ".mov"
+        ],
+        "min_seconds": 5,
+        "max_seconds": 30
+      },
+      "prompt": {
+        "max_chars": 2500
+      },
+      "video": {
+        "negative": "negative_prompt",
+        "technical": "api",
+        "prompt_format": "kling",
+        "max_cuts": 6,
+        "image_tokens": false,
+        "resolution_field": null,
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "defaults": {
+        "generate_audio": true
+      },
+      "aliases": [],
+      "note": "Kling 3.0 pro, image-to-video, on fal.ai's queue API (`provider: fal`) — the SAME MODEL FAMILY as `replicate-kling` on a provider that exposes two things Replicate's proxy does not: ELEMENTS and VOICE BINDING. An element is a subject — `{frontal_image_url, reference_image_urls, video_url, voice_id}` — addressed in the prompt as `@Element1`, `@Element2`, in bind order, and studio builds one PER CHARACTER OR LOCATION a send comes from: the images bound off one character become that character's element, its first image the frontal view and the rest its other angles (1-3 of them). That grouping is `catalog.source_of`, so it is the same answer a run page already gives for where each image came from. A voice sample bound with --voice-key is minted into a `voice_id` at submit and lands on its own character's element, so `@Element1` speaks in that voice with lip-sync in the same pass — the persistent-identity half of Kling 3.0 Omni. Up to 4 elements, and a run carrying a voice must also carry `generate_audio: true` or the voice is paid for and never heard. A REQUIRED start frame (`start_image_url`) and an optional end frame; native multi-shot to 6 cuts (`multi_prompt`, a list of `{prompt, duration}` objects — fal's is a real array, not Replicate's JSON string — whose durations must sum to `duration`). `duration` is a STRING enum, \"3\"-\"15\", not an integer: the same field is an int on the Replicate entry, which is exactly why the two are registered separately. A real `negative_prompt`, and `cfg_scale` 0-1. No `mode` field — the tier is the endpoint, so 1080p is this entry and `fal-kling-o3-r2v` is the reference engine; 720p and 4K are two more endpoints, unregistered until something needs them. Live schema from fal's OpenAPI document. Priced per second of output: $0.112/s with audio off, $0.168/s with audio on, and $0.196/s when a bound voice is used (fal, September 2026) — a 5 s clip with a bound voice is $0.98. fal's body carries no price, so `cost.amount` stays null and fal's dashboard is the bill.",
+      "snapshot": {
+        "duration": {
+          "enum": [
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15"
+          ],
+          "default": "5"
+        },
+        "shot_type": {
+          "enum": [
+            "customize",
+            "intelligent"
+          ],
+          "default": "customize"
+        },
+        "cfg_scale": {
+          "default": 0.5,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "negative_prompt": {
+          "default": "blur, distort, and low quality"
+        },
+        "generate_audio": {
+          "default": true
+        },
+        "refreshed": "2026-09-22"
+      },
+      "key": "fal-kling-v3-i2v"
+    },
+    "fal-kling-o3-r2v": {
+      "model": "fal/fal-ai/kling-video/o3/pro/reference-to-video",
+      "provider": "fal",
+      "kind": "video",
+      "skill": "studio-media-fal-kling",
+      "images": {
+        "refs": "elements",
+        "max_refs": 4,
+        "start": "start_image_url",
+        "end": "end_image_url",
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png"
+        ],
+        "start_counts_toward_max_refs": false,
+        "end_excludes_refs": false
+      },
+      "elements": {
+        "field": "elements",
+        "frontal": "frontal_image_url",
+        "refs": "reference_image_urls",
+        "clip": "video_url",
+        "voice": "voice_id",
+        "max": 4,
+        "max_images_each": 4
+      },
+      "audio": {
+        "voice": "elements",
+        "create": "fal/fal-ai/kling-video/create-voice",
+        "accepts_ext": [
+          ".mp3",
+          ".wav",
+          ".m4a",
+          ".flac",
+          ".mp4",
+          ".mov"
+        ],
+        "min_seconds": 5,
+        "max_seconds": 30
+      },
+      "prompt": {
+        "max_chars": 2500
+      },
+      "video": {
+        "negative": "prompt",
+        "technical": "api",
+        "prompt_format": "kling",
+        "max_cuts": 6,
+        "image_tokens": false,
+        "resolution_field": null,
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "defaults": {
+        "generate_audio": true
+      },
+      "aliases": [],
+      "note": "Kling O3 pro, reference-to-video, on fal.ai's queue API (`provider: fal`) — the ELEMENT engine: no frame is required, so a character renders as itself from its own reference images, and the prompt addresses each subject as `@Element1`, `@Element2`. Same element and voice machinery as `fal-kling-v3-i2v`, and the cheaper of the two with a voice bound: audio is $0.14/s against $0.196/s, because O3 does not price voice control as its own tier (fal, September 2026; $0.112/s with audio off). An optional start and end frame, `aspect_ratio` 16:9 / 9:16 / 1:1, `duration` a STRING enum \"3\"-\"15\", multi-shot to 6 cuts. TWO differences from the v3 entry worth knowing before a payload is written: there is NO `negative_prompt` here, so keep-outs go in the prompt, and its second reference list — `image_urls`, style references cited as `@Image1` — is deliberately NOT bound by studio. A registry entry names one reference field and this one names `elements`, because that is the list a voice and an identity attach to; a style reference that is nobody's identity belongs in the prompt or on a still. Live schema from fal's OpenAPI document. **studio defaults `generate_audio` to TRUE here**, where fal's own default is false: this is the entry a speaking character is cheapest on, and a voice bound with the sound off is billed and never heard. Pass `{\"generate_audio\": false}` for a silent clip.",
+      "snapshot": {
+        "duration": {
+          "enum": [
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15"
+          ],
+          "default": "5"
+        },
+        "shot_type": {
+          "enum": [
+            "customize",
+            "intelligent"
+          ],
+          "default": "customize"
+        },
+        "aspect_ratio": {
+          "enum": [
+            "16:9",
+            "9:16",
+            "1:1"
+          ],
+          "default": "16:9"
+        },
+        "generate_audio": {
+          "default": false
+        },
+        "refreshed": "2026-09-22"
+      },
+      "key": "fal-kling-o3-r2v"
+    },
+    "replicate-veo-3.1": {
+      "model": "google/veo-3.1",
+      "kind": "video",
+      "skill": "studio-media-veo-3-1",
+      "images": {
+        "refs": "reference_images",
+        "max_refs": 3,
+        "start": "image",
+        "end": "last_frame",
+        "start_excludes_refs": true,
+        "end_excludes_refs": true,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "note": "Google Veo 3.1. Native synced audio, 24 fps, SynthID watermark. The only video engine here with a SEED and with negative_prompt as a real parameter. reference_images caps at 3 and ONLY works at aspect_ratio 16:9 with duration 8 — the schema still accepts other combinations and silently drops the reference set. A last_frame is ignored when reference_images are present. accepts_ext unverified: the README names no formats.",
+      "snapshot": {
+        "duration": {
+          "enum": [
+            4,
+            6,
+            8
+          ],
+          "default": 8
+        },
+        "resolution": {
+          "enum": [
+            "720p",
+            "1080p"
+          ],
+          "default": "1080p"
+        },
+        "aspect_ratio": {
+          "enum": [
+            "16:9",
+            "9:16"
+          ],
+          "default": "16:9"
+        },
+        "generate_audio": {
+          "default": true
+        },
+        "reference_images": {
+          "default": []
+        }
+      },
+      "video": {
+        "negative": "param",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": "resolution",
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "aliases": [
+        "veo-3.1"
+      ],
+      "key": "replicate-veo-3.1"
+    },
+    "replicate-grok-imagine-video": {
+      "model": "xai/grok-imagine-video",
+      "kind": "video",
+      "skill": "studio-media-grok-imagine-video",
+      "images": {
+        "refs": null,
+        "max_refs": 0,
+        "start": "image",
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "clips": {
+        "source": "video",
+        "accepts_ext": [
+          ".mp4",
+          ".mov",
+          ".webm"
+        ]
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "note": "xAI Grok Imagine Video (Aurora). Native synced audio incl. lip-sync. Two things nothing else here does: a true duration RANGE (1-15s, not an enum) and a video-EDITING mode via the `video` input (max 8.7s in, output matches its duration/ratio/resolution). No reference images and no last frame. NEGATIVE DIRECTION IS IGNORED — the model has no negative_prompt field and the README says prompt-embedded negatives are dropped too; describe what you want instead. accepts_ext confirmed by the README.",
+      "snapshot": {
+        "duration": {
+          "default": 5,
+          "minimum": 1,
+          "maximum": 15
+        },
+        "resolution": {
+          "enum": [
+            "720p",
+            "480p"
+          ],
+          "default": "720p"
+        },
+        "aspect_ratio": {
+          "enum": [
+            "auto",
+            "16:9",
+            "4:3",
+            "1:1",
+            "9:16",
+            "3:4",
+            "3:2",
+            "2:3"
+          ],
+          "default": "auto"
+        }
+      },
+      "video": {
+        "negative": "prompt",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": "resolution",
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "aliases": [
+        "grok-imagine-video"
+      ],
+      "key": "replicate-grok-imagine-video"
+    },
+    "replicate-image-upscale": {
+      "model": "topazlabs/image-upscale",
+      "kind": "image",
+      "skill": "studio-media-image-upscale",
+      "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": "image",
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "prompt": null,
+      "note": "The only model here that RESTORES rather than generates: it enlarges an image that already exists and invents nothing, so it is what seed and reference material goes through. `High Fidelity V2` preserves detail, `Low Resolution V2` is for badly degraded sources, and `face_enhancement_creativity: 0` sharpens a face without redrawing it. Priced on OUTPUT megapixels, not runtime.",
+      "snapshot": {
+        "enhance_model": {
+          "enum": [
+            "Standard V2",
+            "Low Resolution V2",
+            "CGI",
+            "High Fidelity V2",
+            "Text Refine"
+          ],
+          "default": "Standard V2"
+        },
+        "output_format": {
+          "enum": [
+            "jpg",
+            "png"
+          ],
+          "default": "jpg"
+        },
+        "upscale_factor": {
+          "enum": [
+            "None",
+            "2x",
+            "4x",
+            "6x"
+          ],
+          "default": "None"
+        },
+        "face_enhancement": {
+          "default": false
+        },
+        "subject_detection": {
+          "enum": [
+            "None",
+            "All",
+            "Foreground",
+            "Background"
+          ],
+          "default": "None"
+        },
+        "face_enhancement_strength": {
+          "default": 0.8,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "face_enhancement_creativity": {
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "aliases": [
+        "image-upscale"
+      ],
+      "key": "replicate-image-upscale"
+    },
+    "replicate-seedream-5-pro": {
+      "model": "bytedance/seedream-5-pro",
+      "kind": "image",
+      "skill": "studio-media-seedream-5-pro",
+      "images": {
+        "refs": "image_input",
+        "max_refs": 10,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
       "denied": {
         "size": {
           "1.5K": "seedream-5-pro renders standard images at 1K or 2K only; 1.5K exists for layer_decomposition mode (its schema lists it for both).",
           "auto": "seedream-5-pro renders standard images at 1K or 2K only; auto exists for layer_decomposition mode, where it sizes from the input image."
         }
       },
-      "images": {
-        "accepts_ext": [
-          ".jpg",
-          ".jpeg",
-          ".png",
-          ".webp"
-        ],
-        "end": null,
-        "max_refs": 10,
-        "refs": "image_input",
-        "start": null,
-        "start_excludes_refs": false
-      },
-      "key": "seedream-5-pro",
-      "kind": "image",
-      "model": "bytedance/seedream-5-pro",
-      "note": "ByteDance's flagship image model. 1K/2K only (2K default, ~4MP), up to 10 reference images for character/style/product consistency and multi-image composition; aspect defaults to match_input_image. Flat per-image pricing. Also has a layer_decomposition mode that splits one image into a base plus up to 16 element layers.",
       "prompt": {
         "max_chars": 4000
       },
-      "skill": "studio-media-seedream-5-pro",
+      "note": "ByteDance's flagship image model. 1K/2K only (2K default, ~4MP), up to 10 reference images for character/style/product consistency and multi-image composition; aspect defaults to match_input_image. Flat per-image pricing. Also has a layer_decomposition mode that splits one image into a base plus up to 16 element layers.",
       "snapshot": {
         "aspect_ratio": {
-          "default": "match_input_image",
           "enum": [
             "match_input_image",
             "1:1",
@@ -757,7 +1046,8 @@
             "3:2",
             "2:3",
             "21:9"
-          ]
+          ],
+          "default": "match_input_image"
         },
         "image_input": {
           "default": []
@@ -766,115 +1056,53 @@
           "default": false
         },
         "output_format": {
-          "default": "png",
           "enum": [
             "png",
             "jpeg"
-          ]
+          ],
+          "default": "png"
         },
         "prompt": {
           "default": ""
         },
         "size": {
-          "default": "2K",
           "enum": [
             "1K",
             "1.5K",
             "2K",
             "auto"
-          ]
-        }
-      }
-    },
-    "veo-3.1": {
-      "aliases": [],
-      "images": {
-        "accepts_ext": [
-          ".jpg",
-          ".jpeg",
-          ".png",
-          ".webp"
-        ],
-        "end": "last_frame",
-        "end_excludes_refs": true,
-        "max_refs": 3,
-        "refs": "reference_images",
-        "start": "image",
-        "start_excludes_refs": false
-      },
-      "key": "veo-3.1",
-      "kind": "video",
-      "model": "google/veo-3.1",
-      "note": "Google Veo 3.1. Native synced audio, 24 fps, SynthID watermark. The only video engine here with a SEED and with negative_prompt as a real parameter. reference_images caps at 3 and ONLY works at aspect_ratio 16:9 with duration 8 \u2014 the schema still accepts other combinations and silently drops the reference set. A last_frame is ignored when reference_images are present. accepts_ext unverified: the README names no formats.",
-      "prompt": {
-        "max_chars": null
-      },
-      "skill": "studio-media-veo-3-1",
-      "snapshot": {
-        "aspect_ratio": {
-          "default": "16:9",
-          "enum": [
-            "16:9",
-            "9:16"
-          ]
-        },
-        "duration": {
-          "default": 8,
-          "enum": [
-            4,
-            6,
-            8
-          ]
-        },
-        "generate_audio": {
-          "default": true
-        },
-        "reference_images": {
-          "default": []
-        },
-        "resolution": {
-          "default": "1080p",
-          "enum": [
-            "720p",
-            "1080p"
-          ]
+          ],
+          "default": "2K"
         }
       },
-      "video": {
-        "allow_intelligent_duration": false,
-        "image_tokens": false,
-        "max_cuts": null,
-        "negative": "param",
-        "resolution_field": "resolution",
-        "resolution_map": null,
-        "technical": "api"
-      }
+      "aliases": [
+        "seedream-5-pro"
+      ],
+      "key": "replicate-seedream-5-pro"
     },
-    "krea-2-large": {
-      "images": {
-        "accepts_ext": [
-          ".jpg",
-          ".jpeg",
-          ".png",
-          ".webp"
-        ],
-        "end": null,
-        "max_refs": 10,
-        "refs": "style_reference_images",
-        "start": null,
-        "start_excludes_refs": false
-      },
-      "key": "krea-2-large",
-      "kind": "image",
+    "replicate-krea-2-large": {
       "model": "krea/krea-2-large",
-      "note": "Krea 2 Large. Krea's flagship still model: photorealism, natural light, textured and expressive looks; `creativity` raw/low/medium/high sets how far it embellishes the prompt; has a SEED (as does flux-2-pro). `style_reference_images` (<=10) is a STYLE transfer input, NOT an identity reference: --character binds a likeness into it and the model keeps the look, not the face. No output-format, size or quality knob; flat $0.06/image (+$0.005 with style refs, +$0.01 with a Krea moodboard).",
+      "kind": "image",
+      "skill": "studio-media-krea-2-large",
+      "images": {
+        "refs": "style_reference_images",
+        "max_refs": 10,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
       "prompt": {
         "max_chars": null
       },
-      "skill": "studio-media-krea-2-large",
+      "note": "Krea 2 Large. Krea's flagship still model: photorealism, natural light, textured and expressive looks; `creativity` raw/low/medium/high sets how far it embellishes the prompt; has a SEED (as does flux-2-pro). `style_reference_images` (<=10) is a STYLE transfer input, NOT an identity reference: --character binds a likeness into it and the model keeps the look, not the face. No output-format, size or quality knob; flat $0.06/image (+$0.005 with style refs, +$0.01 with a Krea moodboard).",
       "snapshot": {
         "aspect_ratio": {
-          "default": "1:1",
           "enum": [
             "1:1",
             "4:3",
@@ -884,157 +1112,64 @@
             "4:5",
             "2:3",
             "9:16"
-          ]
+          ],
+          "default": "1:1"
         },
         "creativity": {
-          "default": "medium",
           "enum": [
             "raw",
             "low",
             "medium",
             "high"
-          ]
+          ],
+          "default": "medium"
         },
         "moodboard_strength": {
           "default": 0.35,
-          "maximum": 1,
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 1
         },
         "style_reference_images": {
           "default": []
         },
         "style_reference_strength": {
           "default": 0.5,
-          "maximum": 1,
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 1
         }
-      }
+      },
+      "aliases": [
+        "krea-2-large"
+      ],
+      "key": "replicate-krea-2-large"
     },
-    "gpt-image-2.5-sunburst": {
-      "defaults": {
-        "moderation": "low",
-        "quality": "medium"
-      },
-      "images": {
-        "accepts_ext": [
-          ".jpg",
-          ".jpeg",
-          ".png",
-          ".webp"
-        ],
-        "end": null,
-        "max_refs": null,
-        "refs": "input_images",
-        "start": null,
-        "start_excludes_refs": false
-      },
-      "key": "gpt-image-2.5-sunburst",
-      "kind": "image",
+    "replicate-gpt-image-2.5-sunburst": {
       "model": "openai/gpt-image-2.5-sunburst",
-      "note": "OpenAI, tuned for EDITING PRECISION (gpt-image-2.5-flare is the same model line tuned for speed, at the same prices): targeted changes that keep identity, composition and lighting; dense text. Same schema as gpt-image-2 plus two quality tiers, `xhigh` and `max`, and its README endorses `background: transparent` (gpt-image-2's does not, so no `denied` here). References held at high fidelity automatically. Priced PER QUALITY TIER: low $0.012, medium $0.047, high $0.128, xhigh $0.25, max $0.50 \u2014 and `auto`, the schema default, bills at the xhigh rate, which is why the registry defaults quality to medium.",
-      "prompt": {
-        "max_chars": null
-      },
+      "kind": "image",
       "skill": "studio-media-gpt-image-2-5-sunburst",
-      "snapshot": {
-        "aspect_ratio": {
-          "default": "1:1",
-          "enum": [
-            "1:1",
-            "3:2",
-            "2:3",
-            "4:3",
-            "3:4",
-            "16:9",
-            "9:16",
-            "auto",
-            "1024x1024",
-            "1536x1024",
-            "1024x1536",
-            "1536x1152",
-            "1152x1536",
-            "2048x2048",
-            "2048x1152",
-            "1152x2048",
-            "3840x2160",
-            "2160x3840"
-          ]
-        },
-        "background": {
-          "default": "auto",
-          "enum": [
-            "auto",
-            "transparent",
-            "opaque"
-          ]
-        },
-        "moderation": {
-          "default": "auto",
-          "enum": [
-            "auto",
-            "low"
-          ]
-        },
-        "number_of_images": {
-          "default": 1,
-          "maximum": 10,
-          "minimum": 1
-        },
-        "output_compression": {
-          "default": 90,
-          "maximum": 100,
-          "minimum": 0
-        },
-        "output_format": {
-          "default": "webp",
-          "enum": [
-            "png",
-            "jpeg",
-            "webp"
-          ]
-        },
-        "quality": {
-          "default": "auto",
-          "enum": [
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "max",
-            "auto"
-          ]
-        }
-      }
-    },
-    "gpt-image-2.5-flare": {
-      "defaults": {
-        "moderation": "low",
-        "quality": "medium"
-      },
       "images": {
+        "refs": "input_images",
+        "max_refs": null,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
         "accepts_ext": [
           ".jpg",
           ".jpeg",
           ".png",
           ".webp"
-        ],
-        "end": null,
-        "max_refs": null,
-        "refs": "input_images",
-        "start": null,
-        "start_excludes_refs": false
+        ]
       },
-      "key": "gpt-image-2.5-flare",
-      "kind": "image",
-      "model": "openai/gpt-image-2.5-flare",
-      "note": "OpenAI's FASTEST image model, the high-volume sibling of gpt-image-2.5-sunburst. Identical schema, identical per-tier prices (low $0.012, medium $0.047, high $0.128, xhigh $0.25, max $0.50; `auto` bills at the xhigh rate, hence the medium default) and an identical README minus 'editing precision matters most' \u2014 Sunburst is the one to pay for when the edit must be exact; Flare is for drafts, iteration and volume. References held at high fidelity automatically; `background: transparent` endorsed.",
+      "defaults": {
+        "quality": "medium",
+        "moderation": "low"
+      },
       "prompt": {
         "max_chars": null
       },
-      "skill": "studio-media-gpt-image-2-5-flare",
+      "note": "OpenAI, tuned for EDITING PRECISION (gpt-image-2.5-flare is the same model line tuned for speed, at the same prices): targeted changes that keep identity, composition and lighting; dense text. Same schema as gpt-image-2 plus two quality tiers, `xhigh` and `max`, and its README endorses `background: transparent` (gpt-image-2's does not, so no `denied` here). References held at high fidelity automatically. Priced PER QUALITY TIER: low $0.012, medium $0.047, high $0.128, xhigh $0.25, max $0.50 — and `auto`, the schema default, bills at the xhigh rate, which is why the registry defaults quality to medium.",
       "snapshot": {
         "aspect_ratio": {
-          "default": "1:1",
           "enum": [
             "1:1",
             "3:2",
@@ -1054,43 +1189,43 @@
             "1152x2048",
             "3840x2160",
             "2160x3840"
-          ]
+          ],
+          "default": "1:1"
         },
         "background": {
-          "default": "auto",
           "enum": [
             "auto",
             "transparent",
             "opaque"
-          ]
+          ],
+          "default": "auto"
         },
         "moderation": {
-          "default": "auto",
           "enum": [
             "auto",
             "low"
-          ]
+          ],
+          "default": "auto"
         },
         "number_of_images": {
           "default": 1,
-          "maximum": 10,
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 10
         },
         "output_compression": {
           "default": 90,
-          "maximum": 100,
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 100
         },
         "output_format": {
-          "default": "webp",
           "enum": [
             "png",
             "jpeg",
             "webp"
-          ]
+          ],
+          "default": "webp"
         },
         "quality": {
-          "default": "auto",
           "enum": [
             "low",
             "medium",
@@ -1098,99 +1233,205 @@
             "xhigh",
             "max",
             "auto"
-          ]
+          ],
+          "default": "auto"
         }
-      }
-    },
-    "kling-v3-motion-control": {
-      "clips": {
-        "accepts_ext": [
-          ".mp4",
-          ".mov"
-        ],
-        "source": "video"
       },
+      "aliases": [
+        "gpt-image-2.5-sunburst"
+      ],
+      "key": "replicate-gpt-image-2.5-sunburst"
+    },
+    "replicate-gpt-image-2.5-flare": {
+      "model": "openai/gpt-image-2.5-flare",
+      "kind": "image",
+      "skill": "studio-media-gpt-image-2-5-flare",
       "images": {
+        "refs": "input_images",
+        "max_refs": null,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "defaults": {
+        "quality": "medium",
+        "moderation": "low"
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "note": "OpenAI's FASTEST image model, the high-volume sibling of gpt-image-2.5-sunburst. Identical schema, identical per-tier prices (low $0.012, medium $0.047, high $0.128, xhigh $0.25, max $0.50; `auto` bills at the xhigh rate, hence the medium default) and an identical README minus 'editing precision matters most' — Sunburst is the one to pay for when the edit must be exact; Flare is for drafts, iteration and volume. References held at high fidelity automatically; `background: transparent` endorsed.",
+      "snapshot": {
+        "aspect_ratio": {
+          "enum": [
+            "1:1",
+            "3:2",
+            "2:3",
+            "4:3",
+            "3:4",
+            "16:9",
+            "9:16",
+            "auto",
+            "1024x1024",
+            "1536x1024",
+            "1024x1536",
+            "1536x1152",
+            "1152x1536",
+            "2048x2048",
+            "2048x1152",
+            "1152x2048",
+            "3840x2160",
+            "2160x3840"
+          ],
+          "default": "1:1"
+        },
+        "background": {
+          "enum": [
+            "auto",
+            "transparent",
+            "opaque"
+          ],
+          "default": "auto"
+        },
+        "moderation": {
+          "enum": [
+            "auto",
+            "low"
+          ],
+          "default": "auto"
+        },
+        "number_of_images": {
+          "default": 1,
+          "minimum": 1,
+          "maximum": 10
+        },
+        "output_compression": {
+          "default": 90,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "output_format": {
+          "enum": [
+            "png",
+            "jpeg",
+            "webp"
+          ],
+          "default": "webp"
+        },
+        "quality": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "auto"
+          ],
+          "default": "auto"
+        }
+      },
+      "aliases": [
+        "gpt-image-2.5-flare"
+      ],
+      "key": "replicate-gpt-image-2.5-flare"
+    },
+    "replicate-kling-v3-motion-control": {
+      "model": "kwaivgi/kling-v3-motion-control",
+      "kind": "video",
+      "skill": "studio-media-kling-v3-motion-control",
+      "images": {
+        "refs": null,
+        "max_refs": 0,
+        "start": "image",
+        "end": null,
+        "start_excludes_refs": false,
         "accepts_ext": [
           ".jpg",
           ".jpeg",
           ".png"
-        ],
-        "end": null,
-        "max_refs": 0,
-        "refs": null,
-        "start": "image",
-        "start_excludes_refs": false
+        ]
       },
-      "key": "kling-v3-motion-control",
-      "kind": "video",
-      "model": "kwaivgi/kling-v3-motion-control",
-      "note": "Kling 3.0 Motion Control. Transfers the CHARACTER MOTION of a reference clip onto one still: `image` is the look (one .jpg/.jpeg/.png, 340-3850px, ratio 1:2.5..2.5:1, <=10MB), `video` is the motion (.mp4/.mov, <=100MB) and is REQUIRED. No duration, aspect_ratio, reference_images or last frame: length and framing follow the reference clip. `character_orientation` image = faces as in the still, clip <=10s; video = faces as in the clip, clip <=30s. `mode` std=720p, pro=1080p. `keep_original_sound` carries the clip's audio over. Bind the clip with --clip-run/--clip-key.",
+      "clips": {
+        "source": "video",
+        "accepts_ext": [
+          ".mp4",
+          ".mov"
+        ]
+      },
       "prompt": {
         "max_chars": null
       },
-      "skill": "studio-media-kling-v3-motion-control",
+      "note": "Kling 3.0 Motion Control. Transfers the CHARACTER MOTION of a reference clip onto one still: `image` is the look (one .jpg/.jpeg/.png, 340-3850px, ratio 1:2.5..2.5:1, <=10MB), `video` is the motion (.mp4/.mov, <=100MB) and is REQUIRED. No duration, aspect_ratio, reference_images or last frame: length and framing follow the reference clip. `character_orientation` image = faces as in the still, clip <=10s; video = faces as in the clip, clip <=30s. `mode` std=720p, pro=1080p. `keep_original_sound` carries the clip's audio over. Bind the clip with --clip-run/--clip-key.",
       "snapshot": {
         "character_orientation": {
-          "default": "image",
           "enum": [
             "image",
             "video"
-          ]
+          ],
+          "default": "image"
         },
         "keep_original_sound": {
           "default": true
         },
         "mode": {
-          "default": "pro",
           "enum": [
             "std",
             "pro"
-          ]
+          ],
+          "default": "pro"
         },
         "prompt": {
           "default": ""
         }
       },
       "video": {
-        "allow_intelligent_duration": false,
-        "image_tokens": false,
-        "max_cuts": null,
         "negative": "prompt",
+        "technical": "api",
+        "prompt_format": "kling",
+        "max_cuts": null,
+        "image_tokens": false,
         "resolution_field": "mode",
         "resolution_map": {
-          "1080p": "pro",
-          "720p": "std"
+          "720p": "std",
+          "1080p": "pro"
         },
-        "technical": "api"
-      }
+        "allow_intelligent_duration": false
+      },
+      "aliases": [
+        "kling-v3-motion-control"
+      ],
+      "key": "replicate-kling-v3-motion-control"
     },
-    "flux-2-pro": {
+    "replicate-flux-2-pro": {
+      "model": "black-forest-labs/flux-2-pro",
+      "kind": "image",
+      "skill": "studio-media-flux-2-pro",
       "images": {
+        "refs": "input_images",
+        "max_refs": 8,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
         "accepts_ext": [
           ".jpg",
           ".jpeg",
           ".png",
           ".webp",
           ".gif"
-        ],
-        "end": null,
-        "max_refs": 8,
-        "refs": "input_images",
-        "start": null,
-        "start_excludes_refs": false
+        ]
       },
-      "key": "flux-2-pro",
-      "kind": "image",
-      "model": "black-forest-labs/flux-2-pro",
-      "note": "FLUX.2 [pro], Black Forest Labs' production still model: text-to-image, natural-language EDITING of up to 8 input_images (address them by index \u2014 'the beach in image 3'), legible text/typography, photorealism, character and product consistency across the reference set; JSON-structured prompts are documented. `seed` for repeatable draws. `resolution` 0.5/1/2/4 MP (2 MP or below recommended; 2048px hard cap per side) or `aspect_ratio: custom` + width/height in multiples of 16; `match_input_image` on both follows the FIRST input image. Total input \u22649 MP. No negative prompts \u2014 the README says they can add what they exclude. Priced per megapixel: $0.015 per run + $0.015 per input MP + $0.015 per output MP (a 1 MP still with no refs \u2248 $0.03; 2 MP \u2248 $0.045).",
       "prompt": {
         "max_chars": null
       },
-      "skill": "studio-media-flux-2-pro",
+      "note": "FLUX.2 [pro], Black Forest Labs' production still model: text-to-image, natural-language EDITING of up to 8 input_images (address them by index — 'the beach in image 3'), legible text/typography, photorealism, character and product consistency across the reference set; JSON-structured prompts are documented. `seed` for repeatable draws. `resolution` 0.5/1/2/4 MP (2 MP or below recommended; 2048px hard cap per side) or `aspect_ratio: custom` + width/height in multiples of 16; `match_input_image` on both follows the FIRST input image. Total input ≤9 MP. No negative prompts — the README says they can add what they exclude. Priced per megapixel: $0.015 per run + $0.015 per input MP + $0.015 per output MP (a 1 MP still with no refs ≈ $0.03; 2 MP ≈ $0.045).",
       "snapshot": {
         "aspect_ratio": {
-          "default": "1:1",
           "enum": [
             "match_input_image",
             "custom",
@@ -1203,95 +1444,95 @@
             "9:16",
             "3:4",
             "4:3"
-          ]
+          ],
+          "default": "1:1"
         },
         "height": {
-          "maximum": 2048,
-          "minimum": 256
+          "minimum": 256,
+          "maximum": 2048
         },
         "input_images": {
           "default": []
         },
         "output_format": {
-          "default": "webp",
           "enum": [
             "webp",
             "jpg",
             "png"
-          ]
+          ],
+          "default": "webp"
         },
         "output_quality": {
           "default": 80,
-          "maximum": 100,
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 100
         },
         "resolution": {
-          "default": "1 MP",
           "enum": [
             "match_input_image",
             "0.5 MP",
             "1 MP",
             "2 MP",
             "4 MP"
-          ]
+          ],
+          "default": "1 MP"
         },
         "safety_tolerance": {
           "default": 2,
-          "maximum": 5,
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 5
         },
         "width": {
-          "maximum": 2048,
-          "minimum": 256
+          "minimum": 256,
+          "maximum": 2048
         }
-      }
+      },
+      "aliases": [
+        "flux-2-pro"
+      ],
+      "key": "replicate-flux-2-pro"
     },
-    "z-image-turbo": {
+    "runpod-z-image-turbo": {
+      "model": "runpod/z-image-turbo",
+      "provider": "runpod",
+      "kind": "image",
+      "skill": "studio-media-z-image-turbo",
       "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": "image",
+        "end": null,
+        "start_excludes_refs": false,
         "accepts_ext": [
           ".jpg",
           ".jpeg",
           ".png",
           ".webp"
-        ],
-        "end": null,
-        "max_refs": null,
-        "refs": null,
-        "start": "image",
-        "start_excludes_refs": false
+        ]
       },
+      "prompt": {
+        "max_chars": null
+      },
+      "note": "Z-Image Turbo, Tongyi Lab's distilled 6B text-to-image model, called on Runpod's public endpoint (not through Replicate): eight-step generation in a few seconds, photorealism, bilingual (English/Chinese) text rendering, a prompt enhancer that expands short prompts — so write a descriptive sentence, not a tag list. `image` (one URL) switches it to image-to-image, with `strength` 0–1 (default 0.8) for how far to depart from it. `size` is a fixed list of `W*H` strings, 1024*1024 by default; `seed` -1 is random, any other value repeats a draw. No negative prompt, no step count — it is distilled to eight and more steps make it worse. Flat $0.005 per image whatever the size, failed generations free, output URLs kept about seven days. The one model here whose run record carries a real price.",
       "input": {
+        "required": [
+          "prompt"
+        ],
         "properties": {
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "What to draw. English or Chinese; a descriptive sentence beats a keyword list."
+          },
           "image": {
-            "description": "One image URL. Present, the model edits it (image-to-image) instead of drawing from nothing.",
+            "type": "string",
             "format": "uri",
             "title": "Image",
-            "type": "string"
-          },
-          "output_format": {
-            "default": "png",
-            "enum": [
-              "png",
-              "jpeg",
-              "webp"
-            ],
-            "title": "Output format",
-            "type": "string"
-          },
-          "prompt": {
-            "description": "What to draw. English or Chinese; a descriptive sentence beats a keyword list.",
-            "title": "Prompt",
-            "type": "string"
-          },
-          "seed": {
-            "default": -1,
-            "description": "-1 for a random draw; any other value repeats one.",
-            "title": "Seed",
-            "type": "integer"
+            "description": "One image URL. Present, the model edits it (image-to-image) instead of drawing from nothing."
           },
           "size": {
-            "default": "1024*1024",
-            "description": "Output size as W*H.",
+            "type": "string",
+            "title": "Size",
             "enum": [
               "1024*1024",
               "512*512",
@@ -1302,45 +1543,48 @@
               "1280*720",
               "720*1280"
             ],
-            "title": "Size",
-            "type": "string"
+            "default": "1024*1024",
+            "description": "Output size as W*H."
           },
           "strength": {
-            "default": 0.8,
-            "description": "Image-to-image only: how far the result departs from `image`.",
-            "maximum": 1,
-            "minimum": 0,
+            "type": "number",
             "title": "Strength",
-            "type": "number"
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.8,
+            "description": "Image-to-image only: how far the result departs from `image`."
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": -1,
+            "description": "-1 for a random draw; any other value repeats one."
+          },
+          "output_format": {
+            "type": "string",
+            "title": "Output format",
+            "enum": [
+              "png",
+              "jpeg",
+              "webp"
+            ],
+            "default": "png"
           }
-        },
-        "required": [
-          "prompt"
-        ]
+        }
       },
-      "key": "z-image-turbo",
-      "kind": "image",
-      "model": "runpod/z-image-turbo",
-      "note": "Z-Image Turbo, Tongyi Lab's distilled 6B text-to-image model, called on Runpod's public endpoint (not through Replicate): eight-step generation in a few seconds, photorealism, bilingual (English/Chinese) text rendering, a prompt enhancer that expands short prompts \u2014 so write a descriptive sentence, not a tag list. `image` (one URL) switches it to image-to-image, with `strength` 0\u20131 (default 0.8) for how far to depart from it. `size` is a fixed list of `W*H` strings, 1024*1024 by default; `seed` -1 is random, any other value repeats a draw. No negative prompt, no step count \u2014 it is distilled to eight and more steps make it worse. Flat $0.005 per image whatever the size, failed generations free, output URLs kept about seven days. The one model here whose run record carries a real price.",
-      "prompt": {
-        "max_chars": null
-      },
-      "provider": "runpod",
-      "skill": "studio-media-z-image-turbo",
       "snapshot": {
         "output_format": {
-          "default": "png",
           "enum": [
             "png",
             "jpeg",
             "webp"
-          ]
+          ],
+          "default": "png"
         },
         "seed": {
           "default": -1
         },
         "size": {
-          "default": "1024*1024",
           "enum": [
             "1024*1024",
             "512*512",
@@ -1350,248 +1594,283 @@
             "768*1024",
             "1280*720",
             "720*1280"
-          ]
+          ],
+          "default": "1024*1024"
         },
         "strength": {
           "default": 0.8,
-          "maximum": 1,
-          "minimum": 0
-        }
-      }
-    },
-    "wan-2.6-t2v": {
-      "aliases": [],
-      "images": {
-        "accepts_ext": [],
-        "end": null,
-        "max_refs": null,
-        "refs": null,
-        "start": null,
-        "start_excludes_refs": false
+          "minimum": 0,
+          "maximum": 1
+        },
+        "refreshed": "2026-09-14"
       },
+      "aliases": [
+        "z-image-turbo"
+      ],
+      "key": "runpod-z-image-turbo"
+    },
+    "runpod-wan-2.6-t2v": {
+      "model": "runpod/wan-2-6-t2v",
+      "provider": "runpod",
+      "kind": "video",
+      "skill": "studio-media-wan-2-6-t2v",
+      "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": []
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "video": {
+        "negative": "param",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": "size",
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "aliases": [
+        "wan-2.6-t2v"
+      ],
+      "note": "Alibaba's Wan 2.6, text-to-video, on Runpod's public endpoint (not Replicate) — the first open-weight video model here and the first video model that takes no image at all. Prose prompt in, a 5/10/15 s clip out at 720p or 1080p, landscape or portrait (`size` is W*H); `shot_type: multi` lets it cut between shots inside one clip; a real `negative_prompt`; a repeatable `seed`. `enable_prompt_expansion` hands the prompt to a rewriter first and is off by default. No reference images, no start or end frame — for those use wan-2.6-i2v. Priced per clip, not per second: 720p $0.50 / $1.00 / $1.50 and 1080p $0.75 / $1.50 / $2.25 for 5 / 10 / 15 s (Runpod, September 2026); the run records the price. The endpoint's optional `audio` URL is not wired — studio binds nodes, never URLs. Output URL lasts seven days; the run stores the bytes. The worker validates `size` (the four W*H values) and `duration` (5/10/15) and IGNORES any field it does not know — a misspelt input is not refused, it renders at the default and bills, so the registry's check is the only one there is.",
       "input": {
+        "required": [
+          "prompt"
+        ],
         "properties": {
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "What happens in the clip — subject, action, camera, light. Plain descriptive prose; the model follows instructions closely."
+          },
+          "negative_prompt": {
+            "type": "string",
+            "title": "Negative prompt",
+            "description": "What to keep out of the clip."
+          },
           "duration": {
-            "default": 5,
-            "description": "Clip length in seconds. One of 5, 10, 15; the price scales with it.",
+            "type": "integer",
+            "title": "Duration",
             "enum": [
               5,
               10,
               15
             ],
-            "title": "Duration",
-            "type": "integer"
-          },
-          "enable_prompt_expansion": {
-            "default": false,
-            "description": "Let the endpoint rewrite and expand the prompt before rendering. Off by default so what was read is what was sent.",
-            "title": "Enable prompt expansion",
-            "type": "boolean"
-          },
-          "negative_prompt": {
-            "description": "What to keep out of the clip.",
-            "title": "Negative prompt",
-            "type": "string"
-          },
-          "prompt": {
-            "description": "What happens in the clip \u2014 subject, action, camera, light. Plain descriptive prose; the model follows instructions closely.",
-            "title": "Prompt",
-            "type": "string"
-          },
-          "seed": {
-            "default": -1,
-            "description": "-1 for a random draw; any other value repeats one.",
-            "title": "Seed",
-            "type": "integer"
-          },
-          "shot_type": {
-            "default": "single",
-            "description": "`single` holds one composition for the whole clip; `multi` lets the model cut between shots.",
-            "enum": [
-              "single",
-              "multi"
-            ],
-            "title": "Shot type",
-            "type": "string"
+            "default": 5,
+            "description": "Clip length in seconds. One of 5, 10, 15; the price scales with it."
           },
           "size": {
-            "default": "1280*720",
-            "description": "Output size as W*H. The first number of the pair sets the price tier (720p or 1080p).",
+            "type": "string",
+            "title": "Size",
             "enum": [
               "1280*720",
               "1920*1080",
               "720*1280",
               "1080*1920"
             ],
-            "title": "Size",
-            "type": "string"
+            "default": "1280*720",
+            "description": "Output size as W*H. The first number of the pair sets the price tier (720p or 1080p)."
+          },
+          "shot_type": {
+            "type": "string",
+            "title": "Shot type",
+            "enum": [
+              "single",
+              "multi"
+            ],
+            "default": "single",
+            "description": "`single` holds one composition for the whole clip; `multi` lets the model cut between shots."
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": -1,
+            "description": "-1 for a random draw; any other value repeats one."
+          },
+          "enable_prompt_expansion": {
+            "type": "boolean",
+            "title": "Enable prompt expansion",
+            "default": false,
+            "description": "Let the endpoint rewrite and expand the prompt before rendering. Off by default so what was read is what was sent."
           }
-        },
-        "required": [
-          "prompt"
-        ]
+        }
       },
-      "key": "wan-2.6-t2v",
-      "kind": "video",
-      "model": "runpod/wan-2-6-t2v",
-      "note": "Alibaba's Wan 2.6, text-to-video, on Runpod's public endpoint (not Replicate) \u2014 the first open-weight video model here and the first video model that takes no image at all. Prose prompt in, a 5/10/15 s clip out at 720p or 1080p, landscape or portrait (`size` is W*H); `shot_type: multi` lets it cut between shots inside one clip; a real `negative_prompt`; a repeatable `seed`. `enable_prompt_expansion` hands the prompt to a rewriter first and is off by default. No reference images, no start or end frame \u2014 for those use wan-2.6-i2v. Priced per clip, not per second: 720p $0.50 / $1.00 / $1.50 and 1080p $0.75 / $1.50 / $2.25 for 5 / 10 / 15 s (Runpod, September 2026); the run records the price. The endpoint's optional `audio` URL is not wired \u2014 studio binds nodes, never URLs. Output URL lasts seven days; the run stores the bytes. The worker validates `size` (the four W*H values) and `duration` (5/10/15) and IGNORES any field it does not know \u2014 a misspelt input is not refused, it renders at the default and bills, so the registry's check is the only one there is.",
-      "prompt": {
-        "max_chars": null
-      },
-      "provider": "runpod",
-      "skill": "studio-media-wan-2-6-t2v",
       "snapshot": {
         "duration": {
-          "default": 5,
           "enum": [
             5,
             10,
             15
-          ]
-        },
-        "enable_prompt_expansion": {
-          "default": false
-        },
-        "refreshed": "2026-09-15",
-        "seed": {
-          "default": -1
-        },
-        "shot_type": {
-          "default": "single",
-          "enum": [
-            "single",
-            "multi"
-          ]
+          ],
+          "default": 5
         },
         "size": {
-          "default": "1280*720",
           "enum": [
             "1280*720",
             "1920*1080",
             "720*1280",
             "1080*1920"
-          ]
-        }
+          ],
+          "default": "1280*720"
+        },
+        "shot_type": {
+          "enum": [
+            "single",
+            "multi"
+          ],
+          "default": "single"
+        },
+        "seed": {
+          "default": -1
+        },
+        "enable_prompt_expansion": {
+          "default": false
+        },
+        "refreshed": "2026-09-15"
       },
-      "video": {
-        "allow_intelligent_duration": false,
-        "image_tokens": false,
-        "max_cuts": null,
-        "negative": "param",
-        "resolution_field": "size",
-        "resolution_map": null,
-        "technical": "api"
-      }
+      "key": "runpod-wan-2.6-t2v"
     },
-    "wan-2.6-i2v": {
-      "aliases": [],
-      "defaults": {
-        "shot_type": "single"
-      },
+    "runpod-wan-2.6-i2v": {
+      "model": "runpod/wan-2-6-i2v",
+      "provider": "runpod",
+      "kind": "video",
+      "skill": "studio-media-wan-2-6-i2v",
       "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": "image",
+        "end": null,
+        "start_excludes_refs": false,
         "accepts_ext": [
           ".jpg",
           ".jpeg",
           ".png",
           ".webp"
-        ],
-        "end": null,
-        "max_refs": null,
-        "refs": null,
-        "start": "image",
-        "start_excludes_refs": false
+        ]
       },
+      "prompt": {
+        "max_chars": null
+      },
+      "video": {
+        "negative": "param",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": "resolution",
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "defaults": {
+        "shot_type": "single"
+      },
+      "aliases": [
+        "wan-2.6-i2v"
+      ],
+      "note": "Alibaba's Wan 2.6, image-to-video, on Runpod's public endpoint (not Replicate): one still in (`image`, bound with --start-run / --start-key), a 5/10/15 s clip out that opens on that frame, at `resolution` 720p or 1080p, landscape. **Runpod's own page is wrong about this endpoint's inputs** — it documents `size` as W*H; the worker (`Wan_2.6_I2VInput`) takes `resolution` in `720p`/`1080p` and refuses anything else, and it REQUIRES `shot_type`, which the registry defaults to `single`. Measured 2026-09-16 from the worker's validation errors, after a run sent `size: 1920*1080` and failed. Same other controls as wan-2.6-t2v — a real `negative_prompt`, a repeatable `seed`, `enable_prompt_expansion` off by default — plus `enable_safety_checker`. No reference list: identity comes from the frame, which is the frame-first workflow every other video engine here uses. Priced per second of output: $0.10/s at 720p, $0.15/s at 1080p (Runpod, September 2026), so a 5 s 720p clip is $0.50; the run records the price. The endpoint's optional `audio` URL is not wired — studio binds nodes, never URLs. Output URL lasts seven days; the run stores the bytes.",
       "input": {
+        "required": [
+          "prompt",
+          "image",
+          "shot_type"
+        ],
         "properties": {
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "What happens in the clip — subject, action, camera, light. Plain descriptive prose; the model follows instructions closely."
+          },
+          "image": {
+            "type": "string",
+            "format": "uri",
+            "title": "Image",
+            "description": "The still to animate. Required: the clip starts on this frame."
+          },
+          "negative_prompt": {
+            "type": "string",
+            "title": "Negative prompt",
+            "description": "What to keep out of the clip."
+          },
           "duration": {
-            "default": 5,
-            "description": "Clip length in seconds. One of 5, 10, 15; the price scales with it.",
+            "type": "integer",
+            "title": "Duration",
             "enum": [
               5,
               10,
               15
             ],
-            "title": "Duration",
-            "type": "integer"
-          },
-          "enable_prompt_expansion": {
-            "default": false,
-            "description": "Let the endpoint rewrite and expand the prompt before rendering. Off by default so what was read is what was sent.",
-            "title": "Enable prompt expansion",
-            "type": "boolean"
-          },
-          "enable_safety_checker": {
-            "default": true,
-            "description": "Run the endpoint's content check over the output.",
-            "title": "Enable safety checker",
-            "type": "boolean"
-          },
-          "image": {
-            "description": "The still to animate. Required: the clip starts on this frame.",
-            "format": "uri",
-            "title": "Image",
-            "type": "string"
-          },
-          "negative_prompt": {
-            "description": "What to keep out of the clip.",
-            "title": "Negative prompt",
-            "type": "string"
-          },
-          "prompt": {
-            "description": "What happens in the clip \u2014 subject, action, camera, light. Plain descriptive prose; the model follows instructions closely.",
-            "title": "Prompt",
-            "type": "string"
+            "default": 5,
+            "description": "Clip length in seconds. One of 5, 10, 15; the price scales with it."
           },
           "resolution": {
-            "default": "720p",
-            "description": "720p or 1080p, landscape. The worker's own field \u2014 Runpod's page says `size` W*H and the worker refuses it.",
+            "type": "string",
+            "title": "Resolution",
             "enum": [
               "720p",
               "1080p"
             ],
-            "title": "Resolution",
-            "type": "string"
-          },
-          "seed": {
-            "default": -1,
-            "description": "-1 for a random draw; any other value repeats one.",
-            "title": "Seed",
-            "type": "integer"
+            "default": "720p",
+            "description": "720p or 1080p, landscape. The worker's own field — Runpod's page says `size` W*H and the worker refuses it."
           },
           "shot_type": {
-            "default": "single",
-            "description": "`single` holds one composition; `multi` lets the model cut between shots. REQUIRED by the worker (no default of its own) \u2014 the registry supplies `single`.",
+            "type": "string",
+            "title": "Shot type",
             "enum": [
               "single",
               "multi"
             ],
-            "title": "Shot type",
-            "type": "string"
+            "default": "single",
+            "description": "`single` holds one composition; `multi` lets the model cut between shots. REQUIRED by the worker (no default of its own) — the registry supplies `single`."
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": -1,
+            "description": "-1 for a random draw; any other value repeats one."
+          },
+          "enable_prompt_expansion": {
+            "type": "boolean",
+            "title": "Enable prompt expansion",
+            "default": false,
+            "description": "Let the endpoint rewrite and expand the prompt before rendering. Off by default so what was read is what was sent."
+          },
+          "enable_safety_checker": {
+            "type": "boolean",
+            "title": "Enable safety checker",
+            "default": true,
+            "description": "Run the endpoint's content check over the output."
           }
-        },
-        "required": [
-          "prompt",
-          "image",
-          "shot_type"
-        ]
+        }
       },
-      "key": "wan-2.6-i2v",
-      "kind": "video",
-      "model": "runpod/wan-2-6-i2v",
-      "note": "Alibaba's Wan 2.6, image-to-video, on Runpod's public endpoint (not Replicate): one still in (`image`, bound with --start-run / --start-key), a 5/10/15 s clip out that opens on that frame, at `resolution` 720p or 1080p, landscape. **Runpod's own page is wrong about this endpoint's inputs** \u2014 it documents `size` as W*H; the worker (`Wan_2.6_I2VInput`) takes `resolution` in `720p`/`1080p` and refuses anything else, and it REQUIRES `shot_type`, which the registry defaults to `single`. Measured 2026-09-16 from the worker's validation errors, after a run sent `size: 1920*1080` and failed. Same other controls as wan-2.6-t2v \u2014 a real `negative_prompt`, a repeatable `seed`, `enable_prompt_expansion` off by default \u2014 plus `enable_safety_checker`. No reference list: identity comes from the frame, which is the frame-first workflow every other video engine here uses. Priced per second of output: $0.10/s at 720p, $0.15/s at 1080p (Runpod, September 2026), so a 5 s 720p clip is $0.50; the run records the price. The endpoint's optional `audio` URL is not wired \u2014 studio binds nodes, never URLs. Output URL lasts seven days; the run stores the bytes.",
-      "prompt": {
-        "max_chars": null
-      },
-      "provider": "runpod",
-      "skill": "studio-media-wan-2-6-i2v",
       "snapshot": {
         "duration": {
-          "default": 5,
           "enum": [
             5,
             10,
             15
-          ]
+          ],
+          "default": 5
+        },
+        "resolution": {
+          "enum": [
+            "720p",
+            "1080p"
+          ],
+          "default": "720p"
+        },
+        "shot_type": {
+          "enum": [
+            "single",
+            "multi"
+          ],
+          "default": "single"
+        },
+        "seed": {
+          "default": -1
         },
         "enable_prompt_expansion": {
           "default": false
@@ -1599,187 +1878,167 @@
         "enable_safety_checker": {
           "default": true
         },
-        "refreshed": "2026-09-16",
-        "resolution": {
-          "default": "720p",
-          "enum": [
-            "720p",
-            "1080p"
-          ]
-        },
-        "seed": {
-          "default": -1
-        },
-        "shot_type": {
-          "default": "single",
-          "enum": [
-            "single",
-            "multi"
-          ]
-        }
+        "refreshed": "2026-09-16"
       },
-      "video": {
-        "allow_intelligent_duration": false,
-        "image_tokens": false,
-        "max_cuts": null,
-        "negative": "param",
-        "resolution_field": "resolution",
-        "resolution_map": null,
-        "technical": "api"
-      }
+      "key": "runpod-wan-2.6-i2v"
     },
-    "wan-2.2-i2v-lora": {
-      "aliases": [],
+    "runpod-wan-2.2-i2v-lora": {
+      "model": "runpod/wan-2-2-t2v-720-lora",
+      "provider": "runpod",
+      "kind": "video",
+      "skill": "studio-media-wan-2-2-i2v-lora",
       "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": "image",
+        "end": null,
+        "start_excludes_refs": false,
         "accepts_ext": [
           ".jpg",
           ".jpeg",
           ".png",
           ".webp"
-        ],
-        "end": null,
-        "max_refs": null,
-        "refs": null,
-        "start": "image",
-        "start_excludes_refs": false
+        ]
       },
+      "loras": {
+        "high": "high_noise_loras",
+        "low": "low_noise_loras",
+        "accepts_ext": [
+          ".safetensors"
+        ],
+        "scale_param": "lora_scale"
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "video": {
+        "negative": "prompt",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": null,
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "aliases": [
+        "wan-2.2-i2v-lora"
+      ],
+      "note": "Wan 2.2 image-to-video at 720p WITH YOUR OWN LoRA, on Runpod's public endpoint (its id is `wan-2-2-t2v-720-lora` although it takes an image — the docs' table links a name that does not exist). The one model here that loads weights that are not its own: `high_noise_loras` and `low_noise_loras` each take a list of `{path, scale}`, one adapter per denoising stage the way Wan 2.2's two-expert sampler wants them. In studio a LoRA is a SEND — a `.safetensors` node in the library, bound with --lora-high-key / --lora-low-key, presigned at submit — never a pasted URL (hard rule #3); `lora_scale` is studio's one number for every adapter's `scale`. One required start frame (`image`), no reference list, no negative prompt, no size field (720p landscape). 5 or 8 seconds; $0.35 / $0.56 per clip (Runpod, September 2026). The destination for a trained character LoRA, and the untrained-with-a-public-LoRA baseline before one exists.",
       "input": {
+        "required": [
+          "prompt",
+          "image"
+        ],
         "properties": {
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "The motion — what moves, how the camera moves, what changes by the end. The frame is already there."
+          },
+          "image": {
+            "type": "string",
+            "format": "uri",
+            "title": "Image",
+            "description": "The still to animate. Required: the clip starts on this frame."
+          },
+          "high_noise_loras": {
+            "type": "array",
+            "title": "High-noise LoRAs",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL of the .safetensors file."
+                },
+                "scale": {
+                  "type": "number",
+                  "description": "How strongly the adapter is applied."
+                }
+              }
+            },
+            "description": "Adapters for the high-noise (early, composition) denoising stage. Bound with --lora-high-key; each goes out as {path, scale}."
+          },
+          "low_noise_loras": {
+            "type": "array",
+            "title": "Low-noise LoRAs",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL of the .safetensors file."
+                },
+                "scale": {
+                  "type": "number",
+                  "description": "How strongly the adapter is applied."
+                }
+              }
+            },
+            "description": "Adapters for the low-noise (late, detail) denoising stage. Bound with --lora-low-key; each goes out as {path, scale}."
+          },
+          "lora_scale": {
+            "type": "number",
+            "title": "LoRA scale",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1.0,
+            "description": "Studio's: the `scale` written into every bound LoRA. Never sent under this name."
+          },
           "duration": {
-            "default": 5,
-            "description": "Clip length in seconds: 5 or 8.",
+            "type": "integer",
+            "title": "Duration",
             "enum": [
               5,
               8
             ],
-            "title": "Duration",
-            "type": "integer"
-          },
-          "enable_safety_checker": {
-            "default": true,
-            "description": "Run the endpoint's content check over the output.",
-            "title": "Enable safety checker",
-            "type": "boolean"
-          },
-          "high_noise_loras": {
-            "description": "Adapters for the high-noise (early, composition) denoising stage. Bound with --lora-high-key; each goes out as {path, scale}.",
-            "items": {
-              "properties": {
-                "path": {
-                  "description": "URL of the .safetensors file.",
-                  "format": "uri",
-                  "type": "string"
-                },
-                "scale": {
-                  "description": "How strongly the adapter is applied.",
-                  "type": "number"
-                }
-              },
-              "type": "object"
-            },
-            "title": "High-noise LoRAs",
-            "type": "array"
-          },
-          "image": {
-            "description": "The still to animate. Required: the clip starts on this frame.",
-            "format": "uri",
-            "title": "Image",
-            "type": "string"
-          },
-          "lora_scale": {
-            "default": 1.0,
-            "description": "Studio's: the `scale` written into every bound LoRA. Never sent under this name.",
-            "maximum": 2,
-            "minimum": 0,
-            "title": "LoRA scale",
-            "type": "number"
-          },
-          "low_noise_loras": {
-            "description": "Adapters for the low-noise (late, detail) denoising stage. Bound with --lora-low-key; each goes out as {path, scale}.",
-            "items": {
-              "properties": {
-                "path": {
-                  "description": "URL of the .safetensors file.",
-                  "format": "uri",
-                  "type": "string"
-                },
-                "scale": {
-                  "description": "How strongly the adapter is applied.",
-                  "type": "number"
-                }
-              },
-              "type": "object"
-            },
-            "title": "Low-noise LoRAs",
-            "type": "array"
-          },
-          "prompt": {
-            "description": "The motion \u2014 what moves, how the camera moves, what changes by the end. The frame is already there.",
-            "title": "Prompt",
-            "type": "string"
+            "default": 5,
+            "description": "Clip length in seconds: 5 or 8."
           },
           "seed": {
-            "default": -1,
-            "description": "-1 for a random draw; any other value repeats one.",
+            "type": "integer",
             "title": "Seed",
-            "type": "integer"
+            "default": -1,
+            "description": "-1 for a random draw; any other value repeats one."
+          },
+          "enable_safety_checker": {
+            "type": "boolean",
+            "title": "Enable safety checker",
+            "default": true,
+            "description": "Run the endpoint's content check over the output."
           }
-        },
-        "required": [
-          "prompt",
-          "image"
-        ]
+        }
       },
-      "key": "wan-2.2-i2v-lora",
-      "kind": "video",
-      "loras": {
-        "accepts_ext": [
-          ".safetensors"
-        ],
-        "high": "high_noise_loras",
-        "low": "low_noise_loras",
-        "scale_param": "lora_scale"
-      },
-      "model": "runpod/wan-2-2-t2v-720-lora",
-      "note": "Wan 2.2 image-to-video at 720p WITH YOUR OWN LoRA, on Runpod's public endpoint (its id is `wan-2-2-t2v-720-lora` although it takes an image \u2014 the docs' table links a name that does not exist). The one model here that loads weights that are not its own: `high_noise_loras` and `low_noise_loras` each take a list of `{path, scale}`, one adapter per denoising stage the way Wan 2.2's two-expert sampler wants them. In studio a LoRA is a SEND \u2014 a `.safetensors` node in the library, bound with --lora-high-key / --lora-low-key, presigned at submit \u2014 never a pasted URL (hard rule #3); `lora_scale` is studio's one number for every adapter's `scale`. One required start frame (`image`), no reference list, no negative prompt, no size field (720p landscape). 5 or 8 seconds; $0.35 / $0.56 per clip (Runpod, September 2026). The destination for a trained character LoRA, and the untrained-with-a-public-LoRA baseline before one exists.",
-      "prompt": {
-        "max_chars": null
-      },
-      "provider": "runpod",
-      "skill": "studio-media-wan-2-2-i2v-lora",
       "snapshot": {
+        "lora_scale": {
+          "default": 1.0,
+          "minimum": 0,
+          "maximum": 2
+        },
         "duration": {
-          "default": 5,
           "enum": [
             5,
             8
-          ]
+          ],
+          "default": 5
+        },
+        "seed": {
+          "default": -1
         },
         "enable_safety_checker": {
           "default": true
         },
-        "lora_scale": {
-          "default": 1.0,
-          "maximum": 2,
-          "minimum": 0
-        },
-        "refreshed": "2026-09-15",
-        "seed": {
-          "default": -1
-        }
+        "refreshed": "2026-09-15"
       },
-      "video": {
-        "allow_intelligent_duration": false,
-        "image_tokens": false,
-        "max_cuts": null,
-        "negative": "prompt",
-        "resolution_field": null,
-        "resolution_map": null,
-        "technical": "api"
-      }
+      "key": "runpod-wan-2.2-i2v-lora"
     },
-    "wan-2.2-i2v-studio": {
-      "aliases": [],
+    "runpod-wan-2.2-i2v-studio": {
+      "model": "runpod/unrxp9badsq4g2",
+      "provider": "runpod",
+      "kind": "video",
+      "skill": "studio-media-wan-2-2-i2v-studio",
       "images": {
         "refs": null,
         "max_refs": null,
@@ -1793,6 +2052,36 @@
           ".webp"
         ]
       },
+      "loras": {
+        "high": "high_noise_loras",
+        "low": "low_noise_loras",
+        "accepts_ext": [
+          ".safetensors"
+        ],
+        "scale_param": "lora_scale"
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "video": {
+        "negative": "param",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": null,
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "output_grant": {
+        "put": "output_url",
+        "get": "result_url",
+        "content_type": "video/mp4",
+        "ext": ".mp4"
+      },
+      "aliases": [
+        "wan-2.2-i2v-studio"
+      ],
+      "note": "Wan 2.2 I2V A14B on STUDIO'S OWN Runpod serverless endpoint (`worker/wan22/`, ComfyUI on the stock `runpod/worker-comfyui` image, fp16 weights on a network volume), not a public one. Same LoRA contract as `wan-2.2-i2v-lora` — `high_noise_loras` / `low_noise_loras` are lists of `{path, scale}`, one adapter per denoising expert, bound with --lora-high-key / --lora-low-key and presigned at submit, `lora_scale` studio's one number for every `scale` — plus everything the public endpoint refuses: an END FRAME (`end_image`, bound with --end-run / --end-key, Wan 2.2's own first-last-frame conditioning), any length in frames (`num_frames`, 4k+1, 81 = 5 s at 16 fps, 121 = 7.5 s, the registry caps at 161; 121 and 129 measured on an H100 80GB), `fps`, `width`/`height` (unset: 1280x720 for a landscape still, 720x1280 for a portrait one; the still is centre-cropped to the aspect), `steps`, `guidance` (cfg), `shift`, a real `negative_prompt` (Wan's own when unset), a repeatable `seed`, and a `mode`: `quality` (Wan's 20 steps) or `fast` (the Wan 2.2 Lightning 4-step distillation pair loaded ahead of yours; about a fifth of the time and cost). No safety checker, no prompt expansion. The worker PUTs the mp4 to a grant `dispatch` mints on `scratch/<run>/` (`output_grant`) and answers `result` + `cost`; the closing path files it under `output/` like any Runpod clip. Cost is worker-seconds x the GPU's flex price (H100: $0.00116/s): $1.66 measured for 121 frames at 720p in quality mode with an end frame (24 min on the serverless worker; a dev pod on the same GPU type ran twice as fast, unexplained yet), about a third of that in fast mode, plus a cold start of ~1 min plus the first model load (~2 min) when no worker is warm (max 1 worker, scales to zero; the 100 GB volume is the standing cost, ~$7/month). `studio/scripts/runpod-endpoint-up.sh` creates it, `-down.sh` removes it.",
       "input": {
         "required": [
           "prompt",
@@ -1802,7 +2091,7 @@
           "prompt": {
             "type": "string",
             "title": "Prompt",
-            "description": "The motion \u2014 what moves, how the camera moves, what changes by the end. The frame is already there; say the LoRA's trigger word."
+            "description": "The motion — what moves, how the camera moves, what changes by the end. The frame is already there; say the LoRA's trigger word."
           },
           "image": {
             "type": "string",
@@ -1905,7 +2194,7 @@
               "fast"
             ],
             "default": "quality",
-            "description": "`quality`: Wan's own 20-step sampling (steps 20, guidance 3.5, shift 8). `fast`: the Wan 2.2 Lightning 4-step distillation pair loaded ahead of yours (steps 4, guidance 1, shift 5) \u2014 about a fifth of the render time and cost, slightly flatter motion. An explicit steps/guidance/shift overrides the mode's."
+            "description": "`quality`: Wan's own 20-step sampling (steps 20, guidance 3.5, shift 8). `fast`: the Wan 2.2 Lightning 4-step distillation pair loaded ahead of yours (steps 4, guidance 1, shift 5) — about a fifth of the render time and cost, slightly flatter motion. An explicit steps/guidance/shift overrides the mode's."
           },
           "steps": {
             "type": "integer",
@@ -1936,29 +2225,6 @@
           }
         }
       },
-      "key": "wan-2.2-i2v-studio",
-      "kind": "video",
-      "loras": {
-        "high": "high_noise_loras",
-        "low": "low_noise_loras",
-        "accepts_ext": [
-          ".safetensors"
-        ],
-        "scale_param": "lora_scale"
-      },
-      "model": "runpod/unrxp9badsq4g2",
-      "note": "Wan 2.2 I2V A14B on STUDIO'S OWN Runpod serverless endpoint (`worker/wan22/`, ComfyUI on the stock `runpod/worker-comfyui` image, fp16 weights on a network volume), not a public one. Same LoRA contract as `wan-2.2-i2v-lora` \u2014 `high_noise_loras` / `low_noise_loras` are lists of `{path, scale}`, one adapter per denoising expert, bound with --lora-high-key / --lora-low-key and presigned at submit, `lora_scale` studio's one number for every `scale` \u2014 plus everything the public endpoint refuses: an END FRAME (`end_image`, bound with --end-run / --end-key, Wan 2.2's own first-last-frame conditioning), any length in frames (`num_frames`, 4k+1, 81 = 5 s at 16 fps, 121 = 7.5 s, the registry caps at 161; 121 and 129 measured on an H100 80GB), `fps`, `width`/`height` (unset: 1280x720 for a landscape still, 720x1280 for a portrait one; the still is centre-cropped to the aspect), `steps`, `guidance` (cfg), `shift`, a real `negative_prompt` (Wan's own when unset), a repeatable `seed`, and a `mode`: `quality` (Wan's 20 steps) or `fast` (the Wan 2.2 Lightning 4-step distillation pair loaded ahead of yours; about a fifth of the time and cost). No safety checker, no prompt expansion. The worker PUTs the mp4 to a grant `dispatch` mints on `scratch/<run>/` (`output_grant`) and answers `result` + `cost`; the closing path files it under `output/` like any Runpod clip. Cost is worker-seconds x the GPU's flex price (H100: $0.00116/s): $1.66 measured for 121 frames at 720p in quality mode with an end frame (24 min on the serverless worker; a dev pod on the same GPU type ran twice as fast, unexplained yet), about a third of that in fast mode, plus a cold start of ~1 min plus the first model load (~2 min) when no worker is warm (max 1 worker, scales to zero; the 100 GB volume is the standing cost, ~$7/month). `studio/scripts/runpod-endpoint-up.sh` creates it, `-down.sh` removes it.",
-      "output_grant": {
-        "put": "output_url",
-        "get": "result_url",
-        "content_type": "video/mp4",
-        "ext": ".mp4"
-      },
-      "prompt": {
-        "max_chars": null
-      },
-      "provider": "runpod",
-      "skill": "studio-media-wan-2-2-i2v-studio",
       "snapshot": {
         "lora_scale": {
           "default": 1.0,
@@ -1999,41 +2265,50 @@
         },
         "refreshed": "2026-09-20"
       },
+      "key": "runpod-wan-2.2-i2v-studio"
+    },
+    "fal-wan-3.0-t2v": {
+      "model": "fal/alibaba/wan-3.0/text-to-video",
+      "provider": "fal",
+      "kind": "video",
+      "skill": "studio-media-wan-3-0-t2v",
+      "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": []
+      },
+      "prompt": {
+        "max_chars": 20000
+      },
       "video": {
-        "negative": "param",
+        "negative": "prompt",
         "technical": "api",
         "max_cuts": null,
         "image_tokens": false,
-        "resolution_field": null,
+        "resolution_field": "resolution",
         "resolution_map": null,
-        "allow_intelligent_duration": false
-      }
-    },
-    "wan-3.0-t2v": {
-      "aliases": [],
+        "allow_intelligent_duration": true
+      },
       "defaults": {
         "resolution": "720p"
       },
-      "images": {
-        "accepts_ext": [],
-        "end": null,
-        "max_refs": null,
-        "refs": null,
-        "start": null,
-        "start_excludes_refs": false
-      },
-      "key": "wan-3.0-t2v",
-      "kind": "video",
-      "model": "fal/alibaba/wan-3.0/text-to-video",
-      "note": "Alibaba's Wan 3.0, text-to-video, on fal.ai's queue API (the third provider: `provider: fal`, `model: fal/<endpoint>`; neither Replicate nor Runpod hosts Wan 3.0 in September 2026). Prose prompt in, a clip of 2\u201330 s out at 480p/720p/1080p in any of five aspect ratios, with native audio. No image input of any kind \u2014 for a start or end frame use wan-3.0-i2v, for reference images wan-3.0-r2v. The schema is live: fal publishes an OpenAPI document per endpoint and `models show`/`refresh` read it. Priced per second of output by resolution: $0.05/s at 480p, $0.10/s at 720p, $0.20/s at 1080p (fal, September 2026) \u2014 a 5 s clip is $0.25 / $0.50 / $1.00 \u2014 and fal's body carries no price, so `cost.amount` stays null; fal's dashboard is the bill. The registry defaults `resolution` to 720p for that reason (fal's own default is 1080p). `duration` is any integer 2\u201330, or null for the model to pick a length from the prompt; `aspect_ratio` is `adaptive` by default and takes 16:9 / 4:3 / 1:1 / 3:4 / 9:16. `audio` (on by default) generates a soundtrack in the same pass. `enable_prompt_expansion` is left ON, unlike the Wan 2.6 entries, because fal says turning it off degrades the result \u2014 the rewritten prompt comes back as `actual_prompt` and the run stores the response, so what was actually sent to the model is on the record. `enable_thinking` (off) adds a reasoning pass and latency. A repeatable `seed`; no negative prompt field \u2014 keep-outs go in the prompt. Output URL is fal's CDN; the run stores the bytes.",
-      "prompt": {
-        "max_chars": 20000
-      },
-      "provider": "fal",
-      "skill": "studio-media-wan-3-0-t2v",
+      "aliases": [
+        "wan-3.0-t2v"
+      ],
+      "note": "Alibaba's Wan 3.0, text-to-video, on fal.ai's queue API (the third provider: `provider: fal`, `model: fal/<endpoint>`; neither Replicate nor Runpod hosts Wan 3.0 in September 2026). Prose prompt in, a clip of 2–30 s out at 480p/720p/1080p in any of five aspect ratios, with native audio. No image input of any kind — for a start or end frame use wan-3.0-i2v, for reference images wan-3.0-r2v. The schema is live: fal publishes an OpenAPI document per endpoint and `models show`/`refresh` read it. Priced per second of output by resolution: $0.05/s at 480p, $0.10/s at 720p, $0.20/s at 1080p (fal, September 2026) — a 5 s clip is $0.25 / $0.50 / $1.00 — and fal's body carries no price, so `cost.amount` stays null; fal's dashboard is the bill. The registry defaults `resolution` to 720p for that reason (fal's own default is 1080p). `duration` is any integer 2–30, or null for the model to pick a length from the prompt; `aspect_ratio` is `adaptive` by default and takes 16:9 / 4:3 / 1:1 / 3:4 / 9:16. `audio` (on by default) generates a soundtrack in the same pass. `enable_prompt_expansion` is left ON, unlike the Wan 2.6 entries, because fal says turning it off degrades the result — the rewritten prompt comes back as `actual_prompt` and the run stores the response, so what was actually sent to the model is on the record. `enable_thinking` (off) adds a reasoning pass and latency. A repeatable `seed`; no negative prompt field — keep-outs go in the prompt. Output URL is fal's CDN; the run stores the bytes.",
       "snapshot": {
+        "resolution": {
+          "enum": [
+            "480p",
+            "720p",
+            "1080p"
+          ],
+          "default": "1080p"
+        },
         "aspect_ratio": {
-          "default": "adaptive",
           "enum": [
             "adaptive",
             "16:9",
@@ -2041,15 +2316,16 @@
             "1:1",
             "3:4",
             "9:16"
-          ]
-        },
-        "audio": {
-          "default": true
+          ],
+          "default": "adaptive"
         },
         "duration": {
           "default": 5,
-          "maximum": 30,
-          "minimum": 2
+          "minimum": 2,
+          "maximum": 30
+        },
+        "audio": {
+          "default": true
         },
         "enable_prompt_expansion": {
           "default": true
@@ -2060,140 +2336,61 @@
         "enable_thinking": {
           "default": false
         },
-        "refreshed": "2026-09-16",
-        "resolution": {
-          "default": "1080p",
-          "enum": [
-            "480p",
-            "720p",
-            "1080p"
-          ]
-        },
         "seed": {
-          "maximum": 2147483647,
-          "minimum": 0
-        }
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "refreshed": "2026-09-16"
       },
-      "video": {
-        "allow_intelligent_duration": true,
-        "image_tokens": false,
-        "max_cuts": null,
-        "negative": "prompt",
-        "resolution_field": "resolution",
-        "resolution_map": null,
-        "technical": "api"
-      }
+      "key": "fal-wan-3.0-t2v"
     },
-    "wan-3.0-i2v": {
-      "aliases": [],
-      "defaults": {
-        "resolution": "720p"
-      },
-      "images": {
-        "accepts_ext": [
-          ".jpg",
-          ".jpeg",
-          ".png",
-          ".webp"
-        ],
-        "end": "end_image_url",
-        "max_refs": null,
-        "refs": null,
-        "start": "start_image_url",
-        "start_excludes_refs": false
-      },
-      "key": "wan-3.0-i2v",
-      "kind": "video",
+    "fal-wan-3.0-i2v": {
       "model": "fal/alibaba/wan-3.0/image-to-video",
-      "note": "Alibaba's Wan 3.0, image-to-video, on fal.ai's queue API (`provider: fal`). One REQUIRED start frame (`start_image_url`, bound with --start-run / --start-key) and an optional last frame (`end_image_url`, --end-run / --end-key) the clip lands on \u2014 the frame-first workflow every other video engine here uses, plus the interpolation only Veo and Seedance also offer. 2\u201330 s, 480p/720p/1080p, native audio; `aspect_ratio: adaptive` follows the frame. No reference list: identity comes from the frame. Live schema from fal's OpenAPI document. Priced per second of output by resolution: $0.05/s at 480p, $0.10/s at 720p, $0.20/s at 1080p (fal, September 2026) \u2014 a 5 s clip is $0.25 / $0.50 / $1.00 \u2014 and fal's body carries no price, so `cost.amount` stays null; fal's dashboard is the bill. The registry defaults `resolution` to 720p for that reason (fal's own default is 1080p). `duration` is any integer 2\u201330, or null for the model to pick a length from the prompt; `aspect_ratio` is `adaptive` by default and takes 16:9 / 4:3 / 1:1 / 3:4 / 9:16. `audio` (on by default) generates a soundtrack in the same pass. `enable_prompt_expansion` is left ON, unlike the Wan 2.6 entries, because fal says turning it off degrades the result \u2014 the rewritten prompt comes back as `actual_prompt` and the run stores the response, so what was actually sent to the model is on the record. `enable_thinking` (off) adds a reasoning pass and latency. A repeatable `seed`; no negative prompt field \u2014 keep-outs go in the prompt. Output URL is fal's CDN; the run stores the bytes.",
-      "prompt": {
-        "max_chars": 20000
-      },
       "provider": "fal",
+      "kind": "video",
       "skill": "studio-media-wan-3-0-i2v",
-      "snapshot": {
-        "aspect_ratio": {
-          "default": "adaptive",
-          "enum": [
-            "adaptive",
-            "16:9",
-            "4:3",
-            "1:1",
-            "3:4",
-            "9:16"
-          ]
-        },
-        "audio": {
-          "default": true
-        },
-        "duration": {
-          "default": 5,
-          "maximum": 30,
-          "minimum": 2
-        },
-        "enable_prompt_expansion": {
-          "default": true
-        },
-        "enable_safety_checker": {
-          "default": true
-        },
-        "enable_thinking": {
-          "default": false
-        },
-        "refreshed": "2026-09-16",
-        "resolution": {
-          "default": "1080p",
-          "enum": [
-            "480p",
-            "720p",
-            "1080p"
-          ]
-        },
-        "seed": {
-          "maximum": 2147483647,
-          "minimum": 0
-        }
-      },
-      "video": {
-        "allow_intelligent_duration": true,
-        "image_tokens": false,
-        "max_cuts": null,
-        "negative": "prompt",
-        "resolution_field": "resolution",
-        "resolution_map": null,
-        "technical": "api"
-      }
-    },
-    "wan-3.0-r2v": {
-      "aliases": [],
-      "defaults": {
-        "resolution": "720p"
-      },
       "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": "start_image_url",
+        "end": "end_image_url",
+        "start_excludes_refs": false,
         "accepts_ext": [
           ".jpg",
           ".jpeg",
           ".png",
           ".webp"
-        ],
-        "end": null,
-        "max_refs": 10,
-        "refs": "reference_image_urls",
-        "start": null,
-        "start_excludes_refs": false
+        ]
       },
-      "key": "wan-3.0-r2v",
-      "kind": "video",
-      "model": "fal/alibaba/wan-3.0/reference-to-video",
-      "note": "Alibaba's Wan 3.0, reference-to-video, on fal.ai's queue API (`provider: fal`). Up to 10 reference images (`reference_image_urls`, bound with --character / --ref-run / --key) that the prompt addresses positionally \u2014 'the subject in Image 1 walks past\u2026' \u2014 which is what makes it the Wan engine for a character on-model, the role Kling's and Seedance's reference lists play. No start or end frame: the references steer identity and the prompt steers the shot. 2\u201330 s, 480p/720p/1080p, native audio. The endpoint also takes up to 5 reference videos and 5 reference audios and a `web_url`/`file_url` to build from; none is wired \u2014 studio binds image nodes, never URLs, and no clip or audio send exists for this entry yet. Live schema from fal's OpenAPI document. Priced per second of output by resolution: $0.05/s at 480p, $0.10/s at 720p, $0.20/s at 1080p (fal, September 2026) \u2014 a 5 s clip is $0.25 / $0.50 / $1.00 \u2014 and fal's body carries no price, so `cost.amount` stays null; fal's dashboard is the bill. The registry defaults `resolution` to 720p for that reason (fal's own default is 1080p). `duration` is any integer 2\u201330, or null for the model to pick a length from the prompt; `aspect_ratio` is `adaptive` by default and takes 16:9 / 4:3 / 1:1 / 3:4 / 9:16. `audio` (on by default) generates a soundtrack in the same pass. `enable_prompt_expansion` is left ON, unlike the Wan 2.6 entries, because fal says turning it off degrades the result \u2014 the rewritten prompt comes back as `actual_prompt` and the run stores the response, so what was actually sent to the model is on the record. `enable_thinking` (off) adds a reasoning pass and latency. A repeatable `seed`; no negative prompt field \u2014 keep-outs go in the prompt. Output URL is fal's CDN; the run stores the bytes.",
       "prompt": {
         "max_chars": 20000
       },
-      "provider": "fal",
-      "skill": "studio-media-wan-3-0-r2v",
+      "video": {
+        "negative": "prompt",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": "resolution",
+        "resolution_map": null,
+        "allow_intelligent_duration": true
+      },
+      "defaults": {
+        "resolution": "720p"
+      },
+      "aliases": [
+        "wan-3.0-i2v"
+      ],
+      "note": "Alibaba's Wan 3.0, image-to-video, on fal.ai's queue API (`provider: fal`). One REQUIRED start frame (`start_image_url`, bound with --start-run / --start-key) and an optional last frame (`end_image_url`, --end-run / --end-key) the clip lands on — the frame-first workflow every other video engine here uses, plus the interpolation only Veo and Seedance also offer. 2–30 s, 480p/720p/1080p, native audio; `aspect_ratio: adaptive` follows the frame. No reference list: identity comes from the frame. Live schema from fal's OpenAPI document. Priced per second of output by resolution: $0.05/s at 480p, $0.10/s at 720p, $0.20/s at 1080p (fal, September 2026) — a 5 s clip is $0.25 / $0.50 / $1.00 — and fal's body carries no price, so `cost.amount` stays null; fal's dashboard is the bill. The registry defaults `resolution` to 720p for that reason (fal's own default is 1080p). `duration` is any integer 2–30, or null for the model to pick a length from the prompt; `aspect_ratio` is `adaptive` by default and takes 16:9 / 4:3 / 1:1 / 3:4 / 9:16. `audio` (on by default) generates a soundtrack in the same pass. `enable_prompt_expansion` is left ON, unlike the Wan 2.6 entries, because fal says turning it off degrades the result — the rewritten prompt comes back as `actual_prompt` and the run stores the response, so what was actually sent to the model is on the record. `enable_thinking` (off) adds a reasoning pass and latency. A repeatable `seed`; no negative prompt field — keep-outs go in the prompt. Output URL is fal's CDN; the run stores the bytes.",
       "snapshot": {
+        "resolution": {
+          "enum": [
+            "480p",
+            "720p",
+            "1080p"
+          ],
+          "default": "1080p"
+        },
         "aspect_ratio": {
-          "default": "adaptive",
           "enum": [
             "adaptive",
             "16:9",
@@ -2201,15 +2398,16 @@
             "1:1",
             "3:4",
             "9:16"
-          ]
-        },
-        "audio": {
-          "default": true
+          ],
+          "default": "adaptive"
         },
         "duration": {
           "default": 5,
-          "maximum": 30,
-          "minimum": 2
+          "minimum": 2,
+          "maximum": 30
+        },
+        "audio": {
+          "default": true
         },
         "enable_prompt_expansion": {
           "default": true
@@ -2220,31 +2418,97 @@
         "enable_thinking": {
           "default": false
         },
-        "refreshed": "2026-09-16",
+        "seed": {
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "refreshed": "2026-09-16"
+      },
+      "key": "fal-wan-3.0-i2v"
+    },
+    "fal-wan-3.0-r2v": {
+      "model": "fal/alibaba/wan-3.0/reference-to-video",
+      "provider": "fal",
+      "kind": "video",
+      "skill": "studio-media-wan-3-0-r2v",
+      "images": {
+        "refs": "reference_image_urls",
+        "max_refs": 10,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "prompt": {
+        "max_chars": 20000
+      },
+      "video": {
+        "negative": "prompt",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": true,
+        "resolution_field": "resolution",
+        "resolution_map": null,
+        "allow_intelligent_duration": true
+      },
+      "defaults": {
+        "resolution": "720p"
+      },
+      "aliases": [
+        "wan-3.0-r2v"
+      ],
+      "note": "Alibaba's Wan 3.0, reference-to-video, on fal.ai's queue API (`provider: fal`). Up to 10 reference images (`reference_image_urls`, bound with --character / --ref-run / --key) that the prompt addresses positionally — 'the subject in Image 1 walks past…' — which is what makes it the Wan engine for a character on-model, the role Kling's and Seedance's reference lists play. No start or end frame: the references steer identity and the prompt steers the shot. 2–30 s, 480p/720p/1080p, native audio. The endpoint also takes up to 5 reference videos and 5 reference audios and a `web_url`/`file_url` to build from; none is wired — studio binds image nodes, never URLs, and no clip or audio send exists for this entry yet. Live schema from fal's OpenAPI document. Priced per second of output by resolution: $0.05/s at 480p, $0.10/s at 720p, $0.20/s at 1080p (fal, September 2026) — a 5 s clip is $0.25 / $0.50 / $1.00 — and fal's body carries no price, so `cost.amount` stays null; fal's dashboard is the bill. The registry defaults `resolution` to 720p for that reason (fal's own default is 1080p). `duration` is any integer 2–30, or null for the model to pick a length from the prompt; `aspect_ratio` is `adaptive` by default and takes 16:9 / 4:3 / 1:1 / 3:4 / 9:16. `audio` (on by default) generates a soundtrack in the same pass. `enable_prompt_expansion` is left ON, unlike the Wan 2.6 entries, because fal says turning it off degrades the result — the rewritten prompt comes back as `actual_prompt` and the run stores the response, so what was actually sent to the model is on the record. `enable_thinking` (off) adds a reasoning pass and latency. A repeatable `seed`; no negative prompt field — keep-outs go in the prompt. Output URL is fal's CDN; the run stores the bytes.",
+      "snapshot": {
         "resolution": {
-          "default": "1080p",
           "enum": [
             "480p",
             "720p",
             "1080p"
-          ]
+          ],
+          "default": "1080p"
+        },
+        "aspect_ratio": {
+          "enum": [
+            "adaptive",
+            "16:9",
+            "4:3",
+            "1:1",
+            "3:4",
+            "9:16"
+          ],
+          "default": "adaptive"
+        },
+        "duration": {
+          "default": 5,
+          "minimum": 2,
+          "maximum": 30
+        },
+        "audio": {
+          "default": true
+        },
+        "enable_prompt_expansion": {
+          "default": true
+        },
+        "enable_safety_checker": {
+          "default": true
+        },
+        "enable_thinking": {
+          "default": false
         },
         "seed": {
-          "maximum": 2147483647,
-          "minimum": 0
-        }
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "refreshed": "2026-09-16"
       },
-      "video": {
-        "allow_intelligent_duration": true,
-        "image_tokens": true,
-        "max_cuts": null,
-        "negative": "prompt",
-        "resolution_field": "resolution",
-        "resolution_map": null,
-        "technical": "api"
-      }
+      "key": "fal-wan-3.0-r2v"
     },
-    "wan-3.0-openrouter": {
+    "openrouter-wan-3.0": {
       "model": "openrouter/alibaba/wan-3.0",
       "provider": "openrouter",
       "kind": "video",
@@ -2278,8 +2542,10 @@
         "resolution": "720p",
         "duration": 5
       },
-      "aliases": [],
-      "note": "Alibaba's Wan 3.0 through OpenRouter (the fourth provider: `provider: openrouter`, `model: openrouter/<slug>`), the same model as the fal `wan-3.0-*` entries routed straight to Alibaba \u2014 registered beside them so a run can be priced on either. ONE entry for two modes: text-to-video with no image, image-to-video with an optional `first_frame` (bound with --start-run / --start-key; sent as OpenRouter's `frame_images`). No end frame and no reference list \u2014 OpenRouter's card for this model offers `first_frame` only, so for an end frame use wan-3.0-i2v and for references wan-3.0-r2v, both on fal. No `negative_prompt`, no prompt-expansion switch, no thinking pass: OpenRouter forwards no passthrough parameters for this model, so keep-outs go in the prompt. 2\u201330 s (`duration`, an integer; the registry defaults 5), 480p/720p/1080p (`resolution`, defaulted to 720p), five aspect ratios (16:9 / 4:3 / 1:1 / 3:4 / 9:16, no `adaptive`), `generate_audio` on by default, a repeatable `seed`. Schema is live, synthesised from OpenRouter's model card. List price per second of output: $0.05 at 480p, $0.10 at 720p, $0.20 at 1080p (OpenRouter, September 2026), with a 15% discount OpenRouter advertises on this route that the card does not print. Measured 2026-09-18 on the first live run: a 2 s 480p clip cost $0.2125 = 5 s \u00d7 $0.05 \u00d7 0.85 \u2014 the discount is real and the clip is BILLED AS AT LEAST 5 SECONDS, so anything shorter costs the same as 5 s; at 5 s and above this is 15% under fal. The body carries `usage.cost`, so every run records what was actually charged. Output is fetched from OpenRouter's own content route with the key; the run stores the bytes.",
+      "aliases": [
+        "wan-3.0-openrouter"
+      ],
+      "note": "Alibaba's Wan 3.0 through OpenRouter (the fourth provider: `provider: openrouter`, `model: openrouter/<slug>`), the same model as the fal `wan-3.0-*` entries routed straight to Alibaba — registered beside them so a run can be priced on either. ONE entry for two modes: text-to-video with no image, image-to-video with an optional `first_frame` (bound with --start-run / --start-key; sent as OpenRouter's `frame_images`). No end frame and no reference list — OpenRouter's card for this model offers `first_frame` only, so for an end frame use wan-3.0-i2v and for references wan-3.0-r2v, both on fal. No `negative_prompt`, no prompt-expansion switch, no thinking pass: OpenRouter forwards no passthrough parameters for this model, so keep-outs go in the prompt. 2–30 s (`duration`, an integer; the registry defaults 5), 480p/720p/1080p (`resolution`, defaulted to 720p), five aspect ratios (16:9 / 4:3 / 1:1 / 3:4 / 9:16, no `adaptive`), `generate_audio` on by default, a repeatable `seed`. Schema is live, synthesised from OpenRouter's model card. List price per second of output: $0.05 at 480p, $0.10 at 720p, $0.20 at 1080p (OpenRouter, September 2026), with a 15% discount OpenRouter advertises on this route that the card does not print. Measured 2026-09-18 on the first live run: a 2 s 480p clip cost $0.2125 = 5 s × $0.05 × 0.85 — the discount is real and the clip is BILLED AS AT LEAST 5 SECONDS, so anything shorter costs the same as 5 s; at 5 s and above this is 15% under fal. The body carries `usage.cost`, so every run records what was actually charged. Output is fetched from OpenRouter's own content route with the key; the run stores the bytes.",
       "snapshot": {
         "aspect_ratio": {
           "enum": [
@@ -2337,18 +2603,37 @@
         },
         "refreshed": "2026-09-18"
       },
-      "key": "wan-3.0-openrouter"
+      "key": "openrouter-wan-3.0"
     },
-    "wan-2.2-lora-train": {
-      "aliases": [],
+    "runpod-wan-2.2-lora-train": {
+      "model": "runpod-pod/ai-toolkit-wan22-14b",
+      "provider": "runpod-pod",
+      "kind": "training",
+      "skill": "studio-media-lora-train",
+      "images": {
+        "refs": "dataset",
+        "max_refs": 40,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "prompt": null,
       "defaults": {
-        "base": "i2v",
-        "cloud": "secure",
-        "gpu": "a100",
-        "lr": 0.0001,
-        "max_hours": 6,
+        "steps": 2000,
+        "save_every": 250,
         "rank": 32,
+        "lr": 0.0001,
         "resolution": 768,
+        "gpu": "a100",
+        "cloud": "secure",
+        "base": "i2v",
+        "max_hours": 6,
         "sample_prompts": [
           "{trigger}, cooking in a bright kitchen, medium shot",
           "{trigger}, walking down a city street at night, neon signs, waist-up",
@@ -2356,215 +2641,208 @@
           "{trigger}, sitting on a beach at sunset, full body"
         ],
         "sample_seed": 42,
-        "sample_steps": 20,
-        "save_every": 250,
-        "steps": 2000
+        "sample_steps": 20
       },
-      "images": {
-        "accepts_ext": [
-          ".jpg",
-          ".jpeg",
-          ".png",
-          ".webp"
-        ],
-        "end": null,
-        "max_refs": 40,
-        "refs": "dataset",
-        "start": null,
-        "start_excludes_refs": false
-      },
+      "aliases": [
+        "wan-2.2-lora-train"
+      ],
+      "note": "Not a model: a TRAINER. Rents a Runpod GPU pod from the official ai-toolkit image, trains a Wan 2.2 14B LoRA pair (high-noise and low-noise experts, the pair `wan-2.2-i2v-lora` loads) on the character's images tagged `dataset`, uploads every checkpoint pair into `<character>/models/` and, at every save point, one sample still per `sample_prompts` entry into `<character>/models/samples/` (the run page shows them beside the pair), and terminates the pod. Captions are each file's description with the trigger in front — scene only, never the face. No prompt. Billed by the hour: an A100 80GB is ~$1.59/h and 2000 steps take roughly 1–2 h plus ~15 min of setup, so ~$3–5 an attempt; the run records pod-hours × rate. `max_hours` caps it on the pod itself. Runs ONLY where the API can reach Runpod's pod API and receive a callback; locally `studio runs reconcile` reads the pod's result from the bucket.",
       "input": {
+        "required": [
+          "trigger"
+        ],
         "properties": {
+          "dataset": {
+            "type": "array",
+            "title": "Dataset",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "The stills the LoRA learns from — the character's images tagged `dataset`, bound with --character <name> --pick-tag dataset. Each file's description is its caption (scene only, never the face), prefixed with the trigger."
+          },
+          "trigger": {
+            "type": "string",
+            "title": "Trigger",
+            "description": "The token every caption starts with and every prompt will say — the word the identity is bound to. One made-up word, e.g. `ohwx_pt`."
+          },
+          "steps": {
+            "type": "integer",
+            "title": "Steps",
+            "minimum": 250,
+            "maximum": 4000,
+            "default": 2000,
+            "description": "Training steps. One step is one image through the model and one nudge to the LoRA; 2000 over ~18 images sees each ~110 times."
+          },
+          "save_every": {
+            "type": "integer",
+            "title": "Save every",
+            "enum": [
+              250,
+              500
+            ],
+            "default": 250,
+            "description": "A checkpoint pair is written every this many steps — the candidates the evaluation compares."
+          },
+          "rank": {
+            "type": "integer",
+            "title": "Rank",
+            "enum": [
+              16,
+              32,
+              64
+            ],
+            "default": 32,
+            "description": "The LoRA's thinness. 32 is the trainer's default for a face; 16 is smaller and faster, 64 holds more and overfits sooner."
+          },
+          "lr": {
+            "type": "number",
+            "title": "Learning rate",
+            "minimum": 1e-05,
+            "maximum": 0.001,
+            "default": 0.0001,
+            "description": "How big each nudge is. 1e-4 is the trainer's default."
+          },
+          "resolution": {
+            "type": "integer",
+            "title": "Resolution",
+            "enum": [
+              512,
+              768,
+              1024
+            ],
+            "default": 768,
+            "description": "The training resolution the dataset is bucketed to."
+          },
+          "gpu": {
+            "type": "string",
+            "title": "GPU",
+            "enum": [
+              "a100",
+              "h100",
+              "4090"
+            ],
+            "default": "a100",
+            "description": "Which card the pod rents. 80 GB (a100/h100) trains bf16 unquantised; 4090 is not supported by this job yet."
+          },
+          "cloud": {
+            "type": "string",
+            "title": "Cloud",
+            "enum": [
+              "secure",
+              "community"
+            ],
+            "default": "secure",
+            "description": "Runpod's Secure Cloud (datacenter) or Community Cloud (cheaper, peer hardware)."
+          },
           "base": {
-            "default": "i2v",
-            "description": "Which Wan 2.2 14B the LoRA is trained against. `i2v` matches the inference endpoint.",
+            "type": "string",
+            "title": "Base",
             "enum": [
               "i2v",
               "t2v"
             ],
-            "title": "Base",
-            "type": "string"
-          },
-          "cloud": {
-            "default": "secure",
-            "description": "Runpod's Secure Cloud (datacenter) or Community Cloud (cheaper, peer hardware).",
-            "enum": [
-              "secure",
-              "community"
-            ],
-            "title": "Cloud",
-            "type": "string"
-          },
-          "dataset": {
-            "description": "The stills the LoRA learns from \u2014 the character's images tagged `dataset`, bound with --character <name> --pick-tag dataset. Each file's description is its caption (scene only, never the face), prefixed with the trigger.",
-            "items": {
-              "format": "uri",
-              "type": "string"
-            },
-            "title": "Dataset",
-            "type": "array"
-          },
-          "gpu": {
-            "default": "a100",
-            "description": "Which card the pod rents. 80 GB (a100/h100) trains bf16 unquantised; 4090 is not supported by this job yet.",
-            "enum": [
-              "a100",
-              "h100",
-              "4090"
-            ],
-            "title": "GPU",
-            "type": "string"
-          },
-          "lr": {
-            "default": 0.0001,
-            "description": "How big each nudge is. 1e-4 is the trainer's default.",
-            "maximum": 0.001,
-            "minimum": 1e-05,
-            "title": "Learning rate",
-            "type": "number"
+            "default": "i2v",
+            "description": "Which Wan 2.2 14B the LoRA is trained against. `i2v` matches the inference endpoint."
           },
           "max_hours": {
-            "default": 6,
-            "description": "The pod's own time cap: the trainer is killed and the run reports `failed` past this. Billing cannot outlive it.",
-            "maximum": 12,
-            "minimum": 1,
+            "type": "integer",
             "title": "Max hours",
-            "type": "integer"
-          },
-          "rank": {
-            "default": 32,
-            "description": "The LoRA's thinness. 32 is the trainer's default for a face; 16 is smaller and faster, 64 holds more and overfits sooner.",
-            "enum": [
-              16,
-              32,
-              64
-            ],
-            "title": "Rank",
-            "type": "integer"
-          },
-          "resolution": {
-            "default": 768,
-            "description": "The training resolution the dataset is bucketed to.",
-            "enum": [
-              512,
-              768,
-              1024
-            ],
-            "title": "Resolution",
-            "type": "integer"
+            "minimum": 1,
+            "maximum": 12,
+            "default": 6,
+            "description": "The pod's own time cap: the trainer is killed and the run reports `failed` past this. Billing cannot outlive it."
           },
           "sample_prompts": {
+            "type": "array",
+            "title": "Sample prompts",
+            "items": {
+              "type": "string"
+            },
             "default": [
               "{trigger}, cooking in a bright kitchen, medium shot",
               "{trigger}, walking down a city street at night, neon signs, waist-up",
               "{trigger}, in a dark suit and tie at a formal event, head and shoulders",
               "{trigger}, sitting on a beach at sunset, full body"
             ],
-            "description": "One still per prompt at every save point, rendered by the trainer with the checkpoint just written and filed beside the pair under `<character>/models/samples/` \u2014 the face emerging, without a video run by hand. `{trigger}` is replaced with the run's trigger. Scenes the dataset does NOT contain, so a sample shows whether the face travels rather than whether a photo was memorised. `[]` disables sampling. Each prompt adds ~20 sampler steps of a 14B model per save point (about a minute on an A100).",
-            "items": {
-              "type": "string"
-            },
-            "title": "Sample prompts",
-            "type": "array"
+            "description": "One still per prompt at every save point, rendered by the trainer with the checkpoint just written and filed beside the pair under `<character>/models/samples/` — the face emerging, without a video run by hand. `{trigger}` is replaced with the run's trigger. On the `i2v` base (the default) each prompt re-renders one dataset photo — the I2V model samples from an image or not at all — dealt round-robin over the dataset, so a sample is that photo through the pair and the prompt steers little: read it for fidelity, not for the face travelling. On `t2v` a prompt is text-only, and scenes the dataset does NOT contain show whether the face travels rather than whether a photo was memorised. `[]` disables sampling. Each prompt adds ~20 sampler steps of a 14B model per save point (about a minute on an A100)."
           },
           "sample_seed": {
-            "default": 42,
-            "description": "The seed every sample is drawn with, the same at every save point, so the only thing that changes down the column is the LoRA.",
+            "type": "integer",
             "title": "Sample seed",
-            "type": "integer"
+            "default": 42,
+            "description": "The seed every sample is drawn with, the same at every save point, so the only thing that changes down the column is the LoRA."
           },
           "sample_steps": {
-            "default": 20,
-            "description": "Sampler steps per sample. 20 is enough to judge a face; more is slower for no more judgement.",
-            "maximum": 50,
-            "minimum": 1,
+            "type": "integer",
             "title": "Sample steps",
-            "type": "integer"
-          },
-          "save_every": {
-            "default": 250,
-            "description": "A checkpoint pair is written every this many steps \u2014 the candidates the evaluation compares.",
-            "enum": [
-              250,
-              500
-            ],
-            "title": "Save every",
-            "type": "integer"
-          },
-          "steps": {
-            "default": 2000,
-            "description": "Training steps. One step is one image through the model and one nudge to the LoRA; 2000 over ~18 images sees each ~110 times.",
-            "maximum": 4000,
-            "minimum": 250,
-            "title": "Steps",
-            "type": "integer"
-          },
-          "trigger": {
-            "description": "The token every caption starts with and every prompt will say \u2014 the word the identity is bound to. One made-up word, e.g. `ohwx_pt`.",
-            "title": "Trigger",
-            "type": "string"
+            "minimum": 1,
+            "maximum": 50,
+            "default": 20,
+            "description": "Sampler steps per sample. 20 is enough to judge a face; more is slower for no more judgement."
           }
-        },
-        "required": [
-          "trigger"
-        ]
+        }
       },
-      "key": "wan-2.2-lora-train",
-      "kind": "training",
-      "model": "runpod-pod/ai-toolkit-wan22-14b",
-      "note": "Not a model: a TRAINER. Rents a Runpod GPU pod from the official ai-toolkit image, trains a Wan 2.2 14B LoRA pair (high-noise and low-noise experts, the pair `wan-2.2-i2v-lora` loads) on the character's images tagged `dataset`, uploads every checkpoint pair into `<character>/models/` and, at every save point, one sample still per `sample_prompts` entry into `<character>/models/samples/` (the run page shows them beside the pair), and terminates the pod. Captions are each file's description with the trigger in front \u2014 scene only, never the face. No prompt. Billed by the hour: an A100 80GB is ~$1.59/h and 2000 steps take roughly 1\u20132 h plus ~15 min of setup, so ~$3\u20135 an attempt; the run records pod-hours \u00d7 rate. `max_hours` caps it on the pod itself. Runs ONLY where the API can reach Runpod's pod API and receive a callback; locally `studio runs reconcile` reads the pod's result from the bucket.",
-      "prompt": null,
-      "provider": "runpod-pod",
-      "skill": "studio-media-lora-train",
       "snapshot": {
-        "base": {
-          "default": "i2v",
+        "steps": {
+          "default": 2000,
+          "minimum": 250,
+          "maximum": 4000
+        },
+        "save_every": {
           "enum": [
-            "i2v",
-            "t2v"
-          ]
-        },
-        "cloud": {
-          "default": "secure",
-          "enum": [
-            "secure",
-            "community"
-          ]
-        },
-        "gpu": {
-          "default": "a100",
-          "enum": [
-            "a100",
-            "h100",
-            "4090"
-          ]
-        },
-        "lr": {
-          "default": 0.0001,
-          "maximum": 0.001,
-          "minimum": 1e-05
-        },
-        "max_hours": {
-          "default": 6,
-          "maximum": 12,
-          "minimum": 1
+            250,
+            500
+          ],
+          "default": 250
         },
         "rank": {
-          "default": 32,
           "enum": [
             16,
             32,
             64
-          ]
+          ],
+          "default": 32
         },
-        "refreshed": "2026-09-16",
+        "lr": {
+          "default": 0.0001,
+          "minimum": 1e-05,
+          "maximum": 0.001
+        },
         "resolution": {
-          "default": 768,
           "enum": [
             512,
             768,
             1024
-          ]
+          ],
+          "default": 768
+        },
+        "gpu": {
+          "enum": [
+            "a100",
+            "h100",
+            "4090"
+          ],
+          "default": "a100"
+        },
+        "cloud": {
+          "enum": [
+            "secure",
+            "community"
+          ],
+          "default": "secure"
+        },
+        "base": {
+          "enum": [
+            "i2v",
+            "t2v"
+          ],
+          "default": "i2v"
+        },
+        "max_hours": {
+          "default": 6,
+          "minimum": 1,
+          "maximum": 12
         },
         "sample_prompts": {
           "default": [
@@ -2579,34 +2857,41 @@
         },
         "sample_steps": {
           "default": 20,
-          "maximum": 50,
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 50
         },
-        "save_every": {
-          "default": 250,
-          "enum": [
-            250,
-            500
-          ]
-        },
-        "steps": {
-          "default": 2000,
-          "maximum": 4000,
-          "minimum": 250
-        }
-      }
+        "refreshed": "2026-09-16"
+      },
+      "key": "runpod-wan-2.2-lora-train"
     },
-    "ltx-2.3-lora-train": {
-      "aliases": [
-        "ltx-2-lora-train"
-      ],
+    "runpod-ltx-2.3-lora-train": {
+      "model": "runpod-pod/ai-toolkit-ltx23-22b",
+      "provider": "runpod-pod",
+      "kind": "training",
+      "skill": "studio-media-ltx-2-3-lora-train",
+      "images": {
+        "refs": "dataset",
+        "max_refs": 40,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "prompt": null,
       "defaults": {
-        "cloud": "secure",
-        "gpu": "h100",
-        "lr": 0.0001,
-        "max_hours": 6,
+        "steps": 1500,
+        "save_every": 250,
         "rank": 32,
+        "lr": 0.0001,
         "resolution": 768,
+        "gpu": "h100",
+        "cloud": "secure",
+        "max_hours": 6,
         "sample_prompts": [
           "{trigger}, cooking in a bright kitchen, medium shot",
           "{trigger}, walking down a city street at night, neon signs, waist-up",
@@ -2614,198 +2899,192 @@
           "{trigger}, sitting on a beach at sunset, full body"
         ],
         "sample_seed": 42,
-        "sample_steps": 20,
-        "save_every": 250,
-        "steps": 1500
+        "sample_steps": 20
       },
-      "images": {
-        "accepts_ext": [
-          ".jpg",
-          ".jpeg",
-          ".png",
-          ".webp"
-        ],
-        "end": null,
-        "max_refs": 40,
-        "refs": "dataset",
-        "start": null,
-        "start_excludes_refs": false
-      },
+      "aliases": [
+        "ltx-2.3-lora-train",
+        "ltx-2-lora-train"
+      ],
+      "note": "Not a model: a TRAINER. Rents a Runpod GPU pod from the official ai-toolkit image and trains an LTX-2.3 22B LoRA (Lightricks/LTX-2.3, `ltx-2.3-22b-dev.safetensors`, quantised to fit the 80 GB card beside its Gemma 3 text encoder) on the character's images tagged `dataset`. ONE FILE per checkpoint, not a pair — LTX is one transformer — uploaded into `<character>/models/` as it lands, and at every save point one text-only sample still per `sample_prompts` entry into `<character>/models/samples/`. Captions are each file's description with the trigger in front — scene only, never the face. No prompt. Billed by the hour: an H100 80GB is ~$3.49/h and 1500 steps took 1 h 36 min and $5.57 on 32 images with two sample prompts (measured 2026-09-20; the first checkpoint 22 min in, then one every ~15 min), so ~$5–7 an attempt; the run records pod-hours × rate. `max_hours` caps it on the pod itself. The file loads into `ltx-2.3-i2v-lora` (fal) with --lora-key. Runs ONLY where the API can reach Runpod's pod API and receive a callback; locally `studio runs reconcile` reads the pod's result from the bucket.",
       "input": {
+        "required": [
+          "trigger"
+        ],
         "properties": {
-          "cloud": {
-            "default": "secure",
-            "description": "Runpod's Secure Cloud (datacenter) or Community Cloud (cheaper, peer hardware).",
-            "enum": [
-              "secure",
-              "community"
-            ],
-            "title": "Cloud",
-            "type": "string"
-          },
           "dataset": {
-            "description": "The stills the LoRA learns from — the character's images tagged `dataset`, bound with --character <name> --pick-tag dataset. Each file's description is its caption (scene only, never the face), prefixed with the trigger.",
-            "items": {
-              "format": "uri",
-              "type": "string"
-            },
+            "type": "array",
             "title": "Dataset",
-            "type": "array"
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "The stills the LoRA learns from — the character's images tagged `dataset`, bound with --character <name> --pick-tag dataset. Each file's description is its caption (scene only, never the face), prefixed with the trigger."
           },
-          "gpu": {
-            "default": "h100",
-            "description": "Which card the pod rents. 80 GB (a100/h100) holds the quantised 22B model and its text encoder; h100 because A100 placement failed twice on 2026-09-20. 4090 is not supported by this job.",
+          "trigger": {
+            "type": "string",
+            "title": "Trigger",
+            "description": "The token every caption starts with and every prompt will say — the word the identity is bound to. One made-up word, e.g. `ohwx_pt`."
+          },
+          "steps": {
+            "type": "integer",
+            "title": "Steps",
+            "minimum": 250,
+            "maximum": 4000,
+            "default": 1500,
+            "description": "Training steps. One step is one image through the model and one nudge to the LoRA; 1500 over ~30 images sees each ~50 times, which is where a 22B model holds a face."
+          },
+          "save_every": {
+            "type": "integer",
+            "title": "Save every",
             "enum": [
-              "a100",
-              "h100",
-              "4090"
+              250,
+              500
             ],
-            "title": "GPU",
-            "type": "string"
-          },
-          "lr": {
-            "default": 0.0001,
-            "description": "How big each nudge is. 1e-4 is the trainer's default.",
-            "maximum": 0.001,
-            "minimum": 1e-05,
-            "title": "Learning rate",
-            "type": "number"
-          },
-          "max_hours": {
-            "default": 6,
-            "description": "The pod's own time cap: the trainer is killed and the run reports `failed` past this. Billing cannot outlive it.",
-            "maximum": 12,
-            "minimum": 1,
-            "title": "Max hours",
-            "type": "integer"
+            "default": 250,
+            "description": "A checkpoint pair is written every this many steps — the candidates the evaluation compares."
           },
           "rank": {
-            "default": 32,
-            "description": "The LoRA's thinness. 32 is the trainer's default for a face; 16 is smaller and faster, 64 holds more and overfits sooner.",
+            "type": "integer",
+            "title": "Rank",
             "enum": [
               16,
               32,
               64
             ],
-            "title": "Rank",
-            "type": "integer"
+            "default": 32,
+            "description": "The LoRA's thinness. 32 is the trainer's default for a face; 16 is smaller and faster, 64 holds more and overfits sooner."
+          },
+          "lr": {
+            "type": "number",
+            "title": "Learning rate",
+            "minimum": 1e-05,
+            "maximum": 0.001,
+            "default": 0.0001,
+            "description": "How big each nudge is. 1e-4 is the trainer's default."
           },
           "resolution": {
-            "default": 768,
-            "description": "The training resolution the dataset is bucketed to.",
+            "type": "integer",
+            "title": "Resolution",
             "enum": [
               512,
               768,
               1024
             ],
-            "title": "Resolution",
-            "type": "integer"
+            "default": 768,
+            "description": "The training resolution the dataset is bucketed to."
+          },
+          "gpu": {
+            "type": "string",
+            "title": "GPU",
+            "enum": [
+              "a100",
+              "h100",
+              "4090"
+            ],
+            "default": "h100",
+            "description": "Which card the pod rents. 80 GB (a100/h100) holds the quantised 22B model and its text encoder; h100 because A100 placement failed twice on 2026-09-20. 4090 is not supported by this job."
+          },
+          "cloud": {
+            "type": "string",
+            "title": "Cloud",
+            "enum": [
+              "secure",
+              "community"
+            ],
+            "default": "secure",
+            "description": "Runpod's Secure Cloud (datacenter) or Community Cloud (cheaper, peer hardware)."
+          },
+          "max_hours": {
+            "type": "integer",
+            "title": "Max hours",
+            "minimum": 1,
+            "maximum": 12,
+            "default": 6,
+            "description": "The pod's own time cap: the trainer is killed and the run reports `failed` past this. Billing cannot outlive it."
           },
           "sample_prompts": {
+            "type": "array",
+            "title": "Sample prompts",
+            "items": {
+              "type": "string"
+            },
             "default": [
               "{trigger}, cooking in a bright kitchen, medium shot",
               "{trigger}, walking down a city street at night, neon signs, waist-up",
               "{trigger}, in a dark suit and tie at a formal event, head and shoulders",
               "{trigger}, sitting on a beach at sunset, full body"
             ],
-            "description": "One still per prompt at every save point, rendered by the trainer with the checkpoint just written and filed beside it under `<character>/models/samples/` — the face emerging, without a video run by hand. `{trigger}` is replaced with the run's trigger. Text-only on this model (one transformer does both modes), so scenes the dataset does NOT contain show whether the face travels rather than whether a photo was memorised. `[]` disables sampling. Each prompt adds ~20 sampler steps of a 22B model per save point.",
-            "items": {
-              "type": "string"
-            },
-            "title": "Sample prompts",
-            "type": "array"
+            "description": "One still per prompt at every save point, rendered by the trainer with the checkpoint just written and filed beside it under `<character>/models/samples/` — the face emerging, without a video run by hand. `{trigger}` is replaced with the run's trigger. Text-only on this model (one transformer does both modes), so scenes the dataset does NOT contain show whether the face travels rather than whether a photo was memorised. `[]` disables sampling. Each prompt adds ~20 sampler steps of a 22B model per save point."
           },
           "sample_seed": {
-            "default": 42,
-            "description": "The seed every sample is drawn with, the same at every save point, so the only thing that changes down the column is the LoRA.",
+            "type": "integer",
             "title": "Sample seed",
-            "type": "integer"
+            "default": 42,
+            "description": "The seed every sample is drawn with, the same at every save point, so the only thing that changes down the column is the LoRA."
           },
           "sample_steps": {
-            "default": 20,
-            "description": "Sampler steps per sample. 20 is enough to judge a face; more is slower for no more judgement.",
-            "maximum": 50,
-            "minimum": 1,
+            "type": "integer",
             "title": "Sample steps",
-            "type": "integer"
-          },
-          "save_every": {
-            "default": 250,
-            "description": "A checkpoint pair is written every this many steps — the candidates the evaluation compares.",
-            "enum": [
-              250,
-              500
-            ],
-            "title": "Save every",
-            "type": "integer"
-          },
-          "steps": {
-            "default": 1500,
-            "description": "Training steps. One step is one image through the model and one nudge to the LoRA; 1500 over ~30 images sees each ~50 times, which is where a 22B model holds a face.",
-            "maximum": 4000,
-            "minimum": 250,
-            "title": "Steps",
-            "type": "integer"
-          },
-          "trigger": {
-            "description": "The token every caption starts with and every prompt will say — the word the identity is bound to. One made-up word, e.g. `ohwx_pt`.",
-            "title": "Trigger",
-            "type": "string"
+            "minimum": 1,
+            "maximum": 50,
+            "default": 20,
+            "description": "Sampler steps per sample. 20 is enough to judge a face; more is slower for no more judgement."
           }
-        },
-        "required": [
-          "trigger"
-        ]
+        }
       },
-      "key": "ltx-2.3-lora-train",
-      "kind": "training",
-      "model": "runpod-pod/ai-toolkit-ltx23-22b",
-      "note": "Not a model: a TRAINER. Rents a Runpod GPU pod from the official ai-toolkit image and trains an LTX-2.3 22B LoRA (Lightricks/LTX-2.3, `ltx-2.3-22b-dev.safetensors`, quantised to fit the 80 GB card beside its Gemma 3 text encoder) on the character's images tagged `dataset`. ONE FILE per checkpoint, not a pair — LTX is one transformer — uploaded into `<character>/models/` as it lands, and at every save point one text-only sample still per `sample_prompts` entry into `<character>/models/samples/`. Captions are each file's description with the trigger in front — scene only, never the face. No prompt. Billed by the hour: an H100 80GB is ~$3.49/h and 1500 steps took 1 h 36 min and $5.57 on 32 images with two sample prompts (measured 2026-09-20; the first checkpoint 22 min in, then one every ~15 min), so ~$5–7 an attempt; the run records pod-hours × rate. `max_hours` caps it on the pod itself. The file loads into `ltx-2.3-i2v-lora` (fal) with --lora-key. Runs ONLY where the API can reach Runpod's pod API and receive a callback; locally `studio runs reconcile` reads the pod's result from the bucket.",
-      "prompt": null,
-      "provider": "runpod-pod",
-      "skill": "studio-media-ltx-2-3-lora-train",
       "snapshot": {
-        "cloud": {
-          "default": "secure",
+        "steps": {
+          "default": 1500,
+          "minimum": 250,
+          "maximum": 4000
+        },
+        "save_every": {
           "enum": [
-            "secure",
-            "community"
-          ]
-        },
-        "gpu": {
-          "default": "h100",
-          "enum": [
-            "a100",
-            "h100",
-            "4090"
-          ]
-        },
-        "lr": {
-          "default": 0.0001,
-          "maximum": 0.001,
-          "minimum": 1e-05
-        },
-        "max_hours": {
-          "default": 6,
-          "maximum": 12,
-          "minimum": 1
+            250,
+            500
+          ],
+          "default": 250
         },
         "rank": {
-          "default": 32,
           "enum": [
             16,
             32,
             64
-          ]
+          ],
+          "default": 32
         },
-        "refreshed": "2026-09-20",
+        "lr": {
+          "default": 0.0001,
+          "minimum": 1e-05,
+          "maximum": 0.001
+        },
         "resolution": {
-          "default": 768,
           "enum": [
             512,
             768,
             1024
-          ]
+          ],
+          "default": 768
+        },
+        "gpu": {
+          "enum": [
+            "a100",
+            "h100",
+            "4090"
+          ],
+          "default": "h100"
+        },
+        "cloud": {
+          "enum": [
+            "secure",
+            "community"
+          ],
+          "default": "secure"
+        },
+        "max_hours": {
+          "default": 6,
+          "minimum": 1,
+          "maximum": 12
         },
         "sample_prompts": {
           "default": [
@@ -2820,221 +3099,223 @@
         },
         "sample_steps": {
           "default": 20,
-          "maximum": 50,
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 50
         },
-        "save_every": {
-          "default": 250,
-          "enum": [
-            250,
-            500
-          ]
-        },
-        "steps": {
-          "default": 1500,
-          "maximum": 4000,
-          "minimum": 250
-        }
-      }
-    },
-    "hunyuan-video-lora-train": {
-      "aliases": [],
-      "defaults": {
-        "cloud": "secure",
-        "gpu": "h100",
-        "lr": 0.0002,
-        "max_hours": 6,
-        "rank": 32,
-        "resolution": 768,
-        "sample_prompts": [],
-        "sample_seed": 42,
-        "sample_steps": 20,
-        "save_every": 250,
-        "steps": 2000
+        "refreshed": "2026-09-20"
       },
+      "key": "runpod-ltx-2.3-lora-train"
+    },
+    "runpod-hunyuan-video-lora-train": {
+      "model": "runpod-pod/musubi-hunyuan-video",
+      "provider": "runpod-pod",
+      "kind": "training",
+      "skill": "studio-media-hunyuan-video-lora-train",
       "images": {
+        "refs": "dataset",
+        "max_refs": 40,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
         "accepts_ext": [
           ".jpg",
           ".jpeg",
           ".png",
           ".webp"
-        ],
-        "end": null,
-        "max_refs": 40,
-        "refs": "dataset",
-        "start": null,
-        "start_excludes_refs": false
+        ]
       },
+      "prompt": null,
+      "defaults": {
+        "steps": 2000,
+        "save_every": 250,
+        "rank": 32,
+        "lr": 0.0002,
+        "resolution": 768,
+        "gpu": "h100",
+        "cloud": "secure",
+        "max_hours": 6,
+        "sample_prompts": [],
+        "sample_seed": 42,
+        "sample_steps": 20
+      },
+      "aliases": [
+        "hunyuan-video-lora-train"
+      ],
+      "note": "Not a model: a TRAINER, and the one here that studio cannot yet USE the output of. Rents a Runpod GPU pod from a plain PyTorch image, installs kohya-ss/musubi-tuner (ai-toolkit has no HunyuanVideo arch) and trains a HunyuanVideo 13B LoRA (tencent/HunyuanVideo, the official 720p T2V transformer, with ComfyUI's repackaged text encoders) on the character's images tagged `dataset`: latents and text embeddings cached first, then `hv_train_network.py`. ONE FILE per checkpoint, converted on the pod to the diffusers/ComfyUI key layout and uploaded into `<character>/models/` as it lands. No samples (`sample_prompts` must be `[]`). NO HOSTED ENDPOINT loads a HunyuanVideo LoRA into image-to-video as of 2026-09-20 — fal retired `hunyuan-video-lora` and `hunyuan-video-img2vid-lora`, Replicate's `zsxkib/hunyuan-video-lora` is text-to-video only and takes a bare URL — so a file this trains has no `--lora-key` destination in studio yet, and the job has not been run on a real pod. Billed by the hour; `max_hours` caps it on the pod itself.",
       "input": {
+        "required": [
+          "trigger"
+        ],
         "properties": {
-          "cloud": {
-            "default": "secure",
-            "description": "Runpod's Secure Cloud (datacenter) or Community Cloud (cheaper, peer hardware).",
-            "enum": [
-              "secure",
-              "community"
-            ],
-            "title": "Cloud",
-            "type": "string"
-          },
           "dataset": {
-            "description": "The stills the LoRA learns from — the character's images tagged `dataset`, bound with --character <name> --pick-tag dataset. Each file's description is its caption (scene only, never the face), prefixed with the trigger.",
-            "items": {
-              "format": "uri",
-              "type": "string"
-            },
+            "type": "array",
             "title": "Dataset",
-            "type": "array"
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "The stills the LoRA learns from — the character's images tagged `dataset`, bound with --character <name> --pick-tag dataset. Each file's description is its caption (scene only, never the face), prefixed with the trigger."
           },
-          "gpu": {
-            "default": "h100",
-            "description": "Which card the pod rents. 80 GB (a100/h100) trains bf16 unquantised; 4090 is not supported by this job yet.",
+          "trigger": {
+            "type": "string",
+            "title": "Trigger",
+            "description": "The token every caption starts with and every prompt will say — the word the identity is bound to. One made-up word, e.g. `ohwx_pt`."
+          },
+          "steps": {
+            "type": "integer",
+            "title": "Steps",
+            "minimum": 250,
+            "maximum": 4000,
+            "default": 2000,
+            "description": "Training steps. One step is one image through the model and one nudge to the LoRA; 2000 over ~18 images sees each ~110 times."
+          },
+          "save_every": {
+            "type": "integer",
+            "title": "Save every",
             "enum": [
-              "a100",
-              "h100",
-              "4090"
+              250,
+              500
             ],
-            "title": "GPU",
-            "type": "string"
-          },
-          "lr": {
-            "default": 0.0002,
-            "description": "How big each nudge is. 2e-4 is musubi-tuner's documented starting point for HunyuanVideo.",
-            "maximum": 0.001,
-            "minimum": 1e-05,
-            "title": "Learning rate",
-            "type": "number"
-          },
-          "max_hours": {
-            "default": 6,
-            "description": "The pod's own time cap: the trainer is killed and the run reports `failed` past this. Billing cannot outlive it.",
-            "maximum": 12,
-            "minimum": 1,
-            "title": "Max hours",
-            "type": "integer"
+            "default": 250,
+            "description": "A checkpoint pair is written every this many steps — the candidates the evaluation compares."
           },
           "rank": {
-            "default": 32,
-            "description": "The LoRA's thinness. 32 is the trainer's default for a face; 16 is smaller and faster, 64 holds more and overfits sooner.",
+            "type": "integer",
+            "title": "Rank",
             "enum": [
               16,
               32,
               64
             ],
-            "title": "Rank",
-            "type": "integer"
+            "default": 32,
+            "description": "The LoRA's thinness. 32 is the trainer's default for a face; 16 is smaller and faster, 64 holds more and overfits sooner."
+          },
+          "lr": {
+            "type": "number",
+            "title": "Learning rate",
+            "minimum": 1e-05,
+            "maximum": 0.001,
+            "default": 0.0002,
+            "description": "How big each nudge is. 2e-4 is musubi-tuner's documented starting point for HunyuanVideo."
           },
           "resolution": {
-            "default": 768,
-            "description": "The training resolution the dataset is bucketed to.",
+            "type": "integer",
+            "title": "Resolution",
             "enum": [
               512,
               768,
               1024
             ],
-            "title": "Resolution",
-            "type": "integer"
+            "default": 768,
+            "description": "The training resolution the dataset is bucketed to."
+          },
+          "gpu": {
+            "type": "string",
+            "title": "GPU",
+            "enum": [
+              "a100",
+              "h100",
+              "4090"
+            ],
+            "default": "h100",
+            "description": "Which card the pod rents. 80 GB (a100/h100) trains bf16 unquantised; 4090 is not supported by this job yet."
+          },
+          "cloud": {
+            "type": "string",
+            "title": "Cloud",
+            "enum": [
+              "secure",
+              "community"
+            ],
+            "default": "secure",
+            "description": "Runpod's Secure Cloud (datacenter) or Community Cloud (cheaper, peer hardware)."
+          },
+          "max_hours": {
+            "type": "integer",
+            "title": "Max hours",
+            "minimum": 1,
+            "maximum": 12,
+            "default": 6,
+            "description": "The pod's own time cap: the trainer is killed and the run reports `failed` past this. Billing cannot outlive it."
           },
           "sample_prompts": {
-            "default": [],
-            "description": "Not supported by this job: musubi-tuner's sampler needs the text encoders resident beside the transformer and its own prompt file. Must be `[]`.",
+            "type": "array",
+            "title": "Sample prompts",
             "items": {
               "type": "string"
             },
-            "title": "Sample prompts",
-            "type": "array"
+            "default": [],
+            "description": "Not supported by this job: musubi-tuner's sampler needs the text encoders resident beside the transformer and its own prompt file. Must be `[]`."
           },
           "sample_seed": {
-            "default": 42,
-            "description": "The seed every sample is drawn with, the same at every save point, so the only thing that changes down the column is the LoRA.",
+            "type": "integer",
             "title": "Sample seed",
-            "type": "integer"
+            "default": 42,
+            "description": "The seed every sample is drawn with, the same at every save point, so the only thing that changes down the column is the LoRA."
           },
           "sample_steps": {
-            "default": 20,
-            "description": "Sampler steps per sample. 20 is enough to judge a face; more is slower for no more judgement.",
-            "maximum": 50,
-            "minimum": 1,
+            "type": "integer",
             "title": "Sample steps",
-            "type": "integer"
-          },
-          "save_every": {
-            "default": 250,
-            "description": "A checkpoint pair is written every this many steps — the candidates the evaluation compares.",
-            "enum": [
-              250,
-              500
-            ],
-            "title": "Save every",
-            "type": "integer"
-          },
-          "steps": {
-            "default": 2000,
-            "description": "Training steps. One step is one image through the model and one nudge to the LoRA; 2000 over ~18 images sees each ~110 times.",
-            "maximum": 4000,
-            "minimum": 250,
-            "title": "Steps",
-            "type": "integer"
-          },
-          "trigger": {
-            "description": "The token every caption starts with and every prompt will say — the word the identity is bound to. One made-up word, e.g. `ohwx_pt`.",
-            "title": "Trigger",
-            "type": "string"
+            "minimum": 1,
+            "maximum": 50,
+            "default": 20,
+            "description": "Sampler steps per sample. 20 is enough to judge a face; more is slower for no more judgement."
           }
-        },
-        "required": [
-          "trigger"
-        ]
+        }
       },
-      "key": "hunyuan-video-lora-train",
-      "kind": "training",
-      "model": "runpod-pod/musubi-hunyuan-video",
-      "note": "Not a model: a TRAINER, and the one here that studio cannot yet USE the output of. Rents a Runpod GPU pod from a plain PyTorch image, installs kohya-ss/musubi-tuner (ai-toolkit has no HunyuanVideo arch) and trains a HunyuanVideo 13B LoRA (tencent/HunyuanVideo, the official 720p T2V transformer, with ComfyUI's repackaged text encoders) on the character's images tagged `dataset`: latents and text embeddings cached first, then `hv_train_network.py`. ONE FILE per checkpoint, converted on the pod to the diffusers/ComfyUI key layout and uploaded into `<character>/models/` as it lands. No samples (`sample_prompts` must be `[]`). NO HOSTED ENDPOINT loads a HunyuanVideo LoRA into image-to-video as of 2026-09-20 — fal retired `hunyuan-video-lora` and `hunyuan-video-img2vid-lora`, Replicate's `zsxkib/hunyuan-video-lora` is text-to-video only and takes a bare URL — so a file this trains has no `--lora-key` destination in studio yet, and the job has not been run on a real pod. Billed by the hour; `max_hours` caps it on the pod itself.",
-      "prompt": null,
-      "provider": "runpod-pod",
-      "skill": "studio-media-hunyuan-video-lora-train",
       "snapshot": {
-        "cloud": {
-          "default": "secure",
+        "steps": {
+          "default": 2000,
+          "minimum": 250,
+          "maximum": 4000
+        },
+        "save_every": {
           "enum": [
-            "secure",
-            "community"
-          ]
-        },
-        "gpu": {
-          "default": "h100",
-          "enum": [
-            "a100",
-            "h100",
-            "4090"
-          ]
-        },
-        "lr": {
-          "default": 0.0002,
-          "maximum": 0.001,
-          "minimum": 1e-05
-        },
-        "max_hours": {
-          "default": 6,
-          "maximum": 12,
-          "minimum": 1
+            250,
+            500
+          ],
+          "default": 250
         },
         "rank": {
-          "default": 32,
           "enum": [
             16,
             32,
             64
-          ]
+          ],
+          "default": 32
         },
-        "refreshed": "2026-09-20",
+        "lr": {
+          "default": 0.0002,
+          "minimum": 1e-05,
+          "maximum": 0.001
+        },
         "resolution": {
-          "default": 768,
           "enum": [
             512,
             768,
             1024
-          ]
+          ],
+          "default": 768
+        },
+        "gpu": {
+          "enum": [
+            "a100",
+            "h100",
+            "4090"
+          ],
+          "default": "h100"
+        },
+        "cloud": {
+          "enum": [
+            "secure",
+            "community"
+          ],
+          "default": "secure"
+        },
+        "max_hours": {
+          "default": 6,
+          "minimum": 1,
+          "maximum": 12
         },
         "sample_prompts": {
           "default": []
@@ -3044,86 +3325,108 @@
         },
         "sample_steps": {
           "default": 20,
-          "maximum": 50,
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 50
         },
-        "save_every": {
-          "default": 250,
-          "enum": [
-            250,
-            500
-          ]
-        },
-        "steps": {
-          "default": 2000,
-          "maximum": 4000,
-          "minimum": 250
-        }
-      }
-    },
-    "ltx-2.3-i2v-lora": {
-      "aliases": [
-        "ltx-2-i2v-lora"
-      ],
-      "defaults": {
-        "enable_prompt_expansion": false,
-        "generate_audio": false,
-        "num_frames": 121
+        "refreshed": "2026-09-20"
       },
+      "key": "runpod-hunyuan-video-lora-train"
+    },
+    "fal-ltx-2.3-i2v-lora": {
+      "model": "fal/fal-ai/ltx-2.3-22b/image-to-video/lora",
+      "provider": "fal",
+      "kind": "video",
+      "skill": "studio-media-ltx-2-3-i2v-lora",
       "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": "image_url",
+        "end": "end_image_url",
+        "start_excludes_refs": false,
         "accepts_ext": [
           ".jpg",
           ".jpeg",
           ".png",
           ".webp"
-        ],
-        "end": "end_image_url",
-        "max_refs": null,
-        "refs": null,
-        "start": "image_url",
-        "start_excludes_refs": false
+        ]
       },
-      "input": {
-        "properties": {
-          "lora_scale": {
-            "default": 1.0,
-            "description": "Studio's: the `scale` written into every bound LoRA. Never sent under this name.",
-            "maximum": 4,
-            "minimum": 0,
-            "title": "LoRA scale",
-            "type": "number"
-          }
-        },
-        "required": []
-      },
-      "key": "ltx-2.3-i2v-lora",
-      "kind": "video",
       "loras": {
+        "lora": "loras",
         "accepts_ext": [
           ".safetensors"
         ],
-        "lora": "loras",
         "scale_param": "lora_scale"
       },
-      "model": "fal/fal-ai/ltx-2.3-22b/image-to-video/lora",
-      "note": "Lightricks' LTX-2.3 22B, image-to-video WITH YOUR OWN LoRA, on fal.ai's queue API (`provider: fal`). The destination for a LoRA `ltx-2.3-lora-train` leaves: `loras` takes a list of `{path, scale}`, one file per adapter (LTX is one transformer, so a checkpoint is one file, not Wan 2.2's pair). In studio a LoRA is a SEND — a `.safetensors` node in the library, bound with --lora-key, presigned at submit — never a pasted URL (hard rule #3); `lora_scale` is studio's one number for every adapter's `scale` (0–4 on this endpoint). One REQUIRED start frame (`image_url`, --start-run / --start-key) and an optional end frame (`end_image_url`); `video_size: auto` follows the frame. Length is `num_frames` at `fps` (24): 121 frames is 5 s, 193 is 8 s; the endpoint rounds to 8n+1. `generate_audio` is OFF here by default (the model makes a soundtrack; a character test does not want one) and so is `enable_prompt_expansion`, so the trigger word reaches the model as written. `negative_prompt` carries a long default of its own. `seed` repeats a draw. Live schema from fal's OpenAPI document. Priced per megapixel of output (width × height × frames): $0.001805/MP (fal, September 2026) — a 5 s 720p clip is ~$0.20, 8 s ~$0.32 — and fal's body carries no price, so `cost.amount` stays null. `fal-ai/ltx-2/*` and `fal-ai/ltx-2-19b/*` are deprecated since 2026-08-15 (fal's banner: migrate to LTX-2.3), which is why this is the 2.3 endpoint and the trainer is the 2.3 arch.",
       "prompt": {
         "max_chars": null
       },
-      "provider": "fal",
-      "skill": "studio-media-ltx-2-3-i2v-lora",
+      "video": {
+        "negative": "negative_prompt",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": null,
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "defaults": {
+        "num_frames": 121,
+        "generate_audio": false,
+        "enable_prompt_expansion": false
+      },
+      "aliases": [
+        "ltx-2.3-i2v-lora",
+        "ltx-2-i2v-lora"
+      ],
+      "note": "Lightricks' LTX-2.3 22B, image-to-video WITH YOUR OWN LoRA, on fal.ai's queue API (`provider: fal`). The destination for a LoRA `ltx-2.3-lora-train` leaves: `loras` takes a list of `{path, scale}`, one file per adapter (LTX is one transformer, so a checkpoint is one file, not Wan 2.2's pair). In studio a LoRA is a SEND — a `.safetensors` node in the library, bound with --lora-key, presigned at submit — never a pasted URL (hard rule #3); `lora_scale` is studio's one number for every adapter's `scale` (0–4 on this endpoint). One REQUIRED start frame (`image_url`, --start-run / --start-key) and an optional end frame (`end_image_url`); `video_size: auto` follows the frame. Length is `num_frames` at `fps` (24): 121 frames is 5 s, 193 is 8 s; the endpoint rounds to 8n+1. `generate_audio` is OFF here by default (the model makes a soundtrack; a character test does not want one) and so is `enable_prompt_expansion`, so the trigger word reaches the model as written. `negative_prompt` carries a long default of its own. `seed` repeats a draw. Live schema from fal's OpenAPI document. Priced per megapixel of output (width × height × frames): $0.001805/MP (fal, September 2026) — a 5 s 720p clip is ~$0.20, 8 s ~$0.32 — and fal's body carries no price, so `cost.amount` stays null. `fal-ai/ltx-2/*` and `fal-ai/ltx-2-19b/*` are deprecated since 2026-08-15 (fal's banner: migrate to LTX-2.3), which is why this is the 2.3 endpoint and the trainer is the 2.3 arch.",
+      "input": {
+        "required": [],
+        "properties": {
+          "lora_scale": {
+            "type": "number",
+            "title": "LoRA scale",
+            "minimum": 0,
+            "maximum": 4,
+            "default": 1.0,
+            "description": "Studio's: the `scale` written into every bound LoRA. Never sent under this name."
+          }
+        }
+      },
       "snapshot": {
+        "lora_scale": {
+          "default": 1.0,
+          "minimum": 0,
+          "maximum": 4
+        },
+        "num_frames": {
+          "default": 121,
+          "minimum": 9,
+          "maximum": 481
+        },
+        "fps": {
+          "default": 24,
+          "minimum": 1,
+          "maximum": 60
+        },
+        "video_quality": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "maximum"
+          ],
+          "default": "high"
+        },
         "acceleration": {
-          "default": "regular",
           "enum": [
             "none",
             "regular",
             "high",
             "full"
-          ]
+          ],
+          "default": "regular"
         },
         "camera_lora": {
-          "default": "none",
           "enum": [
             "dolly_in",
             "dolly_out",
@@ -3133,7 +3436,24 @@
             "jib_down",
             "static",
             "none"
-          ]
+          ],
+          "default": "none"
+        },
+        "scheduler": {
+          "enum": [
+            "ltx2",
+            "linear_quadratic",
+            "beta"
+          ],
+          "default": "ltx2"
+        },
+        "num_inference_steps": {
+          "default": 40,
+          "minimum": 8,
+          "maximum": 50
+        },
+        "generate_audio": {
+          "default": true
         },
         "enable_prompt_expansion": {
           "default": true
@@ -3141,57 +3461,9 @@
         "enable_safety_checker": {
           "default": true
         },
-        "fps": {
-          "default": 24,
-          "maximum": 60,
-          "minimum": 1
-        },
-        "generate_audio": {
-          "default": true
-        },
-        "lora_scale": {
-          "default": 1.0,
-          "maximum": 4,
-          "minimum": 0
-        },
-        "num_frames": {
-          "default": 121,
-          "maximum": 481,
-          "minimum": 9
-        },
-        "num_inference_steps": {
-          "default": 40,
-          "maximum": 50,
-          "minimum": 8
-        },
-        "refreshed": "2026-09-20",
-        "scheduler": {
-          "default": "ltx2",
-          "enum": [
-            "ltx2",
-            "linear_quadratic",
-            "beta"
-          ]
-        },
-        "video_quality": {
-          "default": "high",
-          "enum": [
-            "low",
-            "medium",
-            "high",
-            "maximum"
-          ]
-        }
+        "refreshed": "2026-09-20"
       },
-      "video": {
-        "allow_intelligent_duration": false,
-        "image_tokens": false,
-        "max_cuts": null,
-        "negative": "negative_prompt",
-        "resolution_field": null,
-        "resolution_map": null,
-        "technical": "api"
-      }
+      "key": "fal-ltx-2.3-i2v-lora"
     }
   }
 }

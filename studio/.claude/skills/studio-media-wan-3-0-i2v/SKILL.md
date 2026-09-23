@@ -13,8 +13,8 @@ engine here uses, plus the first-and-last interpolation only Veo and Seedance
 also offer.
 
 > Invocation, hard rule #2, run recording and validation are shared —
-> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model wan-3.0-i2v …`,
-> and `studio models show wan-3.0-i2v` for the schema. Everything about
+> see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model fal-wan-3.0-i2v …`,
+> and `studio models show fal-wan-3.0-i2v` for the schema. Everything about
 > provider, price, duration, resolution, aspect, audio, seed, prompt
 > expansion and thinking is as on [`studio-media-wan-3-0-t2v`](../studio-media-wan-3-0-t2v/SKILL.md);
 > this page covers only what differs.
@@ -33,13 +33,13 @@ also offer.
 
 ```bash
 # animate the first output of a still run, five seconds at 720p
-studio run --model wan-3.0-i2v --project <project> \
+studio run --model fal-wan-3.0-i2v --project <project> \
   --start-run <project>/<still-run> \
   --extra '{"duration":5}' \
   --prompt "…"
 
 # open on one frame and land on another
-studio run --model wan-3.0-i2v --project <project> \
+studio run --model fal-wan-3.0-i2v --project <project> \
   --start-run <project>/<frame-a> --end-run <project>/<frame-b> \
   --extra '{"duration":8,"resolution":"1080p"}' \
   --prompt "…"

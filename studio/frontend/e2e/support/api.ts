@@ -212,9 +212,19 @@ const PIXEL = Buffer.from(
  * network — see that file's header.
  */
 const CLIP = readFileSync(join(HERE, "..", "fixtures", "e2e-asset.mp4"));
+/**
+ * Six seconds of silence — the voice sample the Voice tile's picker lists.
+ *
+ * Made, not captured, for the clip's reason and one more: the seed holds no
+ * sound at all, and a real voice sample is somebody's voice, which is not a
+ * thing to commit. `capture.py --video` writes it; the specs read its
+ * DURATION off the tile and never its contents.
+ */
+const VOICE = readFileSync(join(HERE, "..", "fixtures", "e2e-asset.wav"));
 
 const PIXEL_PATH = "/e2e-asset.png";
 const CLIP_PATH = "/e2e-asset.mp4";
+const VOICE_PATH = "/e2e-asset.wav";
 
 /**
  * The two things the seed does not hold, built out of two things it does.
@@ -230,6 +240,19 @@ const STILL_ITEM = reel.entries[0]!;
 
 /** The captured node the cold-link specs open, owner and all. */
 export const STILL = seedFolder.entries[0]!;
+
+/** The one audio row in the stubbed library. See `VOICE`. */
+export const VOICE_ITEM: Item = {
+  ...STILL_ITEM,
+  id: "node-e2e00000-0000-0000-0000-0000000v0ice",
+  key: "e2e/e2e-voice.wav",
+  name: "e2e-voice.wav",
+  kind: "audio",
+  content_type: "audio/wav",
+  size: VOICE.byteLength,
+  url: VOICE_PATH,
+  poster: undefined,
+};
 
 export const CLIP_ITEM: Item = {
   ...STILL_ITEM,
@@ -712,11 +735,17 @@ export async function stubApi(page: Page): Promise<void> {
       // The seed carries no video and a library does, so a reel that is stills
       // all the way down is the less faithful answer of the two.
       if (url.searchParams.get("depth") === "all") {
-        return json(route, {
-          ...reel,
-          entries: [CLIP_ITEM, ...reel.entries],
-          total: reel.total + 1,
-        });
+        // **The kind filter is honoured here, unlike the rest of the
+        // arguments.** Every other caller asks for pictures and clips and
+        // filters what comes back; the Voice tile's picker asks for
+        // `kind=audio` and would otherwise be handed fourteen stills to
+        // filter down to nothing, which is a passing test of an empty grid.
+        const kinds = (url.searchParams.get("kind") ?? "").split(",").filter(Boolean);
+        const all = [VOICE_ITEM, CLIP_ITEM, ...reel.entries];
+        const entries = kinds.length
+          ? all.filter((entry) => kinds.includes(entry.kind as string))
+          : all;
+        return json(route, { ...reel, entries, total: entries.length });
       }
       if (under === PROJECT_ROOT)
         return json(route, {
@@ -763,8 +792,9 @@ export async function stubApi(page: Page): Promise<void> {
     // decided by the node, because a re-sign of a clip that answers with a PNG
     // is exactly the failure this suite is here to notice.
     if (path.includes("/download-url") || path.includes("/asset")) {
+      const node = url.searchParams.get("node");
       const asset =
-        url.searchParams.get("node") === CLIP_ITEM.id ? CLIP_PATH : PIXEL_PATH;
+        node === CLIP_ITEM.id ? CLIP_PATH : node === VOICE_ITEM.id ? VOICE_PATH : PIXEL_PATH;
       return json(route, { url: `${url.origin}${asset}` });
     }
     return json(route, { error: `e2e: no fixture for ${path}` }, 501);
@@ -776,5 +806,9 @@ export async function stubApi(page: Page): Promise<void> {
 
   await page.route(`**${CLIP_PATH}`, (route) =>
     route.fulfill({ status: 200, contentType: "video/mp4", body: CLIP }),
+  );
+
+  await page.route(`**${VOICE_PATH}`, (route) =>
+    route.fulfill({ status: 200, contentType: "audio/wav", body: VOICE }),
   );
 }

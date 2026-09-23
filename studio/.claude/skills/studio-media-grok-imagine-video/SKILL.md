@@ -71,7 +71,7 @@ provider token. Older notes opening with `set -a; . ./.env; set +a` are a no-op.
 ```bash
 # animate a still
 studio run \
-  --model grok-imagine-video --project <project> \
+  --model replicate-grok-imagine-video --project <project> \
   --prompt "the subject slowly turns to camera and smiles, gentle push-in" \
   --start-run <runref> \
   --extra '{"duration": 8, "resolution": "720p", "aspect_ratio": "auto"}' \
@@ -98,7 +98,7 @@ submit — the same S3-only path a start frame takes. The model accepts
 `.mp4/.mov/.webm`; anything else is refused by name before a draft is written.
 
 ```bash
-studio run --model grok-imagine-video --project <project> \
+studio run --model replicate-grok-imagine-video --project <project> \
   --clip-run <project>/latest \
   --prompt "Add a silver necklace to the woman." \
   --name <file> --poll
@@ -170,7 +170,7 @@ Documented in the README, **not** confirmed by runs of ours:
 
 ## Verified
 
-`studio run --model grok-imagine-video --dry-run` with
+`studio run --model replicate-grok-imagine-video --dry-run` with
 `--extra '{"duration": 8, "resolution": "720p", "aspect_ratio": "16:9"}'` emits a
 correct payload — fields pass through to the Replicate `input` unchanged and the
 endpoint resolves to `xai/grok-imagine-video`.

@@ -179,7 +179,7 @@ studio presign --key <project>/runs/<run_id>/output/clip.mp4
 # Formats differ between engines: GPT Image writes .webp, Kling takes only
 # .jpg/.jpeg/.png. Convert a still before handing it over as a start frame.
 # Safe to run unconditionally — an already-accepted image is left untouched.
-studio convert --run <project>/latest#1 --for kling --add-input <project>
+studio convert --run <project>/latest#1 --for replicate-kling --add-input <project>
 
 # Runs: history, chaining, and keepers
 studio runs list <project> --character <name>

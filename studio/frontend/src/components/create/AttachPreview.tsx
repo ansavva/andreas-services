@@ -76,9 +76,19 @@ export function AttachPreview({
             scrolled: the picture is what the drawer is for, the lines are
             why the tile was pressed half the time. */}
         <div
-          className={`${wide ? "h-[60dvh]" : "h-[42dvh]"} w-full shrink-0 overflow-hidden rounded-md bg-fill`}
+          className={`${wide ? "h-[60dvh]" : "h-[42dvh]"} flex w-full shrink-0 items-center
+                      justify-center overflow-hidden rounded-md bg-fill`}
         >
-          {role === "clip" ? (
+          {/* A voice sample: the browser's own controls, and no caption
+              track — there is none to have. The drawer's title names it. */}
+          {role === "voice" ? (
+            <audio
+              src={ref.url ?? undefined}
+              controls
+              preload="metadata"
+              className="w-full self-center px-4"
+            />
+          ) : role === "clip" ? (
             <video
               src={ref.url ?? undefined}
               controls
