@@ -459,6 +459,14 @@ def _check_elements(entry: dict, send_entries: list[dict], payload: dict) -> Non
             )
 
 
+#: fal says it on the `prompt` field of both its Kling entries, in its own
+#: words; the input schema's `required` array is `["start_image_url"]` alone,
+#: so a payload with no `prompt` is a complete one there. Replicate's proxy for
+#: the same model family requires `prompt`, which is why this is a property of
+#: the ENTRY — `video.shots_replace_prompt` — and not a rule about Kling.
+EXCLUSIVE = "Either prompt or multi_prompt must be provided, but not both"
+
+
 def _check_payload_rules(entry: dict, payload: dict) -> None:
     """Cross-field rules a per-field schema check cannot express.
 
@@ -466,7 +474,14 @@ def _check_payload_rules(entry: dict, payload: dict) -> None:
     that actually have it. Kling bills per second and rejects a multi-shot
     timeline whose shot durations do not sum to `duration` (E006) — caught here,
     not after billing.
+
+    **A payload carrying both text fields is refused, not repaired.** The CLI
+    folds the globals into the first beat while it is building the payload, so
+    the document a person read under hard rule #2 is the one that goes out;
+    doing the same rewrite here, at submit, would change a payload after it was
+    read and approved. See `submit.fold_timeline_globals` in the pipeline.
     """
+    shots = []
     if payload.get("multi_prompt"):
         raw = payload["multi_prompt"]
         try:
@@ -497,12 +512,39 @@ def _check_payload_rules(entry: dict, payload: dict) -> None:
                 f"{entry['key']} allows at most {cap} shots; got {len(shots)}."
             )
 
+    exclusive = registry.field(entry, "video.shots_replace_prompt")
+    if shots and exclusive and payload.get("prompt"):
+        raise schema.SchemaError(
+            f"{entry['key']} takes a prompt OR a timeline, never both — its "
+            f'schema says "{EXCLUSIVE}". Fold the globals into the first beat '
+            f"of `multi_prompt` and drop `prompt`."
+        )
+
     cap = registry.field(entry, "prompt.max_chars")
     if cap and len(payload.get("prompt") or "") > cap:
         raise schema.SchemaError(
             f"{entry['key']} caps the prompt at {cap} characters; "
             f"got {len(payload['prompt'])}."
         )
+    # **The cap follows the text.** Where the timeline replaced the prompt, the
+    # beats are the only prose the model is given and beat one is the long one,
+    # because the globals were folded into it. fal's schema caps `prompt` at
+    # 2500 and states no per-beat length, so the documented ceiling is applied
+    # to each beat — each of which is a prompt to the same model. Not on
+    # Replicate, where the beats go out BESIDE a prompt that has its own.
+    if cap and exclusive:
+        for index, shot in enumerate(shots, start=1):
+            text = shot.get("prompt") or "" if isinstance(shot, dict) else ""
+            if len(text) <= cap:
+                continue
+            raise schema.SchemaError(
+                f"{entry['key']} caps a prompt at {cap} characters and shot "
+                f"{index} carries {len(text)}."
+                + (" The globals fold into it, because a timeline is the only"
+                   " text this model takes — trim them, or move what is really"
+                   " per-beat into the beat it belongs to."
+                   if index == 1 else " Trim the beat.")
+            )
 
 
 def _check_scalar_fields(entry: dict, send_entries: list[dict]) -> None:

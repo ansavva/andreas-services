@@ -174,12 +174,8 @@ def build_payload(entry: dict, args) -> dict:
     # nothing else, and its registry entry records that as `"prompt": null` —
     # so demanding one here made it unrunnable: the only payload the CLI would
     # build was the one the model's own schema rejected.
-    if entry.get("prompt") is None:
-        if payload.get("prompt"):
-            die(f"{entry['key']} takes no prompt — drop --prompt/--prompt-file.")
-    elif not payload.get("prompt"):
-        die("a prompt is required — pass --prompt, --prompt-file, "
-            "or an --input-file containing one.")
+    if entry.get("prompt") is None and payload.get("prompt"):
+        die(f"{entry['key']} takes no prompt — drop --prompt/--prompt-file.")
 
     if args.extra:
         try:
@@ -210,6 +206,35 @@ def build_payload(entry: dict, args) -> dict:
     # discover on an invoice. That is what makes setting one safe at all.
     for field, value in REG.defaults(entry).items():
         payload.setdefault(field, value)
+
+    # ── the prompt, once every source of one has been read ───────────────────
+    #
+    # **After `--extra`, because a timeline arrives in it.** On a fal Kling
+    # entry the schema says "Either prompt or multi_prompt must be provided,
+    # but not both", so a multi-shot run has no prompt to give — and this
+    # refusal, checked before `--extra` was merged, could not see the timeline
+    # that made the payload complete. It blocked every timeline-only run there
+    # with a sentence naming three flags, none of which would have helped.
+    #
+    # The fold runs first so that what is required is measured against what
+    # will actually go out: the globals move into beat one and `prompt` comes
+    # off the payload, before the render a person reads.
+    #
+    # **Only where the registry says the timeline replaces the prompt.** On
+    # the Replicate entry `prompt` is required by the live schema and goes out
+    # beside `multi_prompt`; a timeline does not excuse one there, and this
+    # refusal is what says so before the provider does.
+    if entry.get("prompt") is not None:
+        try:
+            SUB.fold_timeline_globals(entry, payload)
+            timeline_is_the_text = bool(
+                REG.field(entry, "video.shots_replace_prompt")
+                and SUB.shots_in(payload))
+        except SUB.SubmitError as e:
+            die(str(e))
+        if not payload.get("prompt") and not timeline_is_the_text:
+            die("a prompt is required — pass --prompt, --prompt-file, "
+                "or an --input-file containing one.")
 
     # Never trust image fields baked into the payload — they are bound from S3.
     imgs = entry.get("images") or {}

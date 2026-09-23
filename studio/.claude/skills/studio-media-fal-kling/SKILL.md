@@ -88,7 +88,7 @@ Rules the preflight enforces before anything bills:
 |---|---|---|
 | Elements / voice | **none** — `generate_audio` only, and the model invents a voice per run | the whole of the above |
 | `duration` | an integer, 3–15 | a **string**, `"3"`–`"15"` |
-| `multi_prompt` | a JSON **string** of `{prompt, duration}` | a real **array** of them |
+| `multi_prompt` | a JSON **string** of `{prompt, duration}`, sent **beside** the prompt | a real **array**, and it **replaces** the prompt — see below |
 | Tier | `mode: standard / pro / 4k` on one entry | the **endpoint** is the tier; these two are 1080p |
 | Negative prompt | in the prompt | a real `negative_prompt` on `fal-kling-v3-i2v`; none on `fal-kling-o3-r2v` |
 | `cfg_scale` | — | 0–1 on `fal-kling-v3-i2v` |
@@ -96,6 +96,53 @@ Rules the preflight enforces before anything bills:
 
 Both take a start and end frame, native multi-shot to 6 cuts whose durations
 must sum to `duration`, and the 2500-character prompt ceiling.
+
+## A timeline REPLACES the prompt here
+
+fal's schema says it on the `prompt` field of both entries, in its own words:
+
+> Text prompt for video generation. **Either prompt or multi_prompt must be
+> provided, but not both.**
+
+The other half of the sentence is the input schema's `required` array, which on
+`fal-ai/kling-video/v3/pro/image-to-video` is `["start_image_url"]` alone: a
+payload with no `prompt` at all is a complete one. So on these two entries a
+multi-shot run sends **`multi_prompt` and nothing else**, and a payload
+carrying both is refused while the run is still a draft, quoting that line.
+
+That is the opposite of [`studio-media-kling`](../studio-media-kling/SKILL.md),
+where Replicate's proxy **requires** `prompt` and the two go out together. Same
+model family, two provider contracts — which is why the rule is registry data
+per entry rather than something true of Kling.
+
+**The globals go into the FIRST beat.** What the prompt used to carry — who is
+in the shot and their `@Element` tags, the room, the lighting, the grade, the
+sound, the closing `Avoid …` — is prepended to beat one, and `studio run` does
+that for you: pass the globals as `--prompt` and the beats in `--extra`, and
+the payload you are shown before you spend is the folded one.
+
+```bash
+studio run --model fal-kling-v3-i2v --project <project> \
+  --character <name> --start-key <node> \
+  --prompt "@Element1 on a wet platform at night. Sodium light, hard shadows. Handheld documentary grade. Avoid extra fingers." \
+  --extra '{"duration":"10","multi_prompt":[
+      {"prompt":"Wide shot, static. The train pulls away.","duration":"5"},
+      {"prompt":"Close on the departure board.","duration":"5"}]}'
+```
+
+First beat, not every beat: Kuaishou's own multi-shot guidance is "define the
+setting first, then organize by shot order" — a preamble, not a refrain — the
+model reads the beats in order, and a copy per beat multiplies the text by the
+cut count against a ceiling it has to fit under.
+
+**The 2500 characters follow the text.** With no `prompt` on the wire the beats
+are the only prose the model gets, so the ceiling is measured per beat — and
+beat one is the one a fold can blow. The refusal names the beat and says the
+globals landed in it.
+
+**The object you author does not change.** `--prompt-json` still records the
+authored document as `prompt.json` beside the run, unchanged; only the wire
+shape differs.
 
 **`image_urls` on the O3 entry is deliberately not bound.** It is a second
 reference list for style, cited as `@Image1`, and a registry entry names one
