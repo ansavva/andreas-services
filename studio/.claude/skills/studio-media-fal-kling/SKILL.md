@@ -20,6 +20,12 @@ Two entries, one family:
 > is the page for the formula, the shot structure and where dialogue has to
 > sit. **This page is about the two things only fal exposes.**
 
+**Live on fal since 2026-09-23.** The first fal Kling render succeeded on
+`fal-kling-v3-i2v`: three image elements — two characters, and one room bound
+as a frontal plus a reference — a 13 s three-beat timeline, `generate_audio`
+on, no negative prompt. The limits below marked *measured* come from that
+day's submits; the ones marked *assumed* have not been sent.
+
 ## An element is a subject
 
 Kling on fal does not take a flat list of reference images. It takes
@@ -131,7 +137,7 @@ Rules the preflight enforces before anything bills — the clip rows are for the
 |---|---|---|
 | Elements / voice | **none** — `generate_audio` only, and the model invents a voice per run | elements; an invented voice, as there — a bound voice needs a video element studio cannot bind yet |
 | `duration` | an integer, 3–15 | a **string**, `"3"`–`"15"` |
-| `multi_prompt` | a JSON **string** of `{prompt, duration}`, sent **beside** the prompt | a real **array**, and it **replaces** the prompt; **512 characters per beat** — see below |
+| `multi_prompt` | a JSON **string** of `{prompt, duration}`, sent **beside** the prompt | a real **array**, and it **replaces** the prompt; **512 characters per beat, each `@Element` tag costing extra** — see below |
 | Tier | `mode: standard / pro / 4k` on one entry | the **endpoint** is the tier; these two are 1080p |
 | Negative prompt | in the prompt | a real `negative_prompt` on `fal-kling-v3-i2v`; none on `fal-kling-o3-r2v` |
 | `cfg_scale` | — | 0–1 on `fal-kling-v3-i2v` |
@@ -169,11 +175,51 @@ The 2500 of `prompt.max_chars` belongs to the single `prompt` field only, which
 a timeline run does not send. `video.shot_max_chars` is 512 on both entries —
 measured on v3, **assumed** on O3, which shares its multi-shot schema.
 
+**Each `@Element` tag costs more than its nine characters.** fal's 512 is not
+the last check: fal passes the beat to Kling, and Kling checks it again. Three
+submits on 2026-09-23 were accepted by fal and refused by Kling with
+
+> Unexpected status code: 422: body: multiPrompt[0].prompt: size must be between 0 and 512
+
+fal's error detail shows the forwarded request, and the beat in it is ours
+verbatim — nothing prepended. Kling names only the first failing shot, so
+the other two beats of that timeline were never reported. The fourth submit
+rendered:
+
+| What was sent | Characters | `@Element` tags | Kling's answer |
+|---|---|---|---|
+| Shot one of the refused timeline | 492 | 5 | refused on `multiPrompt[0]`, three submits |
+| Shot two, same timeline | 484 | 6 | not reported (fail-fast on shot one) |
+| Shot three, same timeline | 496 | 5 | not reported |
+| The fourth submit, three beats | 359 / 464 / 462 | 4 each | **rendered** |
+
+*Inferred* from those four points, stated nowhere by fal or Kling: Kling
+expands each `@ElementN` into an internal token of about 15 characters, about
++6 a tag. 492 + 5 × 6 = 522 fails; 464 + 4 × 6 = 488 passes. The registry
+carries 8 a tag (`video.shot_tag_chars`), margin over the 6, so the budget is
+
+```
+len(beat) + 8 × (number of @Element tags)  ≤  512  — studio refuses above it
+                                           ≤  500  — what to write to
+```
+
+and `studio run` and the API both refuse a beat over 512 on that count,
+showing the sum. Measured on v3; **assumed** on O3.
+
+**Tag each subject once per beat, then name it in prose.** `@Element1 sits
+at the table. @Element2 leans in; the seated man looks up.` — not a tag on
+every mention. Four tags a beat rendered; five and six were refused.
+
+**The negative prompt does not share the budget.** Neither ours nor fal's
+default: setting `negative_prompt` to `""` on one of the refused submits changed
+nothing, so the keep-outs are not what put a beat over.
+
 **The globals go into the FIRST beat — and have to fit in it.** Whatever you
 pass as `--prompt` is prepended to beat one by `studio run`, and the payload
 you are shown before you spend is the folded one. A fold that takes beat one
-over 512 is refused before the draft is written, naming the beat, its length
-and how much of it the globals were. So on fal **the globals are tiny and each
+over 512 — tags counted as above — is refused before the draft is written,
+naming the beat, its length, how much of it the globals were and what the
+tags add. So on fal **the globals are tiny and each
 beat carries itself**:
 
 - **Beat one** opens with the identity anchor, **once, in one sentence** —
@@ -200,9 +246,11 @@ cut count against a ceiling it has to fit under.
 
 **The cap is checked per beat, on both sides.** `studio run` checks the fold
 before a draft is written; the API checks every beat again at submit, so a
-timeline authored in the app or pasted into `--extra` is held to the same 512.
-The refusal names the beat and its length, and says when the globals landed in
-it.
+timeline authored in the app or pasted into `--extra` is held to the same 512,
+tags weighted. The refusal names the beat and its length, shows the sum when
+tags pushed it over (`shot 2 is 484 characters and carries 6 @Element tags,
+which Kling counts as about 532 of its 512 (484 + 6 × 8)`), and says when the
+globals landed in it.
 
 **The object you author does not change.** `--prompt-json` still records the
 authored document as `prompt.json` beside the run, unchanged; only the wire

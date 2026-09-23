@@ -591,23 +591,66 @@ def _check_payload_rules(entry: dict, payload: dict) -> None:
     # known. Where it is not and the timeline replaced the prompt, the prompt's
     # own ceiling is the best word there is. Beat one is the one that trips it,
     # because the globals were folded into it. Not on Replicate, which declares
-    # neither and sends the beats BESIDE a prompt that has its own cap.
+    # neither and sends the beats BESIDE a prompt that has its own cap. And a
+    # beat is measured as Kling counts it, `@Element` tags weighted — see
+    # `beat_length`.
     shot_cap = registry.field(entry, "video.shot_max_chars") or (
         cap if exclusive else None)
     if shot_cap:
         for index, shot in enumerate(shots, start=1):
             text = shot.get("prompt") or "" if isinstance(shot, dict) else ""
-            if len(text) <= shot_cap:
+            counted, tags = beat_length(entry, text)
+            if counted <= shot_cap:
                 continue
             raise schema.SchemaError(
-                f"{entry['key']} caps each beat at {shot_cap} characters and "
-                f"shot {index} carries {len(text)}."
+                over_the_beat_cap(entry, index, text, shot_cap)
                 + (" The globals fold into it, because a timeline is the only"
                    " text this model takes — cut them to one identity"
                    " sentence, and move what is really per-beat into the beat"
                    " it belongs to."
-                   if index == 1 and exclusive else " Trim the beat.")
+                   if index == 1 and exclusive
+                   else "" if tags else " Trim the beat.")
             )
+
+
+# `@Element1`, `@Element2` … — how a Kling prompt on fal addresses a subject.
+ELEMENT_TAG = re.compile(r"@Element\d+")
+
+
+def beat_length(entry: dict, text: str) -> tuple[int, int]:
+    """How long the provider counts one beat, and how many element tags it has.
+
+    **On fal's Kling a tag costs more than its nine characters.** fal checks a
+    beat at 512 and passes it on; Kling then checks it again, after expanding
+    each `@ElementN` into an internal token. Three submits on 2026-09-23 that
+    fal accepted came back from Kling as "multiPrompt[0].prompt: size must be
+    between 0 and 512" — shot one was 492 characters with five tags — and the
+    fourth, 359/464/462 characters with four tags a beat, rendered. That is
+    consistent with about +6 a tag; inferred from those four points, documented
+    nowhere. `video.shot_tag_chars` carries 8, margin over the 6. An entry
+    without it counts characters and nothing else.
+    """
+    tags = len(ELEMENT_TAG.findall(text))
+    extra = registry.field(entry, "video.shot_tag_chars") or 0
+    return len(text) + extra * tags, tags
+
+
+def over_the_beat_cap(entry: dict, index: int, text: str, shot_cap: int) -> str:
+    """The refusal for a beat over its cap, with the arithmetic shown."""
+    counted, tags = beat_length(entry, text)
+    if counted == len(text):
+        return (f"{entry['key']} caps each beat at {shot_cap} characters and "
+                f"shot {index} carries {len(text)}.")
+    noun = "tag" if tags == 1 else "tags"
+    each = (counted - len(text)) // tags
+    return (
+        f"{entry['key']}: shot {index} is {len(text)} characters and carries "
+        f"{tags} @Element {noun}, which Kling counts as about {counted} of its "
+        f"{shot_cap} ({len(text)} + {tags} × {each}). Measured 2026-09-23: "
+        f"Kling refused a 492-character beat with five tags that fal had "
+        f"accepted, and rendered 464 characters with four. Cut words or tags "
+        f"— tag a subject once in the beat and name it in prose after that "
+        f"(\"the seated man\") instead of re-tagging it.")
 
 
 def _check_scalar_fields(entry: dict, send_entries: list[dict]) -> None:

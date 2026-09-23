@@ -3427,6 +3427,75 @@ def test_a_513_character_beat_passes_on_replicate():
                                      {"prompt": "y", "duration": 5}])})
 
 
+# Kling, behind fal, refused three beats fal had accepted — "multiPrompt[0].
+# prompt: size must be between 0 and 512" on 492 characters with five tags —
+# and rendered 464 with four (2026-09-23). Inferred ~+6 a tag; budgeted at 8
+# (`video.shot_tag_chars`), so a beat counts `len + 8 × tags` against the 512.
+
+
+def _tagged(length, tags):
+    """A beat of exactly `length` characters carrying `tags` @Element tags."""
+    text = "".join(f"@Element{n % 4 + 1} " for n in range(tags))
+    return text + "x" * (length - len(text))
+
+
+@pytest.mark.parametrize("key", ["fal-kling-v3-i2v", "fal-kling-o3-r2v"])
+def test_the_registry_weights_a_tag_at_8_on_fal(key):
+    assert registry.field(registry.get(key), "video.shot_tag_chars") == 8
+
+
+def test_a_beat_is_counted_as_kling_counts_it():
+    beat = _tagged(480, 5)
+    assert generate.beat_length(_FAL_ENTRY, beat) == (520, 5)
+    assert generate.beat_length(_REPLICATE_ENTRY, beat) == (480, 5)
+
+
+@pytest.mark.parametrize("key", ["fal-kling-v3-i2v", "fal-kling-o3-r2v"])
+def test_480_characters_with_five_tags_is_refused_with_the_arithmetic(key):
+    beats = [{"prompt": "the first beat", "duration": 5},
+             {"prompt": _tagged(480, 5), "duration": 5}]
+    with pytest.raises(schema.SchemaError) as refusal:
+        generate._check_payload_rules(
+            registry.get(key), {"duration": "10", "multi_prompt": beats})
+    said = str(refusal.value)
+    assert ("shot 2 is 480 characters and carries 5 @Element tags, which "
+            "Kling counts as about 520 of its 512 (480 + 5 × 8)") in said
+    assert "Measured 2026-09-23" in said
+    assert "Cut words or tags" in said and "the seated man" in said
+    assert "globals" not in said
+
+
+def test_the_same_beat_with_one_tag_passes():
+    beats = [{"prompt": "the first beat", "duration": 5},
+             {"prompt": _tagged(480, 1), "duration": 5}]
+    generate._check_payload_rules(
+        _FAL_ENTRY, {"duration": "10", "multi_prompt": beats})
+
+
+def test_tags_on_beat_one_still_name_the_fold():
+    beats = [{"prompt": _tagged(492, 5), "duration": 5},
+             {"prompt": "the second beat", "duration": 5}]
+    with pytest.raises(schema.SchemaError) as refusal:
+        generate._check_payload_rules(
+            _FAL_ENTRY, {"duration": "10", "multi_prompt": beats})
+    said = str(refusal.value)
+    assert "about 532 of its 512 (492 + 5 × 8)" in said and "globals" in said
+
+
+def test_the_measured_render_passes():
+    beats = [{"prompt": _tagged(n, 4), "duration": 5} for n in (359, 464, 462)]
+    generate._check_payload_rules(
+        _FAL_ENTRY, {"duration": "15", "multi_prompt": beats})
+
+
+def test_a_tag_is_not_weighted_on_replicate():
+    generate._check_payload_rules(
+        _REPLICATE_ENTRY,
+        {"duration": 10, "prompt": "the setting",
+         "multi_prompt": json.dumps([{"prompt": _tagged(510, 5), "duration": 5},
+                                     {"prompt": "y", "duration": 5}])})
+
+
 def test_a_long_beat_on_replicate_is_not_measured_against_the_prompt_cap():
     """There the beats go out BESIDE a prompt that has its own 2500."""
     generate._check_payload_rules(

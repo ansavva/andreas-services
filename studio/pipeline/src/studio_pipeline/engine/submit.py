@@ -53,6 +53,7 @@ it.
 import json
 import os
 import pathlib
+import re
 import sys
 import time
 
@@ -661,15 +662,24 @@ def fold_timeline_globals(entry: dict, payload: dict) -> bool:
     beat = str(first.get("prompt") or "").strip()
     folded = f"{globals_text}\n\n{beat}" if beat else globals_text
     cap = shot_cap(entry)
-    if cap and len(folded) > cap:
+    counted, tags = beat_length(entry, folded)
+    if cap and counted > cap:
+        weighted = "" if counted == len(folded) else (
+            f", and its {tags} @Element tag{'' if tags == 1 else 's'} make "
+            f"Kling count it as about {counted} ({len(folded)} + {tags} × "
+            f"{(counted - len(folded)) // tags}; measured 2026-09-23, see "
+            f"`beat_length`)")
         raise SubmitError(
             f"{entry['key']} caps each beat at {cap} characters, beat one "
             f"included, and folding the globals into shot 1 makes it "
             f"{len(folded)} ({len(globals_text)} of --prompt + {len(beat)} of "
-            f"the beat).\n"
+            f"the beat){weighted}.\n"
             f"       A timeline is the only text this model takes, so the "
             f"globals ride in beat one — cut --prompt to one identity sentence "
-            f"and move what is really per-beat into the beat it belongs to.")
+            f"and move what is really per-beat into the beat it belongs to."
+            + ("" if not weighted else
+               "\n       Tag a subject once in the beat and name it in prose "
+               "after that (\"the seated man\") instead of re-tagging it."))
     first["prompt"] = folded
     _write_shots_back(payload, shots)
     return True
@@ -690,6 +700,49 @@ def shot_cap(entry: dict) -> int | None:
     if REG.field(entry, "video.shots_replace_prompt"):
         return REG.field(entry, "prompt.max_chars")
     return None
+
+
+# `@Element1`, `@Element2` … — how a Kling prompt on fal addresses a subject.
+ELEMENT_TAG = re.compile(r"@Element\d+")
+
+
+def beat_length(entry: dict, text: str) -> tuple[int, int]:
+    """How long the provider counts one beat, and how many element tags it has.
+
+    **On fal's Kling a tag costs more than its nine characters.** fal checks a
+    beat at 512 and passes it on; Kling then checks it again, after expanding
+    each `@ElementN` into an internal token. Three submits on 2026-09-23 that
+    fal accepted came back from Kling as "multiPrompt[0].prompt: size must be
+    between 0 and 512" — shot one was 492 characters with five tags — and the
+    fourth, 359/464/462 characters with four tags a beat, rendered. That is
+    consistent with about +6 a tag; inferred from those four points, documented
+    nowhere. `video.shot_tag_chars` carries 8, margin over the 6. An entry
+    without it counts characters and nothing else. Mirrors the backend's
+    `generate.beat_length`.
+    """
+    tags = len(ELEMENT_TAG.findall(text))
+    extra = REG.field(entry, "video.shot_tag_chars") or 0
+    return len(text) + extra * tags, tags
+
+
+def over_the_beat_cap(entry: dict, index: int, text: str, cap: int) -> str:
+    """The refusal for a beat over its cap, with the arithmetic shown."""
+    counted, tags = beat_length(entry, text)
+    if counted == len(text):
+        return (f"{entry['key']} caps each beat at {cap} characters and "
+                f"shot {index} carries {len(text)}.")
+    noun = "tag" if tags == 1 else "tags"
+    each = (counted - len(text)) // tags
+    return (
+        f"{entry['key']}: shot {index} is {len(text)} characters and carries "
+        f"{tags} @Element {noun}, which Kling counts as about {counted} of its "
+        f"{cap} ({len(text)} + {tags} × {each}).\n"
+        f"       Measured 2026-09-23: Kling refused a 492-character beat with "
+        f"five tags that fal had accepted, and rendered 464 characters with "
+        f"four.\n"
+        f"       Cut words or tags — tag a subject once in the beat and name "
+        f"it in prose after that (\"the seated man\") instead of re-tagging "
+        f"it.")
 
 
 def check_payload_rules(entry: dict, payload: dict) -> None:
@@ -738,7 +791,8 @@ def check_payload_rules(entry: dict, payload: dict) -> None:
             f"{entry['key']} caps the prompt at {cap} characters; "
             f"got {len(payload['prompt'])}.")
     # **Each beat has its own cap** — `shot_cap`: 512 on fal's Kling, which
-    # its server enforces and its OpenAPI document does not state. Beat one is
+    # its server enforces and its OpenAPI document does not state, measured as
+    # Kling counts it, `@Element` tags weighted (`beat_length`). Beat one is
     # the long one where the globals were folded into it; `fold_timeline_globals`
     # already refused that case with the lengths, and this catches a timeline
     # that arrived over-long by itself, in `--extra` or an input file.
@@ -746,16 +800,17 @@ def check_payload_rules(entry: dict, payload: dict) -> None:
     if beat_cap:
         for index, shot in enumerate(shots or [], start=1):
             text = shot.get("prompt") or "" if isinstance(shot, dict) else ""
-            if len(text) <= beat_cap:
+            counted, tags = beat_length(entry, text)
+            if counted <= beat_cap:
                 continue
             raise SubmitError(
-                f"{entry['key']} caps each beat at {beat_cap} characters and "
-                f"shot {index} carries {len(text)}."
+                over_the_beat_cap(entry, index, text, beat_cap)
                 + (" The globals fold into it, because a timeline is the only"
                    " text this model takes — cut them to one identity"
                    " sentence, and move what is really per-beat into the beat"
                    " it belongs to."
-                   if index == 1 and exclusive else " Trim the beat."))
+                   if index == 1 and exclusive
+                   else "" if tags else " Trim the beat."))
 
 
 # --------------------------------------------------------------------------

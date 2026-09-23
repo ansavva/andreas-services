@@ -478,7 +478,9 @@ and a byte-identical object serialises to a byte-identical string.
 provider-specific.** On fal the same family takes `prompt` *or* `multi_prompt`
 and refuses both — the globals fold into the first beat instead, and **every
 beat there, the first included, is capped at 512 characters**, not the 2500 a
-single `prompt` gets. So on fal the globals are one identity sentence and each
+single `prompt` gets — [and each `@Element` tag costs
+extra](../studio-media-fal-kling/SKILL.md#a-timeline-replaces-the-prompt-here).
+So on fal the globals are one identity sentence and each
 beat carries its own camera, action and `Audio:` line. See
 [`studio-media-fal-kling`](../studio-media-fal-kling/SKILL.md#a-timeline-replaces-the-prompt-here).
 What follows is Replicate's contract, where `prompt` is required and always

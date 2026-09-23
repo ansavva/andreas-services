@@ -225,6 +225,86 @@ def test_a_later_beat_over_the_cap_does_not_blame_the_fold(fal):
     assert "shot 2" in said and "folded" not in said
 
 
+# ── an @Element tag costs more than its nine characters ─────────────────────
+#
+# Kling, behind fal, refused three beats fal had accepted — "multiPrompt[0].
+# prompt: size must be between 0 and 512" on 492 characters with five tags —
+# and rendered 464 with four (2026-09-23). Inferred ~+6 a tag; budgeted at 8
+# (`video.shot_tag_chars`), so a beat counts `len + 8 × tags` against the 512.
+
+def tagged(length, tags):
+    """A beat of exactly `length` characters carrying `tags` @Element tags."""
+    text = "".join(f"@Element{n % 4 + 1} " for n in range(tags))
+    return text + "x" * (length - len(text))
+
+
+@pytest.mark.parametrize("key", ["fal-kling-v3-i2v", "fal-kling-o3-r2v"])
+def test_the_registry_weights_a_tag_at_8_on_fal(key):
+    assert REG.field(REG.get(key), "video.shot_tag_chars") == 8
+
+
+def test_the_tags_are_counted_as_kling_counts_them(fal, replicate):
+    beat = tagged(480, 5)
+    assert SUB.beat_length(fal, beat) == (520, 5)
+    assert SUB.beat_length(replicate, beat) == (480, 5)
+
+
+@pytest.mark.parametrize("key", ["fal-kling-v3-i2v", "fal-kling-o3-r2v"])
+def test_480_characters_with_five_tags_is_refused_with_the_arithmetic(key):
+    with pytest.raises(SUB.SubmitError) as refusal:
+        SUB.check_payload_rules(
+            REG.get(key), {"duration": "10",
+                           "multi_prompt": [{"prompt": "first", "duration": "5"},
+                                            {"prompt": tagged(480, 5), "duration": "5"}]})
+    said = str(refusal.value)
+    assert ("shot 2 is 480 characters and carries 5 @Element tags, which "
+            "Kling counts as about 520 of its 512 (480 + 5 × 8)") in said
+    assert "Measured 2026-09-23" in said
+    assert "Cut words or tags" in said and "the seated man" in said
+    assert "globals" not in said
+
+
+def test_the_same_beat_with_one_tag_passes(fal):
+    SUB.check_payload_rules(
+        fal, {"duration": "10",
+              "multi_prompt": [{"prompt": "first", "duration": "5"},
+                               {"prompt": tagged(480, 1), "duration": "5"}]})
+
+
+def test_the_measured_render_passes_and_the_measured_refusal_does_not(fal):
+    """The four live data points, as lengths and tag counts."""
+    rendered = [tagged(359, 4), tagged(464, 4), tagged(462, 4)]
+    SUB.check_payload_rules(
+        fal, {"duration": "15", "multi_prompt": [
+            {"prompt": b, "duration": "5"} for b in rendered]})
+    refused = [tagged(492, 5), tagged(484, 6), tagged(496, 5)]
+    for index, beat in enumerate(refused, start=1):
+        payload = {"duration": "15", "multi_prompt": [
+            {"prompt": "short", "duration": "5"} for _ in range(3)]}
+        payload["multi_prompt"][index - 1]["prompt"] = beat
+        with pytest.raises(SUB.SubmitError):
+            SUB.check_payload_rules(fal, payload)
+
+
+def test_a_fold_the_tags_push_over_is_refused_with_the_arithmetic(fal, capsys):
+    with pytest.raises(SystemExit):
+        RUN.build_payload(
+            fal, args(prompt="g" * 200,
+                      extra=timeline([{"prompt": tagged(290, 5), "duration": "5"},
+                                      {"prompt": "second", "duration": "5"}])))
+    said = capsys.readouterr().err
+    assert "makes it 492 (200 of --prompt + 290 of the beat)" in said
+    assert "5 @Element tags make Kling count it as about 532 (492 + 5 × 8" in said
+    assert "the seated man" in said
+
+
+def test_a_tag_is_not_weighted_on_replicate(replicate):
+    SUB.check_payload_rules(
+        replicate, {"duration": 10, "prompt": GLOBALS,
+                    "multi_prompt": json.dumps([{"prompt": tagged(510, 5), "duration": 5},
+                                                {"prompt": "second", "duration": 5}])})
+
+
 # ── Replicate, pinned exactly as it is ──────────────────────────────────────
 
 def test_replicate_keeps_its_prompt_beside_the_timeline(replicate):
