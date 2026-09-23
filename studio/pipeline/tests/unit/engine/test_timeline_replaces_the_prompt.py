@@ -146,20 +146,73 @@ def test_both_fields_together_are_refused_with_the_schema_s_own_words(fal):
     assert "fal-kling-v3-i2v" in said
 
 
-# ── the ceiling follows the text ────────────────────────────────────────────
+# ── the ceiling follows the text: 512 a beat on fal ──────────────────────────
+#
+# fal's server caps every `multi_prompt[].prompt` at 512 characters and its
+# OpenAPI document does not say so; a live submit on 2026-09-23 came back 422,
+# "Prompt must not exceed 512 characters." The 2500 is the single `prompt`
+# field's alone. `video.shot_max_chars` carries the 512 — measured on v3,
+# assumed on O3 — and Replicate declares none.
 
-def test_folding_over_the_cap_is_refused_and_says_why(fal):
-    """2500 characters is the documented ceiling and beat one is where the
-    globals land, so that is the beat a fold can blow."""
+@pytest.mark.parametrize("key", ["fal-kling-v3-i2v", "fal-kling-o3-r2v"])
+def test_the_registry_caps_each_beat_at_512_on_fal(key):
+    assert REG.field(REG.get(key), "video.shot_max_chars") == 512
+    assert SUB.shot_cap(REG.get(key)) == 512
+
+
+def test_replicate_has_no_per_beat_cap(replicate):
+    assert REG.field(replicate, "video.shot_max_chars") is None
+    assert SUB.shot_cap(replicate) is None
+
+
+def test_folding_over_the_cap_is_refused_before_a_draft_and_says_why(fal, capsys):
+    """Beat one is capped like every beat, and it is where the globals land,
+    so that is the beat a fold can blow. Refused while the payload is built —
+    before the render, before a draft is written."""
+    with pytest.raises(SystemExit):
+        RUN.build_payload(
+            fal, args(prompt="g" * 400,
+                      extra=timeline([{"prompt": "b" * 200, "duration": "5"},
+                                      {"prompt": "second", "duration": "5"}])))
+    said = capsys.readouterr().err
+    assert "caps each beat at 512 characters" in said
+    assert "shot 1" in said and "602" in said
+    assert "400 of --prompt + 200 of the beat" in said
+    assert "one identity sentence" in said
+
+
+def test_a_fold_that_fits_is_left_alone(fal):
     payload = RUN.build_payload(
-        fal, args(prompt="g" * 2400,
-                  extra=timeline([{"prompt": "b" * 200, "duration": "5"},
+        fal, args(prompt="g" * 300,
+                  extra=timeline([{"prompt": "b" * 210, "duration": "5"},
                                   {"prompt": "second", "duration": "5"}])))
+    assert len(payload["multi_prompt"][0]["prompt"]) == 512
+    SUB.check_payload_rules(fal, payload)
+
+
+def test_the_fold_refuses_without_touching_the_payload(fal):
+    payload = {"prompt": "g" * 600, "multi_prompt": [{"prompt": "b", "duration": "5"}]}
+    with pytest.raises(SUB.SubmitError):
+        SUB.fold_timeline_globals(fal, payload)
+    assert payload["multi_prompt"][0]["prompt"] == "b"
+
+
+@pytest.mark.parametrize("key", ["fal-kling-v3-i2v", "fal-kling-o3-r2v"])
+def test_a_513_character_beat_is_refused_on_fal(key):
     with pytest.raises(SUB.SubmitError) as refusal:
-        SUB.check_payload_rules(fal, payload)
+        SUB.check_payload_rules(
+            REG.get(key), {"duration": "10",
+                           "multi_prompt": [{"prompt": "a" * 513, "duration": "5"},
+                                            {"prompt": "second", "duration": "5"}]})
     said = str(refusal.value)
-    assert "2500" in said and "shot 1" in said
-    assert "globals were folded into it" in said
+    assert f"{key} caps each beat at 512 characters and shot 1 carries 513" in said
+
+
+def test_a_513_character_beat_passes_on_replicate(replicate):
+    SUB.check_payload_rules(
+        replicate, {"duration": 10, "prompt": GLOBALS,
+                    "multi_prompt": json.dumps([{"prompt": "a" * 513, "duration": 5},
+                                                {"prompt": "second", "duration": 5}])})
 
 
 def test_a_later_beat_over_the_cap_does_not_blame_the_fold(fal):

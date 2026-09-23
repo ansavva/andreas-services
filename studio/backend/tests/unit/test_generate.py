@@ -31,7 +31,7 @@ from studio_core import config
 from studio_core.clients import replicate
 from studio_core.clients.aws import s3
 from studio_core.errors import NotFoundError, ValidationError
-from studio_core.services import catalog, generate, registry
+from studio_core.services import catalog, generate, registry, schema
 
 
 def _project(api, name="rooftop-teaser"):
@@ -3363,7 +3363,7 @@ def test_the_cap_follows_the_text_into_the_first_beat():
         generate._check_payload_rules(
             _FAL_ENTRY, {"duration": "10", "multi_prompt": beats})
     said = str(refusal.value)
-    assert "2500" in said and "shot 1" in said and "2600" in said
+    assert "512" in said and "shot 1" in said and "2600" in said
     assert "globals" in said
 
 
@@ -3375,6 +3375,56 @@ def test_a_later_beat_over_the_cap_is_refused_without_blaming_the_fold():
             _FAL_ENTRY, {"duration": "10", "multi_prompt": beats})
     said = str(refusal.value)
     assert "shot 2" in said and "globals" not in said
+
+
+# fal's server caps every beat at 512 characters and its OpenAPI document says
+# nothing of it. A live submit on 2026-09-23 came back 422, no charge:
+#
+#     body.multi_prompt.0.prompt: Value error, Prompt must not exceed 512
+#     characters.
+#
+# The 2500 is the single `prompt` field's alone. `video.shot_max_chars` carries
+# the 512 — measured on v3, assumed on O3 — and Replicate declares none.
+
+
+@pytest.mark.parametrize("key", ["fal-kling-v3-i2v", "fal-kling-o3-r2v"])
+def test_the_registry_caps_each_beat_at_512_on_fal(key):
+    assert registry.field(registry.get(key), "video.shot_max_chars") == 512
+    assert registry.field(registry.get(key), "prompt.max_chars") == 2500
+
+
+def test_replicate_declares_no_per_beat_cap():
+    assert registry.field(_REPLICATE_ENTRY, "video.shot_max_chars") is None
+
+
+@pytest.mark.parametrize("key", ["fal-kling-v3-i2v", "fal-kling-o3-r2v"])
+@pytest.mark.parametrize("beat", [0, 1])
+def test_a_513_character_beat_is_refused_on_fal(key, beat):
+    beats = [{"prompt": "the first beat", "duration": 5},
+             {"prompt": "the second beat", "duration": 5}]
+    beats[beat]["prompt"] = "x" * 513
+    with pytest.raises(schema.SchemaError) as refusal:
+        generate._check_payload_rules(
+            registry.get(key), {"duration": "10", "multi_prompt": beats})
+    said = str(refusal.value)
+    assert f"{key} caps each beat at 512 characters" in said
+    assert f"shot {beat + 1} carries 513" in said
+    assert ("globals" in said) == (beat == 0)
+
+
+def test_a_512_character_beat_passes_on_fal():
+    beats = [{"prompt": "x" * 512, "duration": 5},
+             {"prompt": "y" * 512, "duration": 5}]
+    generate._check_payload_rules(
+        _FAL_ENTRY, {"duration": "10", "multi_prompt": beats})
+
+
+def test_a_513_character_beat_passes_on_replicate():
+    generate._check_payload_rules(
+        _REPLICATE_ENTRY,
+        {"duration": 10, "prompt": "the setting",
+         "multi_prompt": json.dumps([{"prompt": "x" * 513, "duration": 5},
+                                     {"prompt": "y", "duration": 5}])})
 
 
 def test_a_long_beat_on_replicate_is_not_measured_against_the_prompt_cap():

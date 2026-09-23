@@ -392,6 +392,12 @@ VOICE_NEEDS_VIDEO_ADVICE = (
     "element carries a `video_url`. One element per request can carry a "
     "video, so one voice at most."
 )
+#: fal's own sentence, from a 422 on `fal-ai/kling-video/v3/pro/image-to-video`
+#: (2026-09-23, `body.elements.2`). The OpenAPI document says nothing of it:
+#: an IMAGE element needs a frontal view AND at least one other, and a lone
+#: picture is refused. Quoted so the refusal can be matched to what fal says.
+ELEMENT_NEEDS_TWO_VIEWS = ("Either frontal_image_url and reference_image_urls "
+                           "or video_url must be provided.")
 
 
 def _check_elements(entry: dict, send_entries: list[dict], payload: dict) -> None:
@@ -404,6 +410,12 @@ def _check_elements(entry: dict, send_entries: list[dict], payload: dict) -> Non
       the fifth is `Error code 1201`.
     * **More views of one subject than it takes.** The element's own
       `reference_image_urls` is documented 1–3 alongside the frontal.
+    * **Fewer views of one subject than it takes.** The same 1–3 has a floor
+      the schema does not state and the server enforces: an image element
+      with a frontal and no reference is refused, "Either frontal_image_url
+      and reference_image_urls or video_url must be provided." So an element
+      is `min_images_each` (2) to `max_images_each` (4) images — or a clip,
+      which carries the subject without any.
     * **Two clips.** "A request can only have one element with a video",
       says the schema, and nothing enforces it until the request is made.
       Because a voice binds only to an element with a video (next bullet),
@@ -446,6 +458,7 @@ def _check_elements(entry: dict, send_entries: list[dict], payload: dict) -> Non
             f"from. Bind fewer subjects."
         )
     each = block.get("max_images_each")
+    floor = block.get("min_images_each")
     for index, group in enumerate(groups, start=1):
         images = len(group["refs"]) + (1 if group["frontal"] else 0)
         if each and images > each:
@@ -465,6 +478,17 @@ def _check_elements(entry: dict, send_entries: list[dict], payload: dict) -> Non
                 f"{entry['key']}: @Element{index} binds a voice to an image "
                 f"element, and fal refuses that: \"{VOICE_NEEDS_VIDEO}\" "
                 + VOICE_NEEDS_VIDEO_ADVICE
+            )
+        # After the voice rules, so a voice on a lone picture is told about
+        # the voice — the rule that has a way out studio takes for now.
+        if floor and not group["clip"] and images < floor:
+            raise ValidationError(
+                f"{entry['key']}: @Element{index} carries {images} image(s) "
+                f"and an image element takes at least {floor} — fal refuses "
+                f"fewer: \"{ELEMENT_NEEDS_TWO_VIEWS}\" Bind a second view of "
+                f"that subject. Two stills of one room group as one element "
+                f"only when both sit in that location's tree, so copy the "
+                f"second into the location's folder."
             )
     clips = [group for group in groups if group["clip"]]
     if len(clips) > 1:
@@ -560,24 +584,29 @@ def _check_payload_rules(entry: dict, payload: dict) -> None:
             f"{entry['key']} caps the prompt at {cap} characters; "
             f"got {len(payload['prompt'])}."
         )
-    # **The cap follows the text.** Where the timeline replaced the prompt, the
-    # beats are the only prose the model is given and beat one is the long one,
-    # because the globals were folded into it. fal's schema caps `prompt` at
-    # 2500 and states no per-beat length, so the documented ceiling is applied
-    # to each beat — each of which is a prompt to the same model. Not on
-    # Replicate, where the beats go out BESIDE a prompt that has its own.
-    if cap and exclusive:
+    # **Each beat has its own cap, and on fal it is not the prompt's.** fal's
+    # OpenAPI caps `prompt` at 2500 and states no per-beat length; its server
+    # answers "Prompt must not exceed 512 characters." on `multi_prompt.N.prompt`
+    # (a 422 on 2026-09-23). `video.shot_max_chars` carries that where it is
+    # known. Where it is not and the timeline replaced the prompt, the prompt's
+    # own ceiling is the best word there is. Beat one is the one that trips it,
+    # because the globals were folded into it. Not on Replicate, which declares
+    # neither and sends the beats BESIDE a prompt that has its own cap.
+    shot_cap = registry.field(entry, "video.shot_max_chars") or (
+        cap if exclusive else None)
+    if shot_cap:
         for index, shot in enumerate(shots, start=1):
             text = shot.get("prompt") or "" if isinstance(shot, dict) else ""
-            if len(text) <= cap:
+            if len(text) <= shot_cap:
                 continue
             raise schema.SchemaError(
-                f"{entry['key']} caps a prompt at {cap} characters and shot "
-                f"{index} carries {len(text)}."
+                f"{entry['key']} caps each beat at {shot_cap} characters and "
+                f"shot {index} carries {len(text)}."
                 + (" The globals fold into it, because a timeline is the only"
-                   " text this model takes — trim them, or move what is really"
-                   " per-beat into the beat it belongs to."
-                   if index == 1 else " Trim the beat.")
+                   " text this model takes — cut them to one identity"
+                   " sentence, and move what is really per-beat into the beat"
+                   " it belongs to."
+                   if index == 1 and exclusive else " Trim the beat.")
             )
 
 

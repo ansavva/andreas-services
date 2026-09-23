@@ -127,3 +127,54 @@ def test_the_reference_cap_counts_subjects_rather_than_pictures(named, monkeypat
                         lambda ref: {"name": "ref.png", "size": 1})
     bound = SUB.gather(ELEMENTS, args(key=tuple(f"node-{n}" for n in range(8))))
     assert len(bound["elements"]) == 8
+
+
+# ── the floor: an image element is two pictures, not one ────────────────────
+#
+# fal's server refused a lone frontal on 2026-09-23 (a 422, no charge) with
+# "Either frontal_image_url and reference_image_urls or video_url must be
+# provided." Its OpenAPI document does not say so; `elements.min_images_each`
+# does. This command binds only images into an element, so a `--character` or
+# `--location` yielding one picture is an element fal would refuse — stopped
+# here, before a draft is written. The API's `_check_elements` is the gate.
+
+FLOORED = {**ELEMENTS, "elements": {**ELEMENTS["elements"], "min_images_each": 2}}
+
+
+@pytest.fixture
+def subjects(monkeypatch):
+    views = {"char-a": ["node-a1", "node-a2"], "char-one": ["node-o1"],
+             "loc-room": ["node-r1"], "loc-two": ["node-r1", "node-r2"]}
+    monkeypatch.setattr(SUB.REFS, "character_ref_nodes",
+                        lambda name, *a, **k: list(views[name]))
+    monkeypatch.setattr(SUB.REFS, "location_ref_nodes",
+                        lambda name, *a, **k: list(views[name]))
+    monkeypatch.setattr(SUB, "describe", lambda ref: {"name": "ref.png", "size": 1})
+
+
+def test_the_registry_puts_a_floor_of_two_under_both_fal_entries():
+    from studio_pipeline.engine import registry as REG
+    for key in ("fal-kling-v3-i2v", "fal-kling-o3-r2v"):
+        assert REG.elements(REG.get(key))["min_images_each"] == 2
+
+
+@pytest.mark.parametrize("flag,name", [("character", "char-one"),
+                                       ("location", "loc-room")])
+def test_a_subject_with_one_picture_is_refused_in_fals_own_words(subjects, flag, name):
+    with pytest.raises(SUB.SubmitError) as caught:
+        SUB.gather(FLOORED, args(**{flag: (name,)}))
+    message = str(caught.value)
+    assert ("Either frontal_image_url and reference_image_urls or video_url "
+            "must be provided.") in message
+    assert f"--{flag} {name} binds 1 image(s)" in message
+    assert "location's folder" in message
+
+
+def test_two_pictures_of_each_subject_pass(subjects):
+    bound = SUB.gather(FLOORED, args(character=("char-a",), location=("loc-two",)))
+    assert bound["elements"] == ["node-a1", "node-a2", "node-r1", "node-r2"]
+
+
+def test_a_model_without_a_floor_takes_one_picture(subjects):
+    bound = SUB.gather(ELEMENTS, args(character=("char-one",)))
+    assert bound["elements"] == ["node-o1"]

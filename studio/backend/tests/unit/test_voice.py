@@ -294,6 +294,60 @@ def test_a_voice_with_nobody_to_speak_it_is_refused():
     assert "Kling invents the voice" in str(raised.value)
 
 
+# ── the floor: an image element is two pictures, not one ────────────────────
+#
+# fal's server refused a lone frontal on 2026-09-23 (a 422 on `body.elements.2`,
+# no charge), and its OpenAPI document does not say so:
+#
+#     Either frontal_image_url and reference_image_urls or video_url must be
+#     provided.
+
+
+@pytest.mark.parametrize("key", [V3, O3])
+def test_the_registry_puts_a_floor_of_two_under_an_element(key):
+    assert registry.elements(_entry(key))["min_images_each"] == 2
+
+
+@pytest.mark.parametrize("key", [V3, O3])
+def test_a_single_image_element_is_refused_in_fals_own_words(key):
+    with pytest.raises(ValidationError) as raised:
+        generate._check_elements(
+            _entry(key),
+            [_send("node-a1", kind="character", character="char-a"),
+             _send("node-a2", kind="character", character="char-a"),
+             _send("node-room", kind="location", location="loc-1")],
+            {"generate_audio": True})
+    message = str(raised.value)
+    assert ("Either frontal_image_url and reference_image_urls or video_url "
+            "must be provided.") in message
+    assert "@Element2 carries 1 image(s)" in message
+    assert "second view" in message
+    assert "location's folder" in message
+
+
+def test_a_two_image_element_passes():
+    generate._check_elements(
+        _entry(),
+        [_send("node-a1", kind="character", character="char-a"),
+         _send("node-a2", kind="character", character="char-a")],
+        {"generate_audio": True})
+
+
+def test_a_clip_only_element_passes():
+    """A video element carries the subject without any picture."""
+    generate._check_elements(
+        _entry(), [_send("node-c", role="clip", kind="character", character="char-a")],
+        {"generate_audio": True})
+
+
+def test_one_picture_and_a_clip_passes():
+    generate._check_elements(
+        _entry(),
+        [_send("node-a", kind="character", character="char-a"),
+         _send("node-c", role="clip", kind="character", character="char-a")],
+        {"generate_audio": True})
+
+
 def test_two_subjects_with_four_views_each_is_allowed():
     """The cap that used to be counted wrong. `max_refs` is FOUR on these
     entries and it counts elements, so reading it as four images would refuse

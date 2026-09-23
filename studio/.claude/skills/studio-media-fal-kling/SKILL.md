@@ -36,10 +36,25 @@ order.
 engine — `--character <name>`, `--location <name>`, `--key <node>` — and the
 API groups them into elements **by where each file sits**: every image out of
 one character's tree becomes that character's element, its first image the
-frontal view and the rest its other angles (up to four images in all). A
+frontal view and the rest its other angles (**two to four** images in all). A
 clip out of that tree lands on the same element as its `video_url`. That is
 the same provenance a run page already prints under each send, so there is no
 second place to say which pictures belong to whom.
+
+**An image element needs at least two pictures — a frontal AND a reference —
+or a clip.** fal's OpenAPI document does not say so; its server does. A lone
+frontal came back as a 422 (2026-09-23, on the v3 endpoint; assumed for O3):
+
+> Either frontal_image_url and reference_image_urls or video_url must be provided.
+
+So `elements.min_images_each` is 2 on both entries, and a subject bound with
+one picture is refused while the run is still a draft, quoting that sentence —
+by `studio run` for a `--character` or `--location` that yields one image, and
+by the API for any element, `--key` included. Bind a second view of that
+subject. **Two stills of one room make one element only when both sit in the
+same subject's tree**: a room still from a project's input pool and another
+from the location group as two elements, one image each, and both are refused.
+Copy the second still into the location's folder so they group.
 
 Files belonging to nobody in particular — a project's input pool, a folder
 somebody dropped stills into — share **one** element between them. That is
@@ -101,6 +116,7 @@ Rules the preflight enforces before anything bills — the clip rows are for the
 
 | | |
 |---|---|
+| Two images per image element | a frontal **and** at least one reference, or a `video_url` — fal: "Either frontal_image_url and reference_image_urls or video_url must be provided." Four at most |
 | `generate_audio` | must be **true** with a voice bound. `false` renders a silent clip and the voice tier is billed anyway — the one failure the provider would not report |
 | A voice needs a video | a voice on an element with no `video_url` is refused, quoting fal's sentence above |
 | One per run | one element with a video per request, so one bound voice |
@@ -115,14 +131,15 @@ Rules the preflight enforces before anything bills — the clip rows are for the
 |---|---|---|
 | Elements / voice | **none** — `generate_audio` only, and the model invents a voice per run | elements; an invented voice, as there — a bound voice needs a video element studio cannot bind yet |
 | `duration` | an integer, 3–15 | a **string**, `"3"`–`"15"` |
-| `multi_prompt` | a JSON **string** of `{prompt, duration}`, sent **beside** the prompt | a real **array**, and it **replaces** the prompt — see below |
+| `multi_prompt` | a JSON **string** of `{prompt, duration}`, sent **beside** the prompt | a real **array**, and it **replaces** the prompt; **512 characters per beat** — see below |
 | Tier | `mode: standard / pro / 4k` on one entry | the **endpoint** is the tier; these two are 1080p |
 | Negative prompt | in the prompt | a real `negative_prompt` on `fal-kling-v3-i2v`; none on `fal-kling-o3-r2v` |
 | `cfg_scale` | — | 0–1 on `fal-kling-v3-i2v` |
 | Price | per second, no voice tier | $0.112/s silent · $0.168/s with audio, an invented voice · **$0.196/s with a bound voice** (v3). O3 is $0.112 / $0.14 and does not price voice separately — the **cheaper of the two for a speaking character**, either kind of voice |
 
 Both take a start and end frame, native multi-shot to 6 cuts whose durations
-must sum to `duration`, and the 2500-character prompt ceiling.
+must sum to `duration`, and a 2500-character ceiling on a single `prompt`. On
+fal a timeline's beats are capped far lower — 512 each, below.
 
 ## A timeline REPLACES the prompt here
 
@@ -142,19 +159,38 @@ where Replicate's proxy **requires** `prompt` and the two go out together. Same
 model family, two provider contracts — which is why the rule is registry data
 per entry rather than something true of Kling.
 
-**The globals go into the FIRST beat.** What the prompt used to carry — who is
-in the shot and their `@Element` tags, the room, the lighting, the grade, the
-sound, the closing `Avoid …` — is prepended to beat one, and `studio run` does
-that for you: pass the globals as `--prompt` and the beats in `--extra`, and
-the payload you are shown before you spend is the folded one.
+**Every beat is capped at 512 characters — beat one included.** fal's server
+enforces it and its OpenAPI document does not state it; a live submit came
+back 422 (2026-09-23, v3 endpoint, no charge):
+
+> body.multi_prompt.0.prompt: Value error, Prompt must not exceed 512 characters.
+
+The 2500 of `prompt.max_chars` belongs to the single `prompt` field only, which
+a timeline run does not send. `video.shot_max_chars` is 512 on both entries —
+measured on v3, **assumed** on O3, which shares its multi-shot schema.
+
+**The globals go into the FIRST beat — and have to fit in it.** Whatever you
+pass as `--prompt` is prepended to beat one by `studio run`, and the payload
+you are shown before you spend is the folded one. A fold that takes beat one
+over 512 is refused before the draft is written, naming the beat, its length
+and how much of it the globals were. So on fal **the globals are tiny and each
+beat carries itself**:
+
+- **Beat one** opens with the identity anchor, **once, in one sentence** —
+  who, as `@Element1`, and the room element tagged once.
+- **Every beat**: camera, action, and one `Audio:` line.
+- **Dialogue** with a speaker and a delivery label, in the beat it is spoken in
+  (`@Element1 (quiet, relieved): "You came back."`).
+- Lighting, grade and the `Avoid …` list get a clause, not a paragraph — the
+  `negative_prompt` field on v3 takes the keep-outs off the beat altogether.
 
 ```bash
 studio run --model fal-kling-v3-i2v --project <project> \
   --character <name> --start-key <node> \
-  --prompt "@Element1 on a wet platform at night. Sodium light, hard shadows. Handheld documentary grade. Avoid extra fingers." \
+  --prompt "@Element1 on a wet platform at night, sodium light." \
   --extra '{"duration":"10","multi_prompt":[
-      {"prompt":"Wide shot, static. The train pulls away.","duration":"5"},
-      {"prompt":"Close on the departure board.","duration":"5"}]}'
+      {"prompt":"Wide shot, static. The train pulls away behind @Element1. Audio: brakes hiss, rain.","duration":"5"},
+      {"prompt":"Close on @Element1, handheld. @Element1 (under breath, tired): \"Missed it.\" Audio: station tannoy, far off.","duration":"5"}]}'
 ```
 
 First beat, not every beat: Kuaishou's own multi-shot guidance is "define the
@@ -162,10 +198,11 @@ setting first, then organize by shot order" — a preamble, not a refrain — th
 model reads the beats in order, and a copy per beat multiplies the text by the
 cut count against a ceiling it has to fit under.
 
-**The 2500 characters follow the text.** With no `prompt` on the wire the beats
-are the only prose the model gets, so the ceiling is measured per beat — and
-beat one is the one a fold can blow. The refusal names the beat and says the
-globals landed in it.
+**The cap is checked per beat, on both sides.** `studio run` checks the fold
+before a draft is written; the API checks every beat again at submit, so a
+timeline authored in the app or pasted into `--extra` is held to the same 512.
+The refusal names the beat and its length, and says when the globals landed in
+it.
 
 **The object you author does not change.** `--prompt-json` still records the
 authored document as `prompt.json` beside the run, unchanged; only the wire

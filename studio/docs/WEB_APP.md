@@ -773,7 +773,8 @@ page and a plain textarea over its literal bytes, and never offers fields.
   **The read side knows two spellings of that field; the editor knows one.**
   fal's Kling entries take `multi_prompt` as a real array and a beat's seconds
   as a string, and on those entries a timeline REPLACES the prompt — the
-  payload carries no `prompt` at all and the globals fold into beat one — so
+  payload carries no `prompt` at all and the globals fold into beat one,
+  which fal caps at 512 characters like every beat — so
   the plan records `prompt: null` and every word of the run is in the beats.
   `shotListOf` therefore recognises a timeline by shape in either spelling and
   `RunPrompt` opens the box with the beats when there is no prompt above them;

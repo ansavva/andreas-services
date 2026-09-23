@@ -333,15 +333,20 @@ def gather(entry: dict, args, roles: dict | None = None) -> dict:
     nodes: list[str] = []
     if getattr(args, "image_run", None):
         nodes += R.resolve_output_nodes(args.image_run, project["id"], kinds=exts)
+    floor = (block or {}).get("min_images_each")
     for character in (args.character or []):
-        nodes += REFS.character_ref_nodes(character, slots, pick, tags,
-                                          cap=per_subject, cap_name=entry["key"])
+        got = REFS.character_ref_nodes(character, slots, pick, tags,
+                                       cap=per_subject, cap_name=entry["key"])
+        _check_element_floor(entry, floor, "--character", character, got)
+        nodes += got
     # Where the frame is, after who is in it: a location's views join the same
     # reference list, so the prompt cites them by the slot they land in.
     location_tags = ([t.strip() for t in args.location_tag.split(",")]
                      if getattr(args, "location_tag", None) else None)
     for location in (getattr(args, "location", None) or []):
-        nodes += REFS.location_ref_nodes(location, location_tags, cap=per_subject)
+        got = REFS.location_ref_nodes(location, location_tags, cap=per_subject)
+        _check_element_floor(entry, floor, "--location", location, got)
+        nodes += got
     for ref in getattr(args, "ref_run", None) or []:
         nodes += R.resolve_output_nodes(ref, project["id"], kinds=exts)
     # `input_`, because `input` shadows the builtin and Click was given the safe
@@ -490,6 +495,36 @@ def gather(entry: dict, args, roles: dict | None = None) -> dict:
     return bindings
 
 
+#: fal's own sentence, from a 422 on `fal-ai/kling-video/v3/pro/image-to-video`
+#: (2026-09-23). Its OpenAPI document does not say it; its server enforces it.
+ELEMENT_NEEDS_TWO_VIEWS = ("Either frontal_image_url and reference_image_urls "
+                           "or video_url must be provided.")
+
+
+def _check_element_floor(entry: dict, floor: int | None, flag: str,
+                         subject: str, got: list[str]) -> None:
+    """A subject bound as an IMAGE element needs at least `floor` pictures.
+
+    **The early word, not the gate.** fal refuses an image element that is a
+    frontal and nothing else, and `elements.min_images_each` says so. This
+    command binds only images into an element, so a `--character` or
+    `--location` that yields one picture is an element fal will refuse. The
+    API's `_check_elements` is the real check — it groups every send by the
+    subject it came from, `--key` included — and this one stops the draft
+    before it is written.
+    """
+    if not floor or len(got) >= floor:
+        return
+    raise SubmitError(
+        f"{entry['key']}: {flag} {subject} binds {len(got)} image(s) and an "
+        f"image element takes at least {floor} — fal refuses fewer: "
+        f"\"{ELEMENT_NEEDS_TWO_VIEWS}\"\n"
+        f"       Bind a second view of that subject (--pick / --pick-tag / "
+        f"--location-tag). Two stills of one room group as one element only "
+        f"when both sit in that location's tree, so copy the second into the "
+        f"location's folder.")
+
+
 #: Measured, not documented. Every generation that succeeded sent no more than
 #: 6.41 MiB of images in total; the three that failed sent 13.89 MiB. A single
 #: 3.10 MiB image passed on its own, so the limit is on the SUM and not on any
@@ -592,8 +627,15 @@ def fold_timeline_globals(entry: dict, payload: dict) -> bool:
     organize by shot order", which is a preamble and not a refrain; the model
     reads the beats in order, so a global stated once is stated before anything
     it governs; and a copy per beat multiplies the text by the cut count
-    against a 2,500-character ceiling — the same budget argument that stopped
-    this compiler writing the beats twice (see `studio-media-kling`).
+    against the per-beat ceiling — the same budget argument that stopped this
+    compiler writing the beats twice (see `studio-media-kling`).
+
+    **Beat one is capped like every other beat, and on fal that is 512.** The
+    2,500 of `prompt.max_chars` is the single `prompt` field's; fal's server
+    refuses any `multi_prompt[].prompt` over 512 characters, which its OpenAPI
+    document does not state (`video.shot_max_chars`). So the fold is checked
+    here, before a draft is written, and a fold that overflows beat one is a
+    refusal that says the globals put it there.
 
     It runs before the payload is rendered, so the document a person reads
     under hard rule #2 is the one that goes out — folding at submit time would
@@ -617,9 +659,37 @@ def fold_timeline_globals(entry: dict, payload: dict) -> bool:
         return False
     first = shots[0]
     beat = str(first.get("prompt") or "").strip()
-    first["prompt"] = f"{globals_text}\n\n{beat}" if beat else globals_text
+    folded = f"{globals_text}\n\n{beat}" if beat else globals_text
+    cap = shot_cap(entry)
+    if cap and len(folded) > cap:
+        raise SubmitError(
+            f"{entry['key']} caps each beat at {cap} characters, beat one "
+            f"included, and folding the globals into shot 1 makes it "
+            f"{len(folded)} ({len(globals_text)} of --prompt + {len(beat)} of "
+            f"the beat).\n"
+            f"       A timeline is the only text this model takes, so the "
+            f"globals ride in beat one — cut --prompt to one identity sentence "
+            f"and move what is really per-beat into the beat it belongs to.")
+    first["prompt"] = folded
     _write_shots_back(payload, shots)
     return True
+
+
+def shot_cap(entry: dict) -> int | None:
+    """The most characters one beat of a timeline may carry, or None.
+
+    `video.shot_max_chars` where the entry declares it — fal's Kling, 512,
+    enforced by its server and absent from its OpenAPI document. Otherwise,
+    where the timeline REPLACES the prompt, the prompt's own ceiling is the
+    best word there is. Replicate declares neither: its beats go out BESIDE a
+    prompt that carries its own cap.
+    """
+    declared = REG.field(entry, "video.shot_max_chars")
+    if declared:
+        return declared
+    if REG.field(entry, "video.shots_replace_prompt"):
+        return REG.field(entry, "prompt.max_chars")
+    return None
 
 
 def check_payload_rules(entry: dict, payload: dict) -> None:
@@ -667,25 +737,25 @@ def check_payload_rules(entry: dict, payload: dict) -> None:
         raise SubmitError(
             f"{entry['key']} caps the prompt at {cap} characters; "
             f"got {len(payload['prompt'])}.")
-    # **The cap follows the text.** With `prompt` gone, the beats are the only
-    # prose the model is given, and beat one is the long one because the
-    # globals were folded into it. fal's schema caps `prompt` at 2500 and
-    # states no per-beat length at all, so this applies the documented ceiling
-    # to each beat — each of which is a prompt to the same model. Only where
-    # the beats replaced the prompt: on Replicate they go out beside it, and
-    # measuring one against the other's cap would refuse payloads it accepts.
-    if cap and exclusive:
+    # **Each beat has its own cap** — `shot_cap`: 512 on fal's Kling, which
+    # its server enforces and its OpenAPI document does not state. Beat one is
+    # the long one where the globals were folded into it; `fold_timeline_globals`
+    # already refused that case with the lengths, and this catches a timeline
+    # that arrived over-long by itself, in `--extra` or an input file.
+    beat_cap = shot_cap(entry)
+    if beat_cap:
         for index, shot in enumerate(shots or [], start=1):
             text = shot.get("prompt") or "" if isinstance(shot, dict) else ""
-            if len(text) <= cap:
+            if len(text) <= beat_cap:
                 continue
             raise SubmitError(
-                f"{entry['key']} caps a prompt at {cap} characters and shot "
-                f"{index} carries {len(text)}."
-                + (" The globals were folded into it, because a timeline is the"
-                   " only text this model takes — trim them, or move what is"
-                   " really per-beat into the beat it belongs to."
-                   if index == 1 else " Trim the beat."))
+                f"{entry['key']} caps each beat at {beat_cap} characters and "
+                f"shot {index} carries {len(text)}."
+                + (" The globals fold into it, because a timeline is the only"
+                   " text this model takes — cut them to one identity"
+                   " sentence, and move what is really per-beat into the beat"
+                   " it belongs to."
+                   if index == 1 and exclusive else " Trim the beat."))
 
 
 # --------------------------------------------------------------------------
