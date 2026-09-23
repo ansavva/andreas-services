@@ -3,7 +3,15 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import { TestProviders } from "../../test-providers";
 import type { ModelEntry } from "../../types";
-import { ShotList, ShotsPanel, parseShots, shotListOf, tallyOf } from "./ShotList";
+import {
+  ShotList,
+  ShotsPanel,
+  parseShots,
+  shotListOf,
+  shotsAsText,
+  shotsOf,
+  tallyOf,
+} from "./ShotList";
 
 afterEach(cleanup);
 
@@ -186,6 +194,40 @@ it("recognises a shot list by its shape, for the read side", () => {
   expect(shotListOf("a negative prompt, not a list")).toBeNull();
   expect(shotListOf(5)).toBeNull();
   expect(shotListOf("[]")).toBeNull();
+});
+
+it("reads a timeline its provider spelled as a real array", () => {
+  // fal takes `multi_prompt` as an array and a shot's seconds as a string,
+  // where Replicate's proxy takes the same list as a JSON string of numbers.
+  // Both are the timeline somebody wrote, so both read back as beats.
+  expect(
+    shotListOf([
+      { prompt: "stands in the rain", duration: "5" },
+      { prompt: "he exhales", duration: 3 },
+    ]),
+  ).toEqual([
+    { prompt: "stands in the rain", duration: 5 },
+    { prompt: "he exhales", duration: 3 },
+  ]);
+  expect(shotListOf([])).toBeNull();
+  expect(shotListOf(["a", "b"])).toBeNull();
+  expect(shotListOf([{ prompt: "a", duration: "soon" }])).toBeNull();
+});
+
+it("writes the beats out as text, seconds and all, for Copy prompt", () => {
+  expect(
+    shotsAsText([
+      { prompt: "stands in the rain", duration: 5 },
+      { prompt: "he exhales", duration: 3 },
+    ]),
+  ).toBe("Shot 1 (5s)\nstands in the rain\n\nShot 2 (3s)\nhe exhales");
+});
+
+it("finds the beats in a plan's params whichever field holds them", () => {
+  expect(shotsOf({ duration: "8", multi_prompt: [{ prompt: "a", duration: "8" }] }))
+    .toEqual([{ prompt: "a", duration: 8 }]);
+  expect(shotsOf({ negative_prompt: "blurry", seed: 7 })).toBeNull();
+  expect(shotsOf(undefined)).toBeNull();
 });
 
 it("tallies an unset duration without claiming the beats are wrong", () => {

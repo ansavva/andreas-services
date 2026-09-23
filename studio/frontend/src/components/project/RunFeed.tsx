@@ -48,7 +48,7 @@ import { CheckpointList, hasCheckpoints } from "../run/CheckpointList";
 import { OutputTile } from "../run/OutputTile";
 import { SendThumbs } from "../run/SendThumbs";
 import { ParamChips } from "../run/ParamChips";
-import { ShotsRead, shotListOf, type Shot } from "../create/ShotList";
+import { ShotsRead, shotsOf } from "../create/ShotList";
 import { PromoteDrawer } from "../run/PromoteDrawer";
 import { promptText } from "../run/seed";
 import { useRunActions } from "../run/useRunActions";
@@ -866,7 +866,13 @@ export function RunPrompt({ row, className = "" }: { row: RunFeedRow; className?
   const negative = negativePromptOf(row.plan?.params);
   const shots = shotsOf(row.plan?.params);
 
-  if (!text) {
+  // **A run with no prompt and no beats.** `!text` alone said this, and on a
+  // model where a timeline REPLACES the prompt it said it about a run whose
+  // four beats were sitting in `plan.params` — "No prompt." over the whole of
+  // what was sent. The record is right: `plan.prompt` is what went on the
+  // wire, and on those entries nothing did. What is drawn is what the run
+  // SAYS, and the beats are where it says it.
+  if (!text && !shots) {
     return (
       <div className={`${PROMPT_BOX} ${className}`}>
         <Text variant="body" tone="muted">
@@ -878,7 +884,7 @@ export function RunPrompt({ row, className = "" }: { row: RunFeedRow; className?
 
   return (
     <div className={`${PROMPT_BOX} ${className}`}>
-      <Clamped text={text} />
+      {text && <Clamped text={text} />}
       {/* **The cuts, under the prompt, in the boxes they were written in.**
           The same `ShotCard` the create panel draws, so a multi-shot run
           reads back the way it was authored — and in both places a run is
@@ -887,9 +893,13 @@ export function RunPrompt({ row, className = "" }: { row: RunFeedRow; className?
           JSON before, which is the one thing a shot list must not be.
 
           Each beat clamps like the prompt does: a feed row of six beats is
-          otherwise taller than the picture beside it. */}
+          otherwise taller than the picture beside it.
+
+          The hairline is a divider, so it is drawn only when there is
+          something above it to divide: where the timeline IS the text, the
+          beats open the box. */}
       {shots && (
-        <div className="border-t border-line pt-2">
+        <div className={text ? "border-t border-line pt-2" : ""}>
           <ShotsRead shots={shots} text={(each) => <Clamped text={each} />} />
         </div>
       )}
@@ -909,20 +919,6 @@ export function RunPrompt({ row, className = "" }: { row: RunFeedRow; className?
       )}
     </div>
   );
-}
-
-/**
- * The cuts a plan carries, whichever param holds them.
- *
- * Recognised by SHAPE — a run's record has the params and not the registry
- * entry that would name the field. See `shotListOf`.
- */
-export function shotsOf(params: Record<string, unknown> | undefined): Shot[] | null {
-  for (const value of Object.values(params ?? {})) {
-    const shots = shotListOf(value);
-    if (shots) return shots;
-  }
-  return null;
 }
 
 /** The plan's `negative_prompt`, when it is a non-empty string. */

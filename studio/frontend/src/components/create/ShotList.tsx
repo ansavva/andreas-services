@@ -73,15 +73,84 @@ export function parseShots(value: unknown): Shot[] | null {
  *
  * **Shaped, not named.** A run's record carries the plan's params and not the
  * registry entry that says which of them holds the cuts, so the read side
- * recognises a shot list by what it is — a JSON array of `{prompt, duration}`
- * — rather than fetching an entry per run to be told its field is called
+ * recognises a shot list by what it is — a list of `{prompt, duration}` —
+ * rather than fetching an entry per run to be told its field is called
  * `multi_prompt`. Anything that is not one falls through to the pill or the
  * mono line it already had.
+ *
+ * **Two spellings of the same list, because two providers spell it
+ * differently.** Replicate's proxy takes `multi_prompt` as a JSON string;
+ * fal takes a real array, and a shot's seconds as a string. Both are the
+ * timeline somebody wrote, so both read back as beats — the read side is
+ * the one place that has to know about both, since the payload is whatever
+ * its own provider took.
  */
 export function shotListOf(value: unknown): Shot[] | null {
-  if (typeof value !== "string" || value.trim() === "") return null;
-  const shots = parseShots(value);
+  const shots = Array.isArray(value)
+    ? beatsOf(value)
+    : typeof value === "string" && value.trim() !== ""
+      ? parseShots(value)
+      : null;
   return shots !== null && shots.length > 0 ? shots : null;
+}
+
+/**
+ * A list of `{prompt, duration}` as beats, or `null` when it is not one.
+ *
+ * Read-only, and looser than `parseShots` about the seconds: fal spells a
+ * shot's duration `"3"` where Replicate spells it `3`. Reading is where that
+ * difference is absorbed. `parseShots` stays strict because it is the
+ * editor's, and what the editor writes back goes on the wire.
+ */
+function beatsOf(parsed: unknown[]): Shot[] | null {
+  const out: Shot[] = [];
+  for (const each of parsed) {
+    if (!each || typeof each !== "object" || Array.isArray(each)) return null;
+    const { prompt, duration } = each as Record<string, unknown>;
+    if (typeof prompt !== "string") return null;
+    const seconds = secondsOf(duration);
+    if (seconds === null) return null;
+    out.push({ prompt, duration: seconds });
+  }
+  return out;
+}
+
+/** A shot's seconds however its provider wrote them; `null` for anything else. */
+function secondsOf(duration: unknown): number | null {
+  if (duration === undefined || duration === null) return 0;
+  if (typeof duration === "number") return Number.isFinite(duration) ? duration : null;
+  if (typeof duration === "string" && duration.trim() !== "") {
+    const value = Number(duration);
+    return Number.isFinite(value) ? value : null;
+  }
+  return null;
+}
+
+/**
+ * The cuts a plan carries, whichever param holds them.
+ *
+ * Recognised by SHAPE — a run's record has the params and not the registry
+ * entry that would name the field. See `shotListOf`.
+ */
+export function shotsOf(params: Record<string, unknown> | undefined): Shot[] | null {
+  for (const value of Object.values(params ?? {})) {
+    const shots = shotListOf(value);
+    if (shots) return shots;
+  }
+  return null;
+}
+
+/**
+ * The beats as plain text — what Copy prompt hands over.
+ *
+ * Where a timeline replaced the prompt there is no `plan.prompt` to copy, and
+ * Copy prompt put an empty clipboard on the one kind of run whose whole text
+ * is the beats. The seconds come with them: they are half of what a beat says.
+ */
+export function shotsAsText(shots: Shot[]): string {
+  return shots
+    .map((shot, at) => `Shot ${at + 1} (${shot.duration}s)\n${shot.prompt}`)
+    .join("\n\n");
 }
 
 /** Beats back to the wire: the JSON string the model's field takes. */
