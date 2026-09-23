@@ -523,20 +523,93 @@ def _warn_total_bytes(entry: dict, bindings: dict) -> None:
           file=sys.stderr)
 
 
+#: fal says it on the `prompt` field of both Kling entries, in its own words.
+#:
+#: The other half of the sentence is the input schema's `required` array, which
+#: on `fal-ai/kling-video/v3/pro/image-to-video` is `["start_image_url"]` alone:
+#: a payload with no `prompt` at all is a complete one there. Replicate's proxy
+#: for the same model family requires `prompt`, so this is a property of the
+#: ENTRY and not of Kling — `video.shots_replace_prompt` carries it.
+EXCLUSIVE = "Either prompt or multi_prompt must be provided, but not both"
+
+
+def shots_in(payload: dict) -> list | None:
+    """The beats a payload carries, parsed. `None` when it carries no timeline.
+
+    **One reader, because `multi_prompt` has two spellings.** Replicate takes a
+    JSON string and fal a real array — the same registry field, and every rule
+    below wants the list rather than the spelling.
+    """
+    raw = payload.get("multi_prompt")
+    if not raw:
+        return None
+    try:
+        return json.loads(raw) if isinstance(raw, str) else raw
+    except json.JSONDecodeError as e:
+        raise SubmitError(f"multi_prompt is not valid JSON: {e}")
+
+
+def _write_shots_back(payload: dict, shots: list) -> None:
+    """Put edited beats back in the spelling they arrived in."""
+    payload["multi_prompt"] = (json.dumps(shots, ensure_ascii=False)
+                               if isinstance(payload.get("multi_prompt"), str)
+                               else shots)
+
+
+def fold_timeline_globals(entry: dict, payload: dict) -> bool:
+    """Where a timeline REPLACES the prompt, move the globals into beat one.
+    -> whether anything moved.
+
+    `prompt` carries what is true of every cut — who is in it, the room, the
+    grade, the sound, the closing `Avoid …` — and `multi_prompt` carries what
+    happens, cut by cut. On a fal entry the two cannot both go out, so the
+    globals have to travel inside the timeline or not at all.
+
+    **Into the FIRST beat, not into every beat.** Three reasons, in order:
+    Kuaishou's own multi-shot guidance is "define the setting first, then
+    organize by shot order", which is a preamble and not a refrain; the model
+    reads the beats in order, so a global stated once is stated before anything
+    it governs; and a copy per beat multiplies the text by the cut count
+    against a 2,500-character ceiling — the same budget argument that stopped
+    this compiler writing the beats twice (see `studio-media-kling`).
+
+    It runs before the payload is rendered, so the document a person reads
+    under hard rule #2 is the one that goes out — folding at submit time would
+    make the render a lie.
+    """
+    if not REG.field(entry, "video.shots_replace_prompt"):
+        return False
+    shots = shots_in(payload)
+    if not shots:
+        return False
+    # Shape checked BEFORE the prompt is taken off the payload: a timeline this
+    # cannot fold into is a refusal, never a quietly discarded set of globals.
+    if not isinstance(shots, list) or not isinstance(shots[0], dict):
+        raise SubmitError(
+            f"{entry['key']} takes a timeline of {{prompt, duration}} objects; "
+            f"`multi_prompt` is not a list of them.")
+    # Taken off the payload either way: an empty `prompt` beside a timeline is
+    # still two text fields to a provider that documents one.
+    globals_text = str(payload.pop("prompt", "") or "").strip()
+    if not globals_text:
+        return False
+    first = shots[0]
+    beat = str(first.get("prompt") or "").strip()
+    first["prompt"] = f"{globals_text}\n\n{beat}" if beat else globals_text
+    _write_shots_back(payload, shots)
+    return True
+
+
 def check_payload_rules(entry: dict, payload: dict) -> None:
     """Cross-field rules a per-field schema check cannot express.
 
     Scoped by the presence of the field, so each rule applies only to the
     models that actually have it.
     """
+    shots = shots_in(payload)
     # Kling bills per second and rejects a multi-shot timeline whose shot
     # durations don't sum to `duration` (E006) — catch it here, not after billing.
-    if payload.get("multi_prompt"):
-        mp = payload["multi_prompt"]
-        try:
-            shots = json.loads(mp) if isinstance(mp, str) else mp
-        except json.JSONDecodeError as e:
-            raise SubmitError(f"multi_prompt is not valid JSON: {e}")
+    if shots:
         # **`duration` is a string on fal and an integer on Replicate**, and the
         # same registry field `multi_prompt` is on both. Compared as written,
         # `15 != "15"` is true of a timeline that adds up perfectly, so every
@@ -559,11 +632,38 @@ def check_payload_rules(entry: dict, payload: dict) -> None:
             raise SubmitError(
                 f"{entry['key']} allows at most {cap} shots; got {len(shots)}.")
 
+    exclusive = REG.field(entry, "video.shots_replace_prompt")
+    if shots and exclusive and payload.get("prompt"):
+        raise SubmitError(
+            f"{entry['key']} takes a prompt OR a timeline, never both — its "
+            f'schema says "{EXCLUSIVE}".\n'
+            f"       Fold the globals into the first beat of `multi_prompt` and "
+            f"drop `prompt`; `studio run` does that for you.")
+
     cap = REG.field(entry, "prompt.max_chars")
     if cap and len(payload.get("prompt") or "") > cap:
         raise SubmitError(
             f"{entry['key']} caps the prompt at {cap} characters; "
             f"got {len(payload['prompt'])}.")
+    # **The cap follows the text.** With `prompt` gone, the beats are the only
+    # prose the model is given, and beat one is the long one because the
+    # globals were folded into it. fal's schema caps `prompt` at 2500 and
+    # states no per-beat length at all, so this applies the documented ceiling
+    # to each beat — each of which is a prompt to the same model. Only where
+    # the beats replaced the prompt: on Replicate they go out beside it, and
+    # measuring one against the other's cap would refuse payloads it accepts.
+    if cap and exclusive:
+        for index, shot in enumerate(shots or [], start=1):
+            text = shot.get("prompt") or "" if isinstance(shot, dict) else ""
+            if len(text) <= cap:
+                continue
+            raise SubmitError(
+                f"{entry['key']} caps a prompt at {cap} characters and shot "
+                f"{index} carries {len(text)}."
+                + (" The globals were folded into it, because a timeline is the"
+                   " only text this model takes — trim them, or move what is"
+                   " really per-beat into the beat it belongs to."
+                   if index == 1 else " Trim the beat."))
 
 
 # --------------------------------------------------------------------------

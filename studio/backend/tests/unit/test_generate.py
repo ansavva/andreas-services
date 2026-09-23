@@ -31,7 +31,7 @@ from studio_core import config
 from studio_core.clients import replicate
 from studio_core.clients.aws import s3
 from studio_core.errors import NotFoundError, ValidationError
-from studio_core.services import catalog, generate
+from studio_core.services import catalog, generate, registry
 
 
 def _project(api, name="rooftop-teaser"):
@@ -3298,3 +3298,89 @@ def test_a_duration_that_is_no_number_is_refused_not_crashed(payload):
 def test_no_duration_field_means_there_is_nothing_to_sum_against():
     generate._check_payload_rules(
         _FAL_KLING, {"multi_prompt": _beats(5, 5)})
+
+
+# --------------------------------------------------------------------------
+# On fal, a timeline REPLACES the prompt — the two never go out together
+# --------------------------------------------------------------------------
+#
+# fal's OpenAPI says it on the `prompt` field of both Kling entries:
+#
+#     "Text prompt for video generation. Either prompt or multi_prompt must be
+#      provided, but not both."
+#
+# and the input schema's `required` array is `["start_image_url"]` alone, so a
+# payload with no prompt is a complete one there. Replicate's proxy for the same
+# model family requires `prompt`, so the rule is a property of the ENTRY —
+# `video.shots_replace_prompt` — and these tests read it off the real registry
+# rather than a literal, because a flag that stopped being set would otherwise
+# leave both sides passing.
+#
+# The API REFUSES a payload carrying both rather than repairing it: the CLI
+# folds the globals into the first beat while the payload is being built, so
+# what a person read under hard rule #2 is what goes out. Rewriting it here,
+# after it was read and approved, would make that render a lie.
+
+_FAL_ENTRY = registry.get("fal-kling-v3-i2v")
+_REPLICATE_ENTRY = registry.get("replicate-kling")
+
+
+def test_the_registry_says_which_entries_replace_the_prompt():
+    """The flag itself, since every refusal below hangs off it."""
+    assert registry.field(_FAL_ENTRY, "video.shots_replace_prompt") is True
+    assert registry.field(registry.get("fal-kling-o3-r2v"),
+                          "video.shots_replace_prompt") is True
+    assert registry.field(_REPLICATE_ENTRY, "video.shots_replace_prompt") is None
+
+
+def test_a_prompt_beside_a_timeline_is_refused_on_fal():
+    with pytest.raises(Exception) as refusal:
+        generate._check_payload_rules(
+            _FAL_ENTRY, {"duration": "10", "prompt": "the setting, the cast",
+                         "multi_prompt": _beats(5, 5)})
+    said = str(refusal.value)
+    assert "Either prompt or multi_prompt must be provided, but not both" in said
+    assert "fal-kling-v3-i2v" in said
+
+
+def test_a_timeline_alone_is_a_complete_payload_on_fal():
+    generate._check_payload_rules(
+        _FAL_ENTRY, {"duration": "10", "multi_prompt": _beats(5, 5)})
+
+
+def test_replicate_still_sends_both_and_is_not_refused():
+    """Replicate's proxy REQUIRES `prompt`; the two providers must not drift."""
+    generate._check_payload_rules(
+        _REPLICATE_ENTRY, {"duration": 10, "prompt": "the setting, the cast",
+                           "multi_prompt": json.dumps(_beats(5, 5))})
+
+
+def test_the_cap_follows_the_text_into_the_first_beat():
+    """Folding the globals in can blow the ceiling, and the refusal says why."""
+    beats = [{"prompt": "x" * 2600, "duration": 5},
+             {"prompt": "the second beat", "duration": 5}]
+    with pytest.raises(Exception) as refusal:
+        generate._check_payload_rules(
+            _FAL_ENTRY, {"duration": "10", "multi_prompt": beats})
+    said = str(refusal.value)
+    assert "2500" in said and "shot 1" in said and "2600" in said
+    assert "globals" in said
+
+
+def test_a_later_beat_over_the_cap_is_refused_without_blaming_the_fold():
+    beats = [{"prompt": "the first beat", "duration": 5},
+             {"prompt": "x" * 2600, "duration": 5}]
+    with pytest.raises(Exception) as refusal:
+        generate._check_payload_rules(
+            _FAL_ENTRY, {"duration": "10", "multi_prompt": beats})
+    said = str(refusal.value)
+    assert "shot 2" in said and "globals" not in said
+
+
+def test_a_long_beat_on_replicate_is_not_measured_against_the_prompt_cap():
+    """There the beats go out BESIDE a prompt that has its own 2500."""
+    generate._check_payload_rules(
+        _REPLICATE_ENTRY,
+        {"duration": 10, "prompt": "the setting",
+         "multi_prompt": json.dumps([{"prompt": "x" * 2600, "duration": 5},
+                                     {"prompt": "y", "duration": 5}])})

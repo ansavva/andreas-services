@@ -473,6 +473,13 @@ and a byte-identical object serialises to a byte-identical string.
 
 ### The timeline goes out ONCE
 
+**This section is about the Replicate entry, and the division it describes is
+provider-specific.** On fal the same family takes `prompt` *or* `multi_prompt`
+and refuses both — the globals fold into the first beat instead. See
+[`studio-media-fal-kling`](../studio-media-fal-kling/SKILL.md#a-timeline-replaces-the-prompt-here).
+What follows is Replicate's contract, where `prompt` is required and always
+sent.
+
 Until 2026-09-22 the compiler wrote the beats **twice** — `Shot N (Ns): …`
 lines in the prompt *and* the same beats in `multi_prompt`. Measured on a
 four-beat 15 s draft on prod: 2,494 characters of a 2,500-character cap, of
@@ -496,13 +503,20 @@ with `multi_prompt` the order *is* the field. So the division of labour is:
 
 | | carries |
 |---|---|
-| `prompt` (required, always sent) | what is true of every cut — the setting, the cast and their `<<<image_N>>>` tags, lighting, style, audio, `Avoid …` |
+| `prompt` (required here, always sent) | what is true of every cut — the setting, the cast and their `<<<image_N>>>` tags, lighting, style, audio, `Avoid …` |
 | `multi_prompt` | what happens, cut by cut, with each beat's seconds |
 
 Answering the question this arrangement provokes — *why am I sending a prompt
-AND a multi-prompt?* — `prompt` is `required` in the live schema, so something
-has to be in it, and the globals are what a per-beat array has nowhere to put.
-The app says the same thing on the create panel, under the switch.
+AND a multi-prompt?* — `prompt` is `required` in **this** live schema, so
+something has to be in it, and the globals are what a per-beat array has
+nowhere to put. The app says the same thing on the create panel, under the
+switch.
+
+fal's schema for the same family says the opposite in as many words — "Either
+prompt or multi_prompt must be provided, but not both" — and lists only the
+start frame as required, so there the globals ride in beat one and no `prompt`
+goes out at all. Two provider contracts, one model family: which applies is
+recorded per registry entry, not inferred from the fact that it is Kling.
 
 Not yet measured: whether the prose form tracks the brief better than the JSON
 did. It is the vendor's documented form, which is the reason to default to it;
