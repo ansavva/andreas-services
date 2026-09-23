@@ -1,15 +1,19 @@
-"""A voice binds like a LoRA, with one difference that changes the plumbing.
+"""A voice binds like a LoRA, with one difference that changes the plumbing —
+and, on fal, only beside a video.
 
 A clip and a LoRA each have a field of their own, so the field a node was bound
 to says what it is for and `sends_for` reads the role off the registry. A voice
 does not: it lands on the SAME field as the pictures, because the id the
-provider reads sits inside the element object beside that subject's images —
-which is what makes the voice the character's rather than the run's.
+provider reads sits inside the element object. So `gather` takes an
+out-parameter for the roles a field name cannot carry.
 
-So `gather` takes an out-parameter for the roles a field name cannot carry, and
-these tests are mostly about that seam holding: the voice reaches the send row
-as a voice, the pictures are still references, and the ordering that would
-silently drop one is the right way round.
+**fal binds a voice only to an element carrying a `video_url`.** Its page for
+Kling 3.0 says "Voice binding is only supported for video elements, not image
+elements", and "a request can only have one element with a video" — so one
+voice at most. This command binds only images into an element, so every
+`--voice-key` is refused at gather today, before a draft is written that the
+API's preflight would refuse at submit. Kling invents the voice instead when
+`generate_audio` is on.
 """
 
 from types import SimpleNamespace
@@ -59,22 +63,35 @@ def named(monkeypatch):
     return names
 
 
-def test_a_voice_binds_beside_the_pictures_on_the_same_field(named):
-    """**Beside, not instead.** The element carries both, so the field holds
-    both — and the voice goes on LAST, after the reference list is assigned,
-    or it would be overwritten by the pictures without a word."""
-    bound = SUB.gather(ELEMENTS, args(key=("node-face",), voice_key=("node-voice",)))
-    assert bound == {"elements": ["node-face", "node-voice"]}
-
-
-def test_the_send_says_which_of_them_is_the_voice(named):
-    """The whole reason `gather` has an out-parameter: the field cannot say."""
+def test_a_voice_on_an_image_element_is_refused_with_fals_own_words(named):
+    """**The rule fal states and nothing else enforced.** The pictures make an
+    image element; a voice beside them is what fal refuses."""
     roles = {}
-    bound = SUB.gather(ELEMENTS, args(key=("node-face",), voice_key=("node-voice",)),
-                       roles)
-    sends = SUB.sends_for(ELEMENTS, bound, roles)
+    with pytest.raises(SUB.SubmitError) as caught:
+        SUB.gather(ELEMENTS, args(key=("node-face",), voice_key=("node-voice",)),
+                   roles)
+    message = str(caught.value)
+    assert ("Voice binding is only supported for video elements, "
+            "not image elements.") in message
+    assert "Kling invents" in message
+    assert roles == {}, "a refused voice must not reach the send rows"
+
+
+def test_a_voice_alone_is_refused_too(named):
+    with pytest.raises(SUB.SubmitError) as caught:
+        SUB.gather(ELEMENTS, args(voice_key=("node-voice",)))
+    assert "only supported for video elements" in str(caught.value)
+
+
+def test_the_send_says_which_of_them_is_the_voice():
+    """The seam `gather`'s out-parameter feeds: a per-node role beats the
+    field's, so a voice and a clip on the elements field are told apart from
+    the pictures beside them."""
+    bound = {"elements": ["node-face", "node-clip", "node-voice"]}
+    sends = SUB.sends_for(ELEMENTS, bound,
+                          {"node-clip": "clip", "node-voice": "voice"})
     assert [(send["node"], send["role"]) for send in sends] == [
-        ("node-face", "reference"), ("node-voice", "voice")]
+        ("node-face", "reference"), ("node-clip", "clip"), ("node-voice", "voice")]
 
 
 def test_a_model_with_no_voice_input_says_so_and_names_the_ones_that_have_it(named):
@@ -93,15 +110,13 @@ def test_a_sample_in_a_format_the_model_will_not_read_is_refused_here(named):
     assert "5–30 seconds" in str(caught.value)
 
 
-def test_several_voices_bind_at_once(named):
-    """Two people in a scene is two elements, each with its own voice. The API
-    groups them by which character each file sits under."""
-    roles = {}
-    bound = SUB.gather(ELEMENTS,
-                       args(key=("node-face", "node-side"),
-                            voice_key=("node-voice", "node-voice")), roles)
-    assert bound["elements"][:2] == ["node-face", "node-side"]
-    assert roles["node-voice"] == "voice"
+def test_two_voices_are_refused(named):
+    """One element per request can carry a video, and only that one can carry
+    a voice — so two voices is never a request fal will take."""
+    with pytest.raises(SUB.SubmitError) as caught:
+        SUB.gather(ELEMENTS, args(key=("node-face", "node-side"),
+                                  voice_key=("node-voice", "node-voice")))
+    assert "one voice at most" in str(caught.value)
 
 
 def test_the_reference_cap_counts_subjects_rather_than_pictures(named, monkeypatch):
@@ -112,13 +127,3 @@ def test_the_reference_cap_counts_subjects_rather_than_pictures(named, monkeypat
                         lambda ref: {"name": "ref.png", "size": 1})
     bound = SUB.gather(ELEMENTS, args(key=tuple(f"node-{n}" for n in range(8))))
     assert len(bound["elements"]) == 8
-
-
-def test_the_byte_warning_ignores_the_voice(named, monkeypatch):
-    """The warning is a measurement of how much IMAGE data has ever worked. A
-    sample is not an image and must not push an ordinary payload over it."""
-    seen = {}
-    monkeypatch.setattr(SUB, "_warn_total_bytes",
-                        lambda entry, bindings: seen.update(bindings))
-    SUB.gather(ELEMENTS, args(key=("node-face",), voice_key=("node-voice",)))
-    assert seen == {"elements": ["node-face"]}

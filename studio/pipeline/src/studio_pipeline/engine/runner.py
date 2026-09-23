@@ -359,7 +359,9 @@ def _refuse_a_duplicate(record: dict, args) -> None:
 @click.option("--start-run", help="An earlier run's output as the first frame (video).")
 @click.option("--timeout", type=int, help="Give up after N seconds.")
 @click.option("--voice-key", multiple=True, help=("Node id (or name path) of an audio file the model clones a "
-              "voice from and binds to that character (video, element models). Repeatable."))
+              "voice from (video, element models). fal binds a voice only to an element carrying "
+              "a video, and this command binds only images, so it is refused today — leave "
+              "generate_audio on and Kling invents the voice."))
 def cmd_run(**options):
     args = SimpleNamespace(**options)
     try:

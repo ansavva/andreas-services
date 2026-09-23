@@ -196,7 +196,9 @@ def elements(entry: dict) -> dict | None:
     """How this model takes SUBJECTS, or None where it takes a flat list.
 
     An element is one subject as one object — a frontal view, its other
-    angles, optionally a clip, optionally a bound voice — and the prompt cites
+    angles, optionally a clip, and a bound voice only beside a clip (fal:
+    "Voice binding is only supported for video elements, not image
+    elements"; `generate._check_elements`) — and the prompt cites
     it positionally (`@Element1`). The entry names the field it goes in and
     what each part of it is called:
 

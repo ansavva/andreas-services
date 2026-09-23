@@ -80,14 +80,13 @@ export function blockedReason(
     return "This model takes a start frame or reference images, not both.";
   if (of === "end" && refs > 0 && images.end_excludes_refs)
     return "This model takes an end frame or reference images, not both.";
-  // One voice per subject, and a subject is an element: the cap on voices is
-  // the cap on elements. The API refuses the fifth too — this is the word
-  // before the press rather than after the send.
-  if (of === "voice") {
-    const cap = entry.elements?.max;
+  // One voice per request: fal binds a voice only to a video element, and a
+  // request carries one element with a video. The API refuses a second too —
+  // this is the word before the press rather than after the send.
+  if (of === "voice" && entry.elements) {
     const bound = attachments.filter((each) => each.role === "voice").length;
-    if (typeof cap === "number" && bound >= cap)
-      return `This model binds at most ${cap} voices — one per character.`;
+    if (bound >= 1)
+      return "This model binds one voice per run, on the element carrying a video.";
   }
   return null;
 }
@@ -210,8 +209,9 @@ export function AttachTiles({
   const refs = held("reference");
   const input = held("input")[0];
   const clip = held("clip")[0];
-  // Plural, unlike the clip: one voice per subject, and a scene can have two
-  // people in it. `holdsOne` says the same thing on the context's side.
+  // A list, though `blockedReason` caps it at one: a voice shares the
+  // elements field with the references, so it rides the accumulating path —
+  // see `holdsOne`.
   const voices = held("voice");
 
   // The drag speaks in positions among the references; the bar in indices.

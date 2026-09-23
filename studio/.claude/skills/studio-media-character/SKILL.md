@@ -330,36 +330,27 @@ position N in the resolved selection, which is what a model actually receives.
 ## A character can have a VOICE, and it lives in the same folder
 
 A character's identity is images and a bible — and, on the two Kling entries
-hosted by fal, a **voice**. Keep the sample in the character's own tree:
+hosted by fal, a **voice**. fal binds a voice only to a **video** element, one
+per request: the character has to be in the run as a 3–10 s clip, not as
+stills. **studio cannot bind a clip into an element yet**, so a stored voice
+has nothing to bind to today — leave it off and Kling invents one from the
+dialogue. A sample can still be kept for later, in the character's own tree:
 
 ```bash
 studio upload --folder <name>/voice ~/takes/line-read.mp3
 ```
 
-`.mp3 .wav .m4a .flac .mp4 .mov`, **5–30 seconds of one clean voice**, no
+`.mp3 .wav .mp4 .mov`, **5–30 seconds of one clean voice**, no
 music under it and nobody else talking. One take, not a compilation: the model
 reads pitch, timbre and manner out of it and gives them to whoever the sample
 belongs to.
 
-Why the folder matters more than it looks: a bound sample attaches to a
-subject by **where the file sits**, the same way a bound picture reports which
-character it came from. A sample stored under the character binds to that
-character; one dropped into a project binds to nobody in particular. Then any
-later run says:
-
-```bash
-studio run --model fal-kling-v3-i2v --project <project> \
-  --character <name> --start-key <node> \
-  --voice-key <name>/voice/line-read.mp3 \
-  --extra '{"duration":"8","generate_audio":true}' \
-  --prompt "..."
-```
-
-The sample is registered with the provider once and the id is remembered on
-the file, so next week's clip is the **same voice** rather than a new one that
-sounds like it. Full rules — what the preflight refuses, what it costs, why
-`generate_audio` must be on — are in
-[`studio-media-fal-kling`](../studio-media-fal-kling/SKILL.md).
+Why the folder matters: a bound sample attaches to a subject by **where the
+file sits**, the same way a bound picture reports which character it came
+from, so once studio can bind a clip, a sample stored under the character
+lands on the element that character's clip makes. The gap, the fix and what
+the preflight refuses are in
+[`studio-media-fal-kling`](../studio-media-fal-kling/SKILL.md#a-voice-binds-to-a-video-element--one-per-run).
 
 **A voice is identity, so the gate above applies to it.** Adding one to a
 character is the same kind of decision as tagging an image `default`: ask

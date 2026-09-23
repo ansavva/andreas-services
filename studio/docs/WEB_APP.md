@@ -397,10 +397,13 @@ page and a plain textarea over its literal bytes, and never offers fields.
   look at, so it is a play button rather than a branch inside `MediaThumb`).
   It is drawn only where the chosen model's entry declares an `audio.voice`,
   like every other role, and it binds to the same field the references do —
-  the `voice_id` the provider reads sits INSIDE that subject's element, which
-  is what binds the voice to the character rather than to the run. It
-  accumulates rather than replacing, because a scene can have two people
-  speaking in it. Nothing drags into it: a drag carries a still. A clip's menu also carries a second group,
+  the `voice_id` the provider reads sits INSIDE a subject's element. fal
+  accepts it only on a **video** element ("Voice binding is only supported for
+  video elements, not image elements"), and a request carries one element
+  with a video, so the tile takes **one** sample. studio cannot bind a video
+  element yet (no `clips.source` on either entry), so the tile's hint says it
+  is not available on these models: leave it empty and Kling invents the
+  voice. Nothing drags into it: a drag carries a still. A clip's menu also carries a second group,
   **First frame as** Reference / Start frame / End frame: `useFirstFrame`
   asks the render worker for the clip's opening still (`POST /api/renders`,
   `kind: frame, at: 0`, into the project's input pool), polls the row, and
