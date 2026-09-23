@@ -71,6 +71,7 @@ import logging
 import os
 import re
 import tempfile
+from collections.abc import Callable
 
 from studio_core import config
 from studio_core.clients import fal, openrouter, replicate, runpod, runpod_pods
@@ -378,6 +379,21 @@ def _check_image_budget(entry: dict, bindings: dict) -> None:
         )
 
 
+#: fal's own sentence, from the Custom Elements section and the Known
+#: Limitations of `fal-ai/kling-video/v3/pro/image-to-video`. Quoted rather
+#: than paraphrased so a person reading the refusal can find it on the page.
+VOICE_NEEDS_VIDEO = ("Voice binding is only supported for video elements, "
+                     "not image elements.")
+#: What to do about it — the two ways out, the first of which is the one
+#: studio uses for now.
+VOICE_NEEDS_VIDEO_ADVICE = (
+    "Take the voice off and leave `generate_audio: true` on, so Kling invents "
+    "the voice — or bind a short video of that subject in the same run, so its "
+    "element carries a `video_url`. One element per request can carry a "
+    "video, so one voice at most."
+)
+
+
 def _check_elements(entry: dict, send_entries: list[dict], payload: dict) -> None:
     """The rules an ELEMENT model has and a per-field schema cannot express.
 
@@ -390,6 +406,18 @@ def _check_elements(entry: dict, send_entries: list[dict], payload: dict) -> Non
       `reference_image_urls` is documented 1–3 alongside the frontal.
     * **Two clips.** "A request can only have one element with a video",
       says the schema, and nothing enforces it until the request is made.
+      Because a voice binds only to an element with a video (next bullet),
+      this is also the cap on voices: **at most one bound voice per
+      request.**
+    * **A voice on an image element.** fal's page for
+      `fal-ai/kling-video/v3/pro/image-to-video`, under Custom Elements and
+      again under Known Limitations: "Voice binding is only supported for
+      video elements, not image elements. Attempting voice binding with an
+      image element returns an error." So a voice is refused unless its
+      element carries a clip (`video_url`) — and a voice alone, with neither
+      a picture nor a clip, is refused for the same reason. The path studio
+      takes for now is the other one: no bound voice, `generate_audio: true`,
+      and Kling invents the voices.
     * **A voice with the sound turned off.** This one costs real money for
       nothing: `generate_audio: false` produces a silent clip and the voice
       tier is billed anyway, which is the worst kind of mistake to leave to
@@ -429,8 +457,14 @@ def _check_elements(entry: dict, send_entries: list[dict], payload: dict) -> Non
         if group["voice"] and not group["frontal"] and not group["clip"]:
             raise ValidationError(
                 f"{entry['key']}: @Element{index} is a voice with nobody to "
-                "speak it. A voice binds to a subject, so bind that "
-                "character's images in the same run."
+                "speak it — no picture and no video of the subject. "
+                + VOICE_NEEDS_VIDEO_ADVICE
+            )
+        if group["voice"] and not group["clip"]:
+            raise ValidationError(
+                f"{entry['key']}: @Element{index} binds a voice to an image "
+                f"element, and fal refuses that: \"{VOICE_NEEDS_VIDEO}\" "
+                + VOICE_NEEDS_VIDEO_ADVICE
             )
     clips = [group for group in groups if group["clip"]]
     if len(clips) > 1:
@@ -729,9 +763,16 @@ def voice_id_for(entry: dict, node_id: str, *, expires_in: int | None = None) ->
     return minted
 
 
-def elements_payload(entry: dict, block: dict, send_entries: list[dict],
-                     *, expires_in: int | None = None) -> list[dict]:
-    """The `elements` array, presigned and with every bound voice registered.
+def _element_objects(block: dict, send_entries: list[dict], *,
+                     place: Callable[[str], str],
+                     voice: Callable[[str], str]) -> list[dict]:
+    """The `elements` array, with `place` and `voice` deciding what each slot holds.
+
+    **One assembly for both callers**, so the preview a person reads before
+    sending (hard rule #2) has the shape the provider is actually sent:
+    `dispatch` passes a presigner and the voice registrar, the preview passes
+    functions that answer node ids. Two copies of this loop would be the way
+    the preview came to show a flat list while the wire carried objects.
 
     One object per subject, in bind order, so `@Element1` in the prompt is the
     first thing the run was given. An empty group is dropped rather than sent
@@ -743,18 +784,51 @@ def elements_payload(entry: dict, block: dict, send_entries: list[dict],
     for group in element_groups(block, send_entries):
         one: dict = {}
         if group["frontal"]:
-            one[block["frontal"]] = presign_node(group["frontal"], expires_in=expires_in)
+            one[block["frontal"]] = place(group["frontal"])
         if group["refs"]:
-            one[block["refs"]] = [presign_node(node, expires_in=expires_in)
-                                  for node in group["refs"]]
+            one[block["refs"]] = [place(node) for node in group["refs"]]
         if group["clip"] and block.get("clip"):
-            one[block["clip"]] = presign_node(group["clip"], expires_in=expires_in)
+            one[block["clip"]] = place(group["clip"])
         if group["voice"] and block.get("voice"):
-            one[block["voice"]] = voice_id_for(entry, group["voice"],
-                                               expires_in=expires_in)
+            one[block["voice"]] = voice(group["voice"])
         if one:
             out.append(one)
     return out
+
+
+def elements_payload(entry: dict, block: dict, send_entries: list[dict],
+                     *, expires_in: int | None = None) -> list[dict]:
+    """The `elements` array, presigned and with every bound voice registered."""
+    return _element_objects(
+        block, send_entries,
+        place=lambda node: presign_node(node, expires_in=expires_in),
+        voice=lambda node: voice_id_for(entry, node, expires_in=expires_in),
+    )
+
+
+#: What the preview shows in a voice slot the provider has not named yet.
+#: The id is minted at submit (`voice_id_for`), and minting it to draw a page
+#: would be a call to the provider made by reading.
+VOICE_PENDING = "<voice id minted at submit>"
+
+
+def elements_preview(entry: dict, block: dict, send_entries: list[dict]) -> list[dict]:
+    """The `elements` array as it WILL go out, with node ids where URLs will be.
+
+    Same shape as `elements_payload`, built by the same loop. **Nothing is
+    minted**: an image slot holds its node id (presigning to draw a preview
+    would put live credentials in a page that is only being read), and a voice
+    slot holds the id already cached on the node for this model's
+    `audio.create` endpoint, or `VOICE_PENDING` — never `voice_id_for`, which
+    calls the provider.
+    """
+    endpoint = registry.voice_endpoint(entry)
+
+    def voice(node: str) -> str:
+        cached = catalog.voice_id(catalog.node(node), endpoint) if endpoint else None
+        return cached or VOICE_PENDING
+
+    return _element_objects(block, send_entries, place=lambda node: node, voice=voice)
 
 
 def dispatch(record: dict, entry: dict, payload: dict, bindings: dict,

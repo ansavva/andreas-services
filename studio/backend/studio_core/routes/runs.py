@@ -1102,6 +1102,17 @@ def preview_payload(run_id: str):
     `dispatch` does at the last moment; minting URLs to draw a preview would put
     live credentials in a page that is only being read.
 
+    **An element model's field is shown in the shape it goes out in.** The
+    wire takes one object per subject — `{frontal_image_url,
+    reference_image_urls, video_url, voice_id}` — which `dispatch` builds from
+    the sends' roles and provenance. The preview used to show that field as the
+    flat list of node ids it is stored as, voice sample included, which is not
+    what gets sent and hides the one thing worth checking: which element a
+    voice sits on. `generate.elements_preview` is the same assembly with node
+    ids where URLs will be, and a voice slot showing the id already cached on
+    the node or a placeholder — it never registers one, because that calls the
+    provider.
+
     Drafts only. On a submitted run the honest answer is the stored
     `request.json`, and computing a fresh one would invite comparing a run
     against a payload it was never given.
@@ -1114,7 +1125,11 @@ def preview_payload(run_id: str):
     entry = generate.entry_for(record)
     payload = generate.payload_of(record)
     bindings = generate.bindings_of(send_entries, entry)
-    return jsonify({"request": {**payload, **bindings}, "prompt": payload.get("prompt")}), 200
+    would_send = {**payload, **bindings}
+    block = registry.elements(entry)
+    if block and block["field"] in bindings:
+        would_send[block["field"]] = generate.elements_preview(entry, block, send_entries)
+    return jsonify({"request": would_send, "prompt": payload.get("prompt")}), 200
 
 
 @bp.patch("/runs/<run_id>/plan")

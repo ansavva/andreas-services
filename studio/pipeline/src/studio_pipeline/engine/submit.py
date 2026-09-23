@@ -450,6 +450,28 @@ def gather(entry: dict, args, roles: dict | None = None) -> dict:
             )
         held = bindings.get(voice_field)
         held = [held] if isinstance(held, str) else list(held or [])
+        # **A voice binds only to an element that carries a video.** fal's
+        # page for Kling 3.0: "Voice binding is only supported for video
+        # elements, not image elements", and "a request can only have one
+        # element with a video" — so one voice at most, on the one subject
+        # bound as a clip. This command binds only IMAGES into an element
+        # (`--key`, `--character`), so no clip is ever among `held` and every
+        # `--voice-key` stops here today, before a draft is written that the
+        # API's preflight (`services/generate._check_elements`) would refuse
+        # at submit anyway. The binding below is what runs once a clip can be
+        # bound into an element.
+        clips = [n for n in held if (roles or {}).get(n) == "clip"]
+        if len(voices) > 1 or not clips:
+            raise SubmitError(
+                f"{entry['key']} cannot bind this voice: fal binds a voice only "
+                f"to an element carrying a video — \"Voice binding is only "
+                f"supported for video elements, not image elements.\"\n"
+                f"       This run's elements are images, so fal would refuse it. "
+                f"Drop --voice-key and leave `generate_audio` on: Kling invents "
+                f"the voice.\n"
+                f"       One element per request can carry a video, so one voice "
+                f"at most."
+            )
         bindings[voice_field] = held + voices
         if roles is not None:
             for node in voices:

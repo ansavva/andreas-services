@@ -199,7 +199,8 @@ def elements(entry: dict) -> dict | None:
     """How this model takes SUBJECTS, or None where it takes a flat image list.
 
     An element is one subject as one object — a main view, its other angles,
-    optionally a clip, optionally a bound voice — cited in the prompt as
+    optionally a clip, and a bound voice only beside a clip (fal: "Voice
+    binding is only supported for video elements") — cited in the prompt as
     `@Element1`. The API builds the array at submit, grouping the bound images
     by the character or location they came from; what this side needs it for is
     smaller: knowing a model HAS elements changes what `--voice-key` may be

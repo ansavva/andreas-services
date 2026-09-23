@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Attachment } from "../../context/CreateBarContext";
 import type { ModelEntry } from "../../types";
 import { holdsOne } from "../../context/CreateBarContext";
-import { fallbackDropRole } from "./AttachTiles";
+import { blockedReason, fallbackDropRole } from "./AttachTiles";
 import { ROLES_BY_KIND, fieldFor, sendsOf } from "./roles";
 
 const STILL: ModelEntry = {
@@ -111,10 +111,10 @@ describe("the clip role", () => {
 });
 
 /**
- * A voice is bound to a SUBJECT, not to the run — the id the provider reads
- * sits inside that subject's element, beside its pictures. So the role exists
- * only on the models whose entry declares an `audio.voice`, and it lands on
- * the same field the references do.
+ * A voice binds to a VIDEO element, one per request — the id the provider
+ * reads sits inside the element carrying the clip. So the role exists only on
+ * the models whose entry declares an `audio.voice`, it lands on the same field
+ * the references do, and the tile takes one.
  */
 describe("the voice role", () => {
   it("binds to the elements field, and to nothing on a model without one", () => {
@@ -128,9 +128,11 @@ describe("the voice role", () => {
     expect(ROLES_BY_KIND.image).not.toContain("voice");
   });
 
-  it("accumulates, because a scene can have two people speaking in it", () => {
+  it("takes one per run: the tile is blocked once a voice is bound", () => {
     expect(holdsOne("voice")).toBe(false);
     expect(holdsOne("start")).toBe(true);
+    expect(blockedReason("voice", ELEMENTS, [])).toBeNull();
+    expect(blockedReason("voice", ELEMENTS, [held("voice")])).toMatch(/one voice per run/);
   });
 
   it("travels as a send that says it is a voice", () => {

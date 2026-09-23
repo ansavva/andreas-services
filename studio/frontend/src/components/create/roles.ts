@@ -51,7 +51,7 @@ export const ROLE_WORDS: Record<AttachRole, { label: string; hint: string; choos
   // as the first.
   voice: {
     label: "Voice",
-    hint: "5–30 seconds of one clean voice. The model clones it and speaks that character in it, lip-synced. A sample stored under a character binds to that character.",
+    hint: "Not available yet on these models: a voice binds only to a video element, which studio cannot bind. Leave it off — Kling invents the voice from the dialogue.",
     choose: "Choose a voice sample",
   },
 };

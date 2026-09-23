@@ -135,12 +135,12 @@ export const CREATE_PROJECT_STORAGE_KEY = "studio.createBar.project";
  * one picture by meaning even where it lands on a list field. Attaching to any
  * of these replaces; `reference` and `voice` accumulate.
  *
- * **A voice accumulates because a scene can have two people in it.** Kling
- * binds a voice per element, and an element is a character — so a run with two
- * characters speaking carries two samples, each landing on its own subject
- * (the API groups them by where the file sits, `catalog.source_of`). One slot
- * would have made the second character silent with nothing on screen saying
- * why.
+ * **A voice rides the accumulating path, but a run holds one.** Kling on fal
+ * binds a voice only to a VIDEO element, and a request carries one element
+ * with a video — so one sample per run, landing on the subject whose clip sits
+ * beside it (the API groups by where the file sits, `catalog.source_of`). The
+ * cap is `blockedReason`'s, which disables the tile with that reason rather
+ * than swapping the take out from under the picker it was heard in.
  */
 export function holdsOne(role: AttachRole): boolean {
   return role !== "reference" && role !== "voice";

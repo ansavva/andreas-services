@@ -4575,7 +4575,7 @@
         "flags": [
           "--voice-key"
         ],
-        "help": "Node id (or name path) of an audio file the model clones a voice from and binds to that character (video, element models). Repeatable.",
+        "help": "Node id (or name path) of an audio file the model clones a voice from (video, element models). fal binds a voice only to an element carrying a video, and this command binds only images, so it is refused today — leave generate_audio on and Kling invents the voice.",
         "hidden": false,
         "multiple": true,
         "nargs": 1,

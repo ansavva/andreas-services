@@ -220,8 +220,8 @@ test("a model that binds a voice offers a Voice tile, and its picker lists audio
 
   await offered.click();
 
-  // Bound: a tile in the voice role stands on the strip, and the cell still
-  // offers another — one voice per character, up to the model's four.
+  // Bound: a tile in the voice role stands on the strip. One per run — fal
+  // binds a voice only to the one video element a request may carry.
   const cell = strip.getByRole("group", { name: "Voice" });
   await expect(cell.locator("[data-attachment='voice']")).toHaveCount(1);
   await expect(picker.getByRole("button", { name: /^Remove / })).toHaveCount(1);

@@ -135,10 +135,11 @@ export function FilePage({ file, onClose, crumbs }: Props) {
         </dl>
         {isAudio && (
           <Text variant="caption" tone="muted">
-            A voice sample. A Kling run binds one to a character — the model reads its pitch
-            and tone and speaks that character in it — with{" "}
-            <span className="font-mono">--voice-key</span>, or the Voice tile on the create
-            sheet. 5–30 seconds of one clean voice is what the model asks for.
+            A voice sample. Kling on fal binds one only to a video element, never to stills,
+            and studio cannot bind a video element yet — so{" "}
+            <span className="font-mono">--voice-key</span> and the Voice tile have nothing to
+            bind it to today. Leave it off and Kling invents the voice. 5–30 seconds of one
+            clean voice is what the model will ask for.
           </Text>
         )}
         {what === "LoRA / model weights" && (
