@@ -12,6 +12,7 @@ import { useFavorites } from "../../hooks/useFavorites";
 import { useResource } from "../../hooks/useResource";
 import type { RunAsset, RunFeedRow } from "../../types";
 import { objectPath, projectPath, runPath } from "../../utils/location";
+import { shotsAsText, shotsOf } from "../create/ShotList";
 import { FEED_QUERIES, patchFeedRows } from "./feedCache";
 import { useRunAgain } from "./RunAgainButton";
 import { promptText, refOfOutput, seedFromRow, seedWithOutput } from "./seed";
@@ -173,10 +174,19 @@ export function useRunActions(row: RunFeedRow) {
     }
   }, [client, row.id, toast]);
 
-  const copyPrompt = useCallback(
-    () => void copy(promptText(row.plan?.prompt) ?? ""),
-    [copy, row.plan],
-  );
+  /**
+   * The prompt, and the beats when the beats are the prompt.
+   *
+   * Where a timeline replaces the prompt the plan records `prompt: null`, and
+   * this copied an empty clipboard off the one kind of run whose whole text
+   * is elsewhere. It copies what the panel shows, in the panel's order.
+   */
+  const copyPrompt = useCallback(() => {
+    const text = promptText(row.plan?.prompt);
+    if (text) return void copy(text);
+    const shots = shotsOf(row.plan?.params);
+    void copy(shots ? shotsAsText(shots) : "");
+  }, [copy, row.plan]);
 
   /**
    * Append this clip to its scene's cut. Only a succeeded video run that is IN

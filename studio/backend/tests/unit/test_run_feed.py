@@ -15,6 +15,8 @@ the cursor on, bounded by `config.max_search_scan` — and that a match is
 returned exactly once however the scan cap and the page size fall.
 """
 
+import json
+
 from studio_core.services import catalog, layout
 
 
@@ -259,6 +261,66 @@ def test_q_searches_a_structured_prompts_words_not_its_keys(empty_api):
     assert [row["id"] for row in _listed(empty_api, project=project["id"],
                                          include="drafts", q="turns")["runs"]] \
         == [run["id"]]
+
+
+def _timeline(api, project, shots, prompt=None):
+    """A run whose text is a multi-shot timeline — the fal shape, where the
+    timeline REPLACES the prompt and `plan.prompt` is therefore null."""
+    return _create(
+        api, project, kind="video", engine="fal-kling-v3-i2v",
+        model="fal/fal-ai/kling-video/v3/pro/image-to-video",
+        plan={"version": 1, "origin": "authored", "prompt": prompt,
+              "params": {"duration": "8", "multi_prompt": shots}},
+    )
+
+
+def test_q_finds_a_run_whose_timeline_replaced_its_prompt(empty_api):
+    """**The one run a prompt search could not reach.** On an entry marked
+    `video.shots_replace_prompt` the payload carries `multi_prompt` and no
+    `prompt` at all, so the plan records `prompt: null` and every word of what
+    was asked for sits in the beats. fal spells the list as a real array and a
+    shot's seconds as a string."""
+    project = _project(empty_api)
+    folded = _timeline(empty_api, project, [
+        {"prompt": "Wide shot, static. A slow WAVE at dusk.", "duration": "5"},
+        {"prompt": "Close on the departure board.", "duration": "3"},
+    ])
+    _create(empty_api, project, prompt="a rooftop at noon")
+
+    for needle in ("wave", "departure board"):
+        assert [row["id"] for row in _listed(empty_api, project=project["id"],
+                                             include="drafts", q=needle)["runs"]] \
+            == [folded["id"]], needle
+
+
+def test_q_reads_a_timeline_spelled_as_replicates_json_string(empty_api):
+    """The same list, the other provider's spelling: Replicate's proxy takes
+    `multi_prompt` as a JSON string, and beside a prompt rather than instead of
+    one. Both halves of the text are searchable."""
+    project = _project(empty_api)
+    run = _timeline(
+        empty_api, project,
+        json.dumps([{"prompt": "he exhales", "duration": 3}]),
+        prompt="a coach's office, late afternoon",
+    )
+
+    for needle in ("exhales", "late afternoon"):
+        assert [row["id"] for row in _listed(empty_api, project=project["id"],
+                                             include="drafts", q=needle)["runs"]] \
+            == [run["id"]], needle
+
+
+def test_q_does_not_match_a_params_words_that_are_not_prose(empty_api):
+    """A timeline is read because it is prose somebody wrote. The rest of
+    `params` is not: a search for `aspect_ratio` or `3:4` must not answer every
+    run in the library."""
+    project = _project(empty_api)
+    _create(empty_api, project, prompt="a wave")
+
+    assert _listed(empty_api, project=project["id"], include="drafts",
+                   q="aspect_ratio")["runs"] == []
+    assert _listed(empty_api, project=project["id"], include="drafts",
+                   q="3:4")["runs"] == []
 
 
 def test_q_pages_terminate_however_rare_the_match(empty_api, monkeypatch):

@@ -669,6 +669,13 @@ def prompt_text(plan) -> str:
     the keys are the schema's words, and matching on `camera` would match every
     structured prompt ever written. `plan` is studio's own authored half, so
     reading it is not the decoding `request.json` is protected from.
+
+    **A multi-shot timeline is prompt text too, wherever it sits.** On an entry
+    the registry marks `video.shots_replace_prompt` the beats are the ONLY text
+    the model is given and `plan.prompt` is null, so a search over the prompt
+    alone could not find such a run by anything it says. The beats are read as
+    well — their prose, not their seconds — and on an entry where the timeline
+    rides beside a prompt they simply add to it.
     """
     parts: list[str] = []
 
@@ -683,7 +690,42 @@ def prompt_text(plan) -> str:
                 walk(item)
 
     walk(plan.get("prompt") if isinstance(plan, dict) else None)
+    for shot in shot_list(plan):
+        walk(shot.get("prompt"))
     return " ".join(parts).casefold()
+
+
+def shot_list(plan) -> list[dict]:
+    """The beats a plan carries, whichever param holds them and however spelled.
+
+    **Recognised by SHAPE, not by name.** A plan records the params that went
+    out and not the registry entry that says which of them is the timeline, and
+    the field is `multi_prompt` on every entry that has one today — but reading
+    it off the entry would mean a registry lookup per run inside a scan. A list
+    of `{"prompt": str, …}` objects is a timeline; nothing else in a payload
+    looks like one.
+
+    Both spellings, because the providers differ: fal takes a real array, and
+    Replicate's proxy takes the same list as a JSON string. `services/generate.py`
+    reads them the same way at preflight, for the same reason.
+    """
+    params = plan.get("params") if isinstance(plan, dict) else None
+    if not isinstance(params, dict):
+        return []
+    for value in params.values():
+        if isinstance(value, str):
+            if not value.strip().startswith("["):
+                continue
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                continue
+        if not isinstance(value, list) or not value:
+            continue
+        if all(isinstance(shot, dict) and isinstance(shot.get("prompt"), str)
+               for shot in value):
+            return value
+    return []
 
 
 def _searched(rows: list[dict], query: str, offset: int, limit: int):

@@ -767,6 +767,18 @@ page and a plain textarea over its literal bytes, and never offers fields.
   the opened run (`ShotsRead`, from `RunPrompt`), so a run reads back in the
   shape it was written.
 
+  **The read side knows two spellings of that field; the editor knows one.**
+  fal's Kling entries take `multi_prompt` as a real array and a beat's seconds
+  as a string, and on those entries a timeline REPLACES the prompt — the
+  payload carries no `prompt` at all and the globals fold into beat one — so
+  the plan records `prompt: null` and every word of the run is in the beats.
+  `shotListOf` therefore recognises a timeline by shape in either spelling and
+  `RunPrompt` opens the box with the beats when there is no prompt above them;
+  without that the panel said "No prompt." over the whole of what was sent.
+  `parseShots`, which is the editor's and whose output goes on the wire, stays
+  strict about the string — so authoring a fal timeline in the sheet is still
+  the gap it was.
+
   Then the chip row (`CreateChips`):
   the model, opening `ModelList` (search + notes, one kind at a time), and one
   chip per input the model has out of a fixed six — aspect ratio, resolution,
@@ -1442,6 +1454,17 @@ what matched: **a page may come back shorter than `limit`, or empty, with
 so a query matching nothing ends in `ceil(runs / scan)` calls rather than one
 call reading the project. Composes with `view=feed`, which reuses the
 envelopes the search read.
+
+**A multi-shot timeline is searched with the prompt** (`shot_list`). On an
+entry the registry marks `video.shots_replace_prompt` — fal's two Kling
+entries — the payload carries `multi_prompt` and no `prompt`, so the plan
+records `prompt: null` and the run's whole text is in the beats; matching on
+the prompt alone could not find it by anything it says. The beats are found by
+SHAPE in `plan.params` rather than by name off the registry — a list of
+`{"prompt": …}` objects, in fal's array spelling or Replicate's JSON-string
+one — because a registry lookup per run inside a bounded scan is what this
+search exists to avoid. Their prose only; the rest of `params` is settings,
+and `aspect_ratio` matching every run in the library is the failure mode.
 
 **Everything above is `PATCH` where a REST habit would reach for `PUT`**,
 including the whole-document writes (`/profile`, `/runs`, `/text`). `PUT` is

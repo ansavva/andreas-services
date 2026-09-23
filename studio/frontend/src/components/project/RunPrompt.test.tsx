@@ -76,3 +76,43 @@ it("says nothing about cuts on a run that has none", () => {
   );
   expect(document.querySelector("[data-shots-read]")).toBeNull();
 });
+
+it("draws the timeline as the text where the timeline REPLACED the prompt", () => {
+  // fal's Kling entries take a prompt OR a timeline, never both, so a
+  // multi-shot run there records `prompt: null` and the whole of what was
+  // asked for is in the beats — a real array, and the seconds as strings.
+  // This read "No prompt." over four beats of it.
+  render(
+    <TestProviders>
+      <RunPrompt
+        row={row({
+          version: 1,
+          origin: "authored",
+          prompt: null,
+          params: {
+            duration: "8",
+            multi_prompt: [
+              { prompt: "Wide shot, static. The train pulls away.", duration: "5" },
+              { prompt: "Close on the departure board.", duration: "3" },
+            ],
+          },
+        })}
+      />
+    </TestProviders>,
+  );
+  expect(screen.queryByText("No prompt.")).toBeNull();
+  expect(document.querySelectorAll("[data-shot-card]").length).toBe(2);
+  expect(screen.getByText("Shot 1")).toBeTruthy();
+  expect(screen.getByText("5s")).toBeTruthy();
+  expect(screen.getByText("Wide shot, static. The train pulls away.")).toBeTruthy();
+  expect(screen.getByText("Close on the departure board.")).toBeTruthy();
+});
+
+it("still says so when there is neither a prompt nor a timeline", () => {
+  render(
+    <TestProviders>
+      <RunPrompt row={row({ version: 1, origin: "authored", prompt: null, params: { seed: 7 } })} />
+    </TestProviders>,
+  );
+  expect(screen.getByText("No prompt.")).toBeTruthy();
+});
