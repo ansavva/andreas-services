@@ -537,8 +537,20 @@ def check_payload_rules(entry: dict, payload: dict) -> None:
             shots = json.loads(mp) if isinstance(mp, str) else mp
         except json.JSONDecodeError as e:
             raise SubmitError(f"multi_prompt is not valid JSON: {e}")
-        total = sum(s.get("duration", 0) for s in shots)
-        if payload.get("duration") is not None and total != payload["duration"]:
+        # **`duration` is a string on fal and an integer on Replicate**, and the
+        # same registry field `multi_prompt` is on both. Compared as written,
+        # `15 != "15"` is true of a timeline that adds up perfectly, so every
+        # multi-shot run on a fal entry was refused — and passing an int to get
+        # past this failed the live schema, which demands the string. Compare
+        # the numbers, not the spellings.
+        want = payload.get("duration")
+        try:
+            total = sum(int(s.get("duration", 0)) for s in shots)
+            want = None if want is None else int(want)
+        except (TypeError, ValueError) as e:
+            raise SubmitError(
+                f"multi_prompt needs a number of seconds per shot: {e}")
+        if want is not None and total != want:
             raise SubmitError(
                 f"multi_prompt shot durations sum to {total}s but duration is "
                 f"{payload['duration']}s — they must be equal (this is E006).")

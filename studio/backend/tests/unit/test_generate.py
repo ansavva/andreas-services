@@ -3240,3 +3240,61 @@ def test_a_single_slot_lora_send_goes_out_as_path_and_scale_on_fal(empty_api, mo
     assert payload["loras"] == [{"path": payload["loras"][0]["path"], "scale": 1.1}]
     assert payload["loras"][0]["path"].startswith("http") and payload["image_url"].startswith("http")
     assert payload["num_frames"] == 121 and payload["generate_audio"] is False
+
+
+# --------------------------------------------------------------------------
+# A multi-shot timeline adds up, whichever way its provider spells a second
+# --------------------------------------------------------------------------
+#
+# `duration` is an INTEGER on the Replicate Kling entry and a STRING enum
+# ("3".."15") on the fal ones — the reason the two are registered separately.
+# The E006 preflight compared the sum of the shot durations against it with
+# `!=`, so on a fal entry `15 != "15"` was true of a timeline that added up
+# perfectly, while passing an int to satisfy it failed the live schema. Between
+# the two, multi-shot was impossible there.
+
+_FAL_KLING = {"key": "fal-kling-v3-i2v", "model": "fal/kling", "kind": "video",
+              "video": {"max_cuts": 6}}
+_REPLICATE_KLING = {**_FAL_KLING, "key": "replicate-kling",
+                    "model": "kwaivgi/kling-v3-omni-video"}
+
+
+def _beats(*seconds):
+    return [{"prompt": f"beat {n}", "duration": s} for n, s in enumerate(seconds, 1)]
+
+
+@pytest.mark.parametrize("entry, duration, beats", [
+    (_FAL_KLING, "15", (5, 5, 5)),          # the string case that used to refuse
+    (_FAL_KLING, "9", ("3", "3", "3")),     # shots spelled fal's way too
+    (_REPLICATE_KLING, 10, (6, 4)),         # the int one, unchanged
+])
+def test_a_timeline_that_adds_up_passes_however_its_seconds_are_spelled(
+        entry, duration, beats):
+    generate._check_payload_rules(entry, {"duration": duration,
+                                          "multi_prompt": _beats(*beats)})
+
+
+@pytest.mark.parametrize("duration", ["15", 15])
+def test_a_timeline_that_does_not_add_up_is_still_E006(duration):
+    with pytest.raises(Exception) as refusal:
+        generate._check_payload_rules(
+            _FAL_KLING, {"duration": duration, "multi_prompt": _beats(5, 5)})
+    # The marker and the sentence's shape are referenced by the skills.
+    assert "this is E006" in str(refusal.value)
+
+
+@pytest.mark.parametrize("payload", [
+    {"duration": "fifteen", "multi_prompt": [{"prompt": "a", "duration": 15}]},
+    {"duration": "", "multi_prompt": [{"prompt": "a", "duration": 15}]},
+    {"duration": "15", "multi_prompt": [{"prompt": "a", "duration": "five"}]},
+])
+def test_a_duration_that_is_no_number_is_refused_not_crashed(payload):
+    """A bad value is a refusal with words, never a `ValueError` out of a preflight."""
+    with pytest.raises(Exception) as refusal:
+        generate._check_payload_rules(_FAL_KLING, payload)
+    assert "number of seconds" in str(refusal.value)
+
+
+def test_no_duration_field_means_there_is_nothing_to_sum_against():
+    generate._check_payload_rules(
+        _FAL_KLING, {"multi_prompt": _beats(5, 5)})
