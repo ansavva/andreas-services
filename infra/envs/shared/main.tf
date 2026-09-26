@@ -249,7 +249,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     resources = ["*"]
   }
 
-  # SQS — service queues: studio callbacks and render, mailer DLQ (Terraform)
+  # SQS — service queues, e.g. mailer DLQ (Terraform)
   statement {
     effect    = "Allow"
     actions   = ["sqs:*"]
@@ -335,7 +335,6 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "arn:aws:ssm:*:*:parameter/humbugg/*",
       "arn:aws:ssm:*:*:parameter/mailer/*",
       "arn:aws:ssm:*:*:parameter/website/*",
-      "arn:aws:ssm:*:*:parameter/studio/*",
       "arn:aws:ssm:*:*:parameter/classroom/*",
     ]
   }
