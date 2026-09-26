@@ -3,7 +3,7 @@ import { fixture, stubApi } from './support/api-stub';
 import { LIVE, signIn } from './support/auth';
 
 // The suite's self-policing tier: these specs assert that the harness itself is honest.
-// They are the humbugg mirror of studio's "no request escapes" / "nothing 5xxs" pair —
+// The "no request escapes" / "nothing 5xxs" pair —
 // without them, a missing fixture is an empty screen and a green assertion about nothing.
 
 // Per-spec, never module-level: a module-level test.skip(LIVE) skips the whole file,

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Empty this machine's classroom development data, keeping the stack itself.
 #
-# Port of studio/scripts/dev-aws-reset.sh. Before deleting anything, every name
+# Port of humbugg/scripts/dev-aws-reset.sh. Before deleting anything, every name
 # is checked against the one this machine's stack is supposed to have, and any
 # name containing `prod` aborts outright. A reset aimed at the wrong stack takes
 # a real teacher's pages with it and is not recoverable by re-running setup.

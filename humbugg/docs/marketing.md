@@ -153,12 +153,11 @@ Alternate hooks, same body, for a second cut: *"You're about to draw your own
 mother in Secret Santa. Again."* (mistake warning) · *"Organisers of the
 office Secret Santa: this one's for you."* (identity).
 
-**Production.** Made in studio (since retired, replaced by aperture; the
-character and project were catalog rows and are not named here). Frame-first: a still is
+**Production.** AI-generated; the character is not named here. Frame-first: a still is
 iterated at cents, then one Seedance 2.0 image-to-video run with native
 lip-synced audio, 9:16, 1080p, fixed seed, from the approved still. Text
-overlays, captions, end card and music are added locally afterwards; the
-stitcher joined clips and adds nothing. Alcohol references were edited out of
+overlays, captions, end card and music are added locally afterwards; clips were
+joined with nothing added. Alcohol references were edited out of
 the still before animating so the same asset can later run paid without a
 re-shoot. Costs at the time: a still edit ≈ $0.13; a 14 s 1080p Seedance take
 ≈ $5–10.

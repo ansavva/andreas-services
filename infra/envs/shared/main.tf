@@ -319,7 +319,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
   # is `resources = ["*"]`. So a new service that writes an SSM parameter needs
   # a line added below, and forgetting it fails nowhere until the very end of
   # that service's first `terraform apply` — after the CloudFront distribution
-  # has already spent three minutes creating. Studio hit exactly that (#240).
+  # has already spent three minutes creating (#240).
   statement {
     effect = "Allow"
     actions = [
@@ -348,9 +348,9 @@ data "aws_iam_policy_document" "github_actions_permissions" {
   }
 
   # KMS, and ONLY through SSM. **Required the moment any service stores a
-  # SecureString**, which studio is the first to do — the Replicate API token,
-  # written here by `studio-prod.yaml` from a GitHub environment secret and read
-  # at runtime by the Lambda under its own role.
+  # SecureString** — e.g. a provider API token written by a service's prod
+  # workflow from a GitHub environment secret and read at runtime by the Lambda
+  # under its own role.
   #
   # A SecureString is encrypted with the account's AWS-managed `aws/ssm` key,
   # whose key policy grants the account access *conditioned on the call arriving
@@ -367,7 +367,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
   #
   # **This is applied by a DIFFERENT workflow from the one that needs it**, which
   # is the same trap the SSM statement above documents: the shared apply has to
-  # land before studio's next deploy, or that deploy fails at the parameter with
+  # land before the service's next deploy, or that deploy fails at the parameter with
   # an error naming a service nobody changed.
   statement {
     sid    = "UseTheSsmKeyThroughSsmOnly"

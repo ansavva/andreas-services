@@ -1,8 +1,7 @@
 # Humbugg testing — the map
 
-Humbugg's suites follow studio's model: tiers with hard boundaries, one gate per
-gated tier, and harnesses that police themselves. Studio's tiers are directories
-under one pytest tree; Humbugg's live in four ecosystems (xUnit, Jest, Vitest,
+Humbugg's suites are tiers with hard boundaries, one gate per gated tier, and
+harnesses that police themselves. They live in four ecosystems (xUnit, Jest, Vitest,
 Playwright), so the boundary is a project or a mode rather than a directory — but
 the questions "which tier am I in" and "what may I touch" still have one shared
 answer, and this file is where it lives.
@@ -114,8 +113,8 @@ Each rule traces to a real hazard, most of them already paid for once:
    blunt fallback, not the plan. Reads through a GSI go through `Eventually(...)`
    — a bare read-after-write on an eventually-consistent index is a flake.
 4. **No fixture captured with `curl`.** `app/e2e/support/capture-fixtures.mjs`
-   scrubs invite secrets and presigned URLs and asserts the scrub held. (Studio
-   put a signing key id into git this way; the rule exists so we never do.)
+   scrubs invite secrets and presigned URLs and asserts the scrub held. (A signing key id has
+   reached git this way before; the rule exists so it never does again.)
 5. **No auth backdoor compiled into the app.** The e2e session is seeded through
    the app's own `humbugg.auth.*` token store; an `if (E2E)` switch in the bundle
    is a production vulnerability wearing a test's clothes.

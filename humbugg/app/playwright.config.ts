@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// One suite, two modes — mirrored on studio's browser tier.
+// One suite, two modes.
 //
 // Stubbed (default, what CI runs): the app is exported the way production exports it and
 // served statically; every `/api/**` request is answered from committed fixtures by
@@ -35,7 +35,7 @@ export default defineConfig({
         // `serve -s` gives the SPA fallback the single-file web export needs for deep
         // links like /groups/:id. The export env matters:
         //  - API base "/api" makes every call same-origin, so page.route's `**/api/**`
-        //    glob catches all of it with no CORS in the way (studio's VITE_API_URL="" trick);
+        //    glob catches all of it with no CORS in the way;
         //  - the Cognito values are fake but PRESENT, because empty values flip
         //    `isAuthConfigured` and the app renders a different (unconfigured) path.
         //  - `--clear` is not optional: Metro's transform cache does not key on env, so

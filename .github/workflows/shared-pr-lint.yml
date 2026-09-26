@@ -3,8 +3,7 @@
 # A change to `.github/workflows/**` matches no service's PR filter, so every
 # workflow edit merged unvalidated — including #384, which rewrote the SSM reads
 # in three prod deploys and reported five `skipping` jobs and nothing else.
-# `studio/scripts/**` is the same: four shell scripts and a Python file merged
-# under #378 with no check that any of them parsed.
+# Service `scripts/**` directories had the same gap (#378).
 #
 # Neither gap is a service's to close, which is why this is `shared`.
 name: Shared · Lint · PR
@@ -56,8 +55,7 @@ jobs:
           # other tool in this repo performs.
           #
           # What it defers, measured against main: SC2034 on a loop counter in
-          # humbugg-pr.yml, humbugg-prod.yaml and mailer-pr.yml, and SC2016 on
-          # deliberate single quotes in studio-pr.yml. Four, all false positives
+          # humbugg-pr.yml, humbugg-prod.yaml and mailer-pr.yml. All false positives
           # on inspection, none an error.
           #
           # Pinned rather than `latest`: this gates every PR touching a deploy
@@ -71,7 +69,7 @@ jobs:
       # **`--severity=error`, deliberately.** The 25 tracked scripts are clean at
       # `error` today and carry 12 findings at `warning` — mostly SC2034 on
       # variables a sourced helper exports for its callers, and SC2155 inherited
-      # verbatim between humbugg's and studio's dev-AWS scripts. Gating at
+      # verbatim across the services' dev-AWS scripts. Gating at
       # `warning` would mean either a cleanup none of this PR is about or a
       # check that is red on arrival, and a check that is red on arrival is one
       # people learn to ignore. Raise it once those twelve are dealt with.

@@ -137,7 +137,7 @@ fi
 #
 #    Poetry is pinned to 2.2.1 in both `classroom-pr.yml` and
 #    `backend/Dockerfile`, so a local failure means the same thing there.
-#    Installed through uv when it is missing, which is how studio does it.
+#    Installed through uv when it is missing.
 #
 #    `--with dev` matters: PyJWT lives in that group and the local dev server
 #    cannot verify a token without it. `--no-root` because the backend is not a

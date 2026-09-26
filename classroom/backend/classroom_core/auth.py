@@ -27,8 +27,7 @@ The authorizer **stays** regardless. It is the outer gate that keeps unsigned
 traffic off the Lambda entirely, and it carries the CORS gateway responses that
 make a 401 legible to the SPA rather than an opaque network error.
 
-This is studio's `services/identity.py` in classroom's shape; humbugg's
-`OnTokenValidated` is the reference implementation both follow.
+Humbugg's `OnTokenValidated` is the reference implementation this follows.
 """
 
 import jwt

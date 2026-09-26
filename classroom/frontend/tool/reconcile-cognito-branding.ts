@@ -17,10 +17,9 @@
 // with that command, commit, then re-run `npm run brand` to put the token
 // values back over whatever the console wrote.
 //
-// ## How this differs from studio's version, which it is a port of
+// ## Why it reads two stylesheets
 //
-// Studio's stylesheet declares its whole palette, so reading one file is
-// enough. Classroom's declares only what it OVERRIDES — the green, the warm
+// Classroom's stylesheet declares only what it OVERRIDES — the green, the warm
 // greys, the radii — and inherits the rest from the design system's shipped
 // `theme.css`. So this reads both, in that order, and the override wins. That
 // also means a design-system bump can move these colours, which is correct:

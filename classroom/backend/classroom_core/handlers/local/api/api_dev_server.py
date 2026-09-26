@@ -126,6 +126,5 @@ app.wsgi_app = ApiGatewayStandIn(app.wsgi_app)
 
 
 if __name__ == "__main__":
-    # 8001, matching `frontend/.env.local.example`. Not 8000: studio's API is
-    # there, and both are routinely up at once on one machine.
+    # 8001, matching `frontend/.env.local.example` and the root CLAUDE.md port table.
     app.run(debug=True, host="127.0.0.1", port=int(os.getenv("PORT", "8001")))
