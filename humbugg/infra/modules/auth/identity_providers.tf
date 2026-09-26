@@ -9,7 +9,7 @@
 # who registers one machine's callback with Google gets Google. Prod passes all
 # four from GitHub secrets. Each gate is a `count` on a VARIABLE, never on a
 # resource attribute — a count on an attribute cannot be resolved at plan time
-# and failed a prod deploy in studio.
+# and has failed a prod deploy before.
 #
 # Every provider redirects back to `https://<auth host>/oauth2/idpresponse`,
 # and that exact URL must be registered on the provider's side by hand —

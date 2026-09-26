@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Destroy this machine's isolated classroom development resources in AWS.
 #
-# Port of studio/scripts/dev-aws-destroy.sh, argument for argument.
+# Port of humbugg/scripts/dev-aws-destroy.sh, argument for argument.
 #
 # **The machine id is deliberately retained.** Destroying the stack does not
 # retire the identity that named it, so a later `dev-aws-setup.sh` re-provisions

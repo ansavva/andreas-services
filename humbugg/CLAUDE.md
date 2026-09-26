@@ -143,8 +143,7 @@ session. Mailer and Mailpit remain a separate shared dependency and should be
 started with `cd mailer && docker compose up --build`.
 
 **Stripe webhooks take one path in every environment: gateway → receiver →
-queue → the backend image.** `modules/webhook_relay` (studio's
-`modules/callbacks` shape) is an HTTP API Gateway, a dependency-free Node zip
+queue → the backend image.** `modules/webhook_relay` is an HTTP API Gateway, a dependency-free Node zip
 receiver that only enqueues, and an SQS queue with a DLQ. The consumer is the
 API's own container entered through `ConsumerHost`
 (`HUMBUGG_CONSUMER=stripe-webhooks`, `Consumers/StripeWebhooks/`): in prod a

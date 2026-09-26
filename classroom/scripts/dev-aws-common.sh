@@ -2,7 +2,7 @@
 #
 # Shared helpers for the classroom dev-AWS scripts. Sourced, never run directly.
 #
-# This is a port of studio/scripts/dev-aws-common.sh, kept deliberately
+# This is a port of humbugg/scripts/dev-aws-common.sh, kept deliberately
 # identical so the mechanism is learned once and applies to every service that
 # has one. The differences are the service name, the paths derived from it, and
 # what a stack is made of: classroom's is a Cognito pool and one DynamoDB table,

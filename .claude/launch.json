@@ -2,46 +2,6 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "studio",
-      "runtimeExecutable": "/bin/bash",
-      "runtimeArgs": [
-        "-c",
-        "unset PORT; exec ./studio/scripts/dev-up.sh"
-      ],
-      "port": 5173,
-      "autoPort": false
-    },
-    {
-      "name": "studio-5178",
-      "runtimeExecutable": "/bin/bash",
-      "runtimeArgs": [
-        "-c",
-        "unset PORT; STUDIO_DEV_PORT=5178 exec ./studio/scripts/dev-up.sh"
-      ],
-      "port": 5178,
-      "autoPort": false
-    },
-    {
-      "name": "studio-frontend-5178",
-      "runtimeExecutable": "/bin/bash",
-      "runtimeArgs": [
-        "-c",
-        "unset PORT; source ./studio/scripts/dev-aws-common.sh && export_env_prefix \"$DEV_ENV_FILE\" VITE_ && cd studio/frontend && exec npm run dev -- --port 5178 --strictPort"
-      ],
-      "port": 5178,
-      "autoPort": false
-    },
-    {
-      "name": "studio-frontend-5179",
-      "runtimeExecutable": "/bin/bash",
-      "runtimeArgs": [
-        "-c",
-        "unset PORT; source ./studio/scripts/dev-aws-common.sh && export_env_prefix \"$DEV_ENV_FILE\" VITE_ && export VITE_API_URL=http://localhost:8010 && cd studio/frontend && exec npm run dev -- --port 5179 --strictPort"
-      ],
-      "port": 5179,
-      "autoPort": false
-    },
-    {
       "name": "classroom",
       "runtimeExecutable": "/bin/bash",
       "runtimeArgs": [

@@ -1,7 +1,7 @@
 # CLASSROOM'S PER-MACHINE DEVELOPMENT ENVIRONMENT.
 #
-# The mechanism is a port of studio's and humbugg's, down to the state key
-# layout, so it is learned once and applies to all three. Everything is keyed by
+# The mechanism is a port of humbugg's, down to the state key
+# layout, so it is learned once and applies to both. Everything is keyed by
 # a persistent UUID in `~/.config/andreas-services/classroom/machine-id`; the
 # `dev-aws-*.sh` scripts read it and pass it in. Nothing here is applied by CI,
 # and no tfvars file is committed — see `terraform.tfvars.example`.
@@ -94,8 +94,7 @@ module "auth" {
 #
 # Same module rather than a disposable copy because there is nothing to guard
 # against: this table carries no `prevent_destroy` and no `force_destroy`
-# equivalent, so `dev-aws-destroy.sh` can delete it as it stands. Studio needed
-# a separate `dev_storage` module only because its prod BUCKET is pinned.
+# equivalent, so `dev-aws-destroy.sh` can delete it as it stands.
 # A lesson's uploaded files, per machine. There is no distribution in front of
 # it: `dev-up.sh` serves `/lesson/<id>/*` from the local API, reading these
 # objects with the developer's own credentials.

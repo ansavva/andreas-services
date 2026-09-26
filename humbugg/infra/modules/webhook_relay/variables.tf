@@ -14,7 +14,7 @@ variable "create_consumer" {
     Whether this environment gets a queue consumer Lambda. **A literal, never
     derived from another resource**: it drives a `count`, and a `count` that
     depends on a resource attribute cannot be resolved at plan time — the
-    `Invalid count argument` that failed a prod deploy in studio.
+    `Invalid count argument` that has failed a prod deploy before.
 
     `false` is what the per-machine dev environment passes: it has no ECR
     repository, and its consumer is the same image as a Compose service beside

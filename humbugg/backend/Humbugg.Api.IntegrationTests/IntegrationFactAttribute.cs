@@ -3,7 +3,7 @@ using Xunit;
 
 namespace Humbugg.Api.IntegrationTests;
 
-// The integration tier's single gate, mirrored on studio's STUDIO_INTEGRATION env var.
+// The integration tier's single gate.
 // The project boundary is the tier — everything in this assembly talks to the per-machine
 // dev stack in real AWS — and this attribute is what keeps a plain
 // `dotnet test Humbugg.slnx` (CI included) reporting skips instead of credential failures.

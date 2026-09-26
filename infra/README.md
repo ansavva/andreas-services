@@ -7,7 +7,7 @@ This directory manages **cross-cutting infrastructure** shared by all services i
 ### 1. Route53 Hosted Zone
 - **Domain**: `andreas.services`
 - **Purpose**: DNS zone for all subdomains
-- **Used by**: All services (studio, humbugg, etc.)
+- **Used by**: All services (humbugg, website, etc.)
 
 ### 2. ACM Certificate
 - **Domain**: `*.andreas.services` (wildcard)
@@ -26,7 +26,7 @@ These resources are **cross-cutting** - they're shared by multiple services:
 
 ❌ **Bad**: Each service creates its own certificate
 ```
-studio/infra    → Creates cert for studio.andreas.services
+website/infra   → Creates cert for website.andreas.services
 humbugg/infra   → Creates cert for humbugg.andreas.services
 ```
 Problems:
@@ -37,7 +37,7 @@ Problems:
 ✅ **Good**: One wildcard cert shared by all services
 ```
 infra/          → Creates *.andreas.services cert
-studio/infra    → Uses shared cert via data source
+website/infra   → Uses shared cert via data source
 humbugg/infra   → Uses shared cert via data source
 ```
 Benefits:
@@ -53,8 +53,8 @@ infra/                        # ROOT LEVEL (this directory)
 ├── outputs.tf               # Exports zone_id, cert_arn
 └── backend.tf               # S3 state: shared/terraform.tfstate
 
-studio/infra/                # SERVICE LEVEL
-└── modules/hosting/
+humbugg/infra/               # SERVICE LEVEL
+└── modules/hosting_app/
     └── main.tf              # References root cert via data source
 ```
 
@@ -72,7 +72,7 @@ infra/
 └── README.md
 ```
 
-Service-specific code (e.g., Studio) lives under `studio/infra`, but references the shared outputs via Terraform remote state.
+Service-specific code (e.g., Humbugg) lives under `humbugg/infra`, but references the shared outputs via Terraform remote state.
 
 ## First-Time Setup
 
@@ -124,7 +124,7 @@ Wait until status is `"ISSUED"`.
 Services reference the shared infrastructure using Terraform data sources:
 
 ```hcl
-# In studio/infra/modules/hosting/main.tf
+# In humbugg/infra/modules/hosting_app/main.tf
 
 # Reference the shared ACM certificate
 data "aws_acm_certificate" "wildcard" {
@@ -171,9 +171,7 @@ After `terraform apply`, these outputs are available (run from `envs/shared`):
 ```
 s3://andreas-services-terraform-state/
 ├── shared/terraform.tfstate            # Shared infrastructure (this)
-├── studio/dev/<account>/<machine-id>/terraform.tfstate     # Studio dev, per machine
-├── studio/prod/terraform.tfstate    # Studio prod
-└── humbugg/prod/terraform.tfstate      # Humbugg prod (future)
+└── humbugg/prod/terraform.tfstate      # Humbugg prod
 ```
 
 ## Destruction Warning
@@ -229,6 +227,6 @@ terraform output route53_name_servers
 ## Support
 
 For questions about root infrastructure, see:
-- Individual service docs: `studio/infra/README.md`, `humbugg/infra/README.md`
+- Individual service docs: `humbugg/infra/README.md`
 - AWS Route53 docs: https://docs.aws.amazon.com/route53/
 - AWS ACM docs: https://docs.aws.amazon.com/acm/

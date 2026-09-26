@@ -220,7 +220,6 @@ package-lock.json
 !humbugg/scripts/package-lock.json
 !design-system/package-lock.json
 !website/frontend/package-lock.json
-!studio/frontend/package-lock.json
 !classroom/frontend/package-lock.json
 
 # TypeScript incremental build state — a local artifact, never committed.
@@ -258,62 +257,16 @@ skills-lock.json
 .claude/skills/*
 !.claude/skills/design-system-ui/
 !.claude/skills/aws-naming/
-!.claude/skills/studio/
 !.claude/skills/github-access/
 !.claude/skills/short-form-ad/
 
-# studio's skills are the exception to the rule above: they are authored here,
-# not installed by a script, and they live at studio/.claude/skills/ rather than
-# the repo root — which the anchored pattern above does not reach. Nothing to
-# ignore, noted so the asymmetry doesn't read as an oversight.
-#
-# The `studio` entry allowlisted above is NOT one of them. It is a root-level
-# router: directory-scoped skills register only after a file under studio/ has
-# been read, so on the first action of a session none of studio's sixteen are
-# callable. The router is registered from the start and points at them.
-
-# studio — local working directories for the generation pipeline. Source media
-# staged for a run, working copies pulled down for editing, and rendered output.
-# The canonical copy of everything here is in the media bucket.
-studio/input/
-studio/local/
-studio/output/
-
-# The pipeline package's virtualenv. `uv.lock` IS committed — it is an
-# application, not a library, so a reproducible resolve is the point.
-studio/pipeline/.venv/
-
-# Scratch space for material staged into a dev stack. Seed photos land here
-# before `studio character add-to` uploads them, and the canonical copy is then
-# the dev stack and the seed bucket — never git. Ignored rather than trusted to
-# discipline: 25 MB of a dev subject's photos are one `git add -A` away.
+# Local scratch space — never git.
 tmp/
-
-# The published dev-seed fixture. `studio dev-seed publish --apply` writes the
-# two JSON documents to BOTH the seed bucket and here, so `catalog.json` is
-# reviewable in a diff before it reaches anyone's machine — that is the whole
-# point of `FIXTURE_DIR` and those two files ARE committed.
-#
-# The media is not. Blobs go to s3://studio-dev-seed-us-east-1/<version>/media/
-# and nowhere else. `publish` does not write them locally today; this line is
-# here so that staying true is enforced rather than remembered.
-studio/fixtures/dev-seed/*/media/
-
-# vitest's coverage output. The Python side is already covered by `.coverage`
-# and `htmlcov/` above; this is the one the JS toolchain writes.
-studio/frontend/coverage/
-
-# Playwright: browser downloads, traces and the html report. The FIXTURES are
-# committed on purpose (they are the stub); these are run artefacts.
-studio/frontend/test-results/
-studio/frontend/playwright-report/
-studio/frontend/blob-report/
 
 # Microsoft.Testing.Platform writes a run directory next to the solution. `dotnet
 # test Humbugg.slnx` is the exact command CI runs, so anyone verifying locally the
 # way CI does produces this.
 humbugg/backend/test-results/
 
-# Terraform packages the callback receiver into a zip at plan time; the output
-# is a build artifact of `infra/modules/callbacks`, not source.
+# Terraform packages Lambda zips at plan time; build artifacts, not source.
 .terraform-build/

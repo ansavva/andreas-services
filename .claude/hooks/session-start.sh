@@ -20,16 +20,6 @@ if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
   } >> "$CLAUDE_ENV_FILE"
 fi
 
-# studio's generation skills run LOCALLY, inside Claude, on this machine — they
-# are the one part of this repo that never deploys. They need `uv` on PATH, so
-# this runs before the cloud-only early exit below rather than after it.
-# dev-setup.sh is idempotent and cheap once uv is installed and the caches are
-# warm. Non-fatal: a failed setup should degrade the studio skills, not block
-# the session.
-if [ -f "$REPO/studio/scripts/dev-setup.sh" ]; then
-  bash "$REPO/studio/scripts/dev-setup.sh" >&2 || true
-fi
-
 # Worktrees: the installed agent skills (expo/eas/design-system/runpod/...) are
 # machine-local and gitignored — .agents/, the .claude/skills/* symlinks and
 # skills-lock.json — so a fresh worktree checkout has only the committed skills.
@@ -77,10 +67,8 @@ fi
 BREW_PREFIX="/home/linuxbrew/.linuxbrew"
 if [ -x "$BREW_PREFIX/bin/brew" ]; then
   eval "$("$BREW_PREFIX/bin/brew" shellenv)"
-  # Prepend rather than write an absolute PATH: studio/scripts/dev-setup.sh
-  # already appended `export PATH="<uv>:$PATH"` lines to this same file, and a
-  # later absolute assignment would drop them. Guarded so a resumed session does
-  # not stack duplicates.
+  # Prepend rather than write an absolute PATH, so earlier PATH lines in this
+  # file survive. Guarded so a resumed session does not stack duplicates.
   if [ -n "${CLAUDE_ENV_FILE:-}" ] && ! grep -qs "$BREW_PREFIX/bin" "$CLAUDE_ENV_FILE"; then
     echo "export PATH=\"$BREW_PREFIX/bin:$BREW_PREFIX/sbin:\$PATH\"" >> "$CLAUDE_ENV_FILE"
   fi

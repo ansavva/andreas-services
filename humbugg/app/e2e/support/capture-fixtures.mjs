@@ -1,6 +1,5 @@
 // Records the e2e fixtures from the real dev backend — the ONLY sanctioned way to
-// produce a file in e2e/fixtures/. Not curl, for the same reason studio's capture.py
-// is not curl: the script scrubs anything volatile or signed and then *asserts* the
+// produce a file in e2e/fixtures/. Not curl: the script scrubs anything volatile or signed and then *asserts* the
 // scrub held, so a presigned URL carrying an access key id can never land in git.
 //
 // A hand-written stub drifts from the API silently and then asserts its own

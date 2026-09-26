@@ -22,9 +22,7 @@ namespace Humbugg.Api.Consumers.StripeWebhooks;
 /// Stripe posts to a public API Gateway (<c>infra/modules/webhook_relay</c>); a dependency-free
 /// receiver puts the raw body and its <c>Stripe-Signature</c> on an SQS queue; this drains the queue
 /// and hands each event to <see cref="IBillingService.ProcessQueuedWebhookAsync"/> — the same
-/// verification and the same <c>ApplyEventAsync</c> the HTTP route runs. Studio's
-/// <c>modules/callbacks</c> is the shape: receive in a zip nobody builds, process in the service's
-/// own image.
+/// verification and the same <c>ApplyEventAsync</c> the HTTP route runs. Receive in a zip nobody builds, process in the service's own image.
 /// </para>
 /// <para>
 /// <b>One consumer, two hosts.</b> In production this is a Lambda on an event-source mapping, the

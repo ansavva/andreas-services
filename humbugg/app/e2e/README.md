@@ -1,6 +1,6 @@
 # The app's browser tier
 
-One Playwright suite, two modes, mirrored on studio's browser tier.
+One Playwright suite, two modes.
 
 ## Stubbed mode — `npm run e2e` (what CI runs)
 

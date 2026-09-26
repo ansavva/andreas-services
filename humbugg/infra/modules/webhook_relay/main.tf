@@ -3,8 +3,7 @@
 #     Stripe ──► HTTP API ──► receiver (zip) ──► SQS ──┬─► consumer Lambda ──► api.humbugg.com  (prod)
 #                                                       └─► a laptop        ──► localhost:5001   (dev)
 #
-# This is studio's `modules/callbacks`, which solved the same problem for
-# Replicate. Stripe cannot reach `localhost:5001`, so for as long as a dev
+# Stripe cannot reach `localhost:5001`, so for as long as a dev
 # stack had no public endpoint the only way a purchase could complete locally
 # was the Stripe CLI's relay (`stripe listen`) — a live process that has to be
 # running at the moment Stripe emits the event, and that drops the event when
@@ -32,7 +31,7 @@
 #
 # ## The consumer is the backend
 #
-# As studio's worker is its backend: the consumer runs the API's own container
+# The consumer runs the API's own container
 # image, entered through `ConsumerHost` (`HUMBUGG_CONSUMER=stripe-webhooks`)
 # like the email-status and reminder consumers, and calls the same
 # `ProcessQueuedWebhookAsync` the HTTP route's `ProcessWebhookAsync` is a thin

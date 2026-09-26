@@ -6,7 +6,7 @@ description: >-
   the end card and the platform spec, in that order, before anything renders.
   Use whenever a task says commercial, ad, reel, promo, hook, script, TikTok,
   Instagram, or "make a video that sells X". It owns the WORDS and the
-  structure; rendering is handed to studio (an AI-generated talking head) or
+  structure; rendering is handed to aperture (an AI-generated talking head) or
   HyperFrames (captions, overlays, end card). Read before writing a single
   line of dialogue: the first three seconds decide most of the outcome, and
   the instinctive opening line is the wrong one.
@@ -176,9 +176,9 @@ This skill stops at the words. The picture is someone else's:
 
 | Need | Skill |
 |---|---|
-| An AI-generated talking head from an approved still, lip-synced | `studio` → `studio-media-shot`, then `studio-media-seedance` (dialogue in double quotes drives the audio; ≤15 s; `generate_audio: true`; fix the `seed` so a retake is comparable). Hard rule #2 applies: show the payload, submit only when told |
+| An AI-generated talking head from an approved still, lip-synced | aperture, Seedance image-to-video (dialogue in double quotes drives the audio; ≤15 s; `generate_audio: true`; fix the `seed` so a retake is comparable). Show the payload, submit only when told |
 | Captions on the finished clip | `embedded-captions` |
-| Hook text, overlays, the end card, music, the 1080×1920 export | `motion-graphics` or `general-video` (HyperFrames); studio's stitcher only concatenates |
+| Hook text, overlays, the end card, music, the 1080×1920 export | `motion-graphics` or `general-video` (HyperFrames) |
 | A product-UI or website-driven promo with no talking head | `product-launch-video` |
 
 ## Worked example — Humbugg's first reel (September 2026)

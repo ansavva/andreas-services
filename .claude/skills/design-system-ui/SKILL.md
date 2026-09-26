@@ -134,7 +134,7 @@ you ran `npm` outside a directory with an `.npmrc`, so the scope never got route
 There are five, and each one moves on its own schedule:
 
 ```
-studio/frontend  website/frontend  classroom/frontend  humbugg/marketing  humbugg/app
+website/frontend  classroom/frontend  humbugg/marketing  humbugg/app
 ```
 
 **Bump only the consumers your change is actually about.** A shared version across the monorepo is

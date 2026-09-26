@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Provision this machine's isolated classroom development resources in AWS.
 #
-# Port of studio/scripts/dev-aws-setup.sh, argument for argument. What it
+# Port of humbugg/scripts/dev-aws-setup.sh, argument for argument. What it
 # provisions is a Cognito pool and one DynamoDB table — no bucket, no Lambda, no
 # gateway and no CloudFront, because the API and the SPA both run on this
 # machine under `dev-up.sh`. See `infra/envs/dev/main.tf`.

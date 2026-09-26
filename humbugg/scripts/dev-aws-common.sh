@@ -30,8 +30,7 @@ aws_dev() {
 }
 
 resolve_aws_profile() {
-  # Decide once whether to name a profile at all. Ported from
-  # `studio/scripts/dev-aws-common.sh`, which hit this first.
+  # Decide once whether to name a profile at all.
   #
   # **`--profile default` is not a harmless way of saying "the usual
   # credentials".** Naming a profile makes the CLI resolve *that profile* and
@@ -361,9 +360,7 @@ require_dev_env() {
 }
 
 # The dev stack's test account lives in the same file, under
-# `HUMBUGG_DEV_USER_EMAIL` and `HUMBUGG_DEV_USER_PASSWORD`. Mirrors studio's
-# `dev-aws-common.sh` deliberately: the two services had no shared convention
-# for this and studio's is the one that already works.
+# `HUMBUGG_DEV_USER_EMAIL` and `HUMBUGG_DEV_USER_PASSWORD`.
 #
 # **The password is never committed; the addresses are.** `seeds/dev.json`
 # names every person a dev stack holds, all at `.test` — a reserved TLD (RFC

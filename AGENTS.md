@@ -45,8 +45,7 @@ holds no key.
 **`curl` against the live sites usually works — test it, do not assume.** This
 file used to state flatly that outbound HTTP to `*.andreas.services` was blocked
 by the sandbox network policy (`403 host_not_allowed`). That is not true in
-general: `studio.andreas.services` and `studio-api.andreas.services` both answer
-`200`. The rule was written from one sandbox that did block it and was then
+general: live service sites answer `200`. The rule was written from one sandbox that did block it and was then
 believed rather than retested, which cost a session the check it was in the
 middle of — it reported the site unreachable, and it was not. A blocked sandbox
 is still possible, so try the request and read what comes back.
@@ -57,7 +56,7 @@ authenticated route: every `/api` path sits behind the API Gateway Cognito
 authorizer, so an unauthenticated call returns the gateway's
 `{"message":"Unauthorized"}` and never reaches the application — a 401 there
 says nothing about the code. Signing in for real needs a token, which needs a
-pool account; `studio/scripts/dev-token.sh` mints one against the **dev** pool.
+pool account in the service's **dev** pool.
 Final verification against prod is a browser, and that is on the user.
 
 Prefer fixing infrastructure through Terraform + the deploy pipeline over manual
@@ -111,7 +110,7 @@ The root `infra/` directory owns **cross-cutting AWS resources** shared by all s
 
 State is in S3: `s3://andreas-services-terraform-state/`
 - Shared: `shared/terraform.tfstate`
-- Per-service: `<service>/<env>/terraform.tfstate` (e.g. `humbugg/prod/`, `studio/prod/`)
+- Per-service: `<service>/<env>/terraform.tfstate` (e.g. `humbugg/prod/`, `website/prod/`)
 
 Services reference shared resources via Terraform data sources — never duplicate them:
 ```hcl
@@ -156,7 +155,7 @@ data "aws_route53_zone" "main" {
   ```
 - **Environment variables**: `VITE_` prefix, set as GitHub Actions vars
 
-### Backend (Flask services — e.g. studio, website)
+### Backend (Flask services — e.g. website, classroom)
 - **Framework**: Flask with Blueprint-based routing
 - **Pattern**: routes → controllers → services → repositories
 - **Logging**: structured JSON (structlog or watchtower → CloudWatch)
@@ -270,7 +269,7 @@ infra/
 - `lifecycle { ignore_changes = [image_uri, environment] }` on Lambda resources — the deploy workflow owns both: `update-function-code` for the image and `update-function-configuration` for env vars. Terraform sets initial values on first creation only.
 
 ### Deployment (CI/CD)
-- **Standard**: GitHub Actions. Filenames follow `<service>-<env>.yaml` (combined deploy) and `<service>-pr.yml` (combined PR workflow) — e.g. `humbugg-prod.yaml`, `studio-pr.yml` — so the service and the trigger environment (PR vs Prod) are visible at a glance. Auxiliary workflows append a scope suffix after the env segment (e.g. `shared-prod-infra-plan.yaml`).
+- **Standard**: GitHub Actions. Filenames follow `<service>-<env>.yaml` (combined deploy) and `<service>-pr.yml` (combined PR workflow) — e.g. `humbugg-prod.yaml`, `humbugg-pr.yml` — so the service and the trigger environment (PR vs Prod) are visible at a glance. Auxiliary workflows append a scope suffix after the env segment (e.g. `shared-prod-infra-plan.yaml`).
 - **One combined PR workflow per service**: each service has a single `<service>-pr.yml` that runs on every PR. It validates only — lint, unit tests, Terraform validate, and a build to prove the image compiles. **PR workflows never write to AWS.** There are no ephemeral preview environments; they were removed because the maintenance and teardown cost outweighed their value for a solo repo.
 - **One combined prod deploy per service**: each service has a single `<service>-prod.yaml` with four jobs chained via `needs:`: `detect-changes → build-and-push → deploy-infra → update-lambda + deploy-frontend`. Image build runs **before** Terraform applies because Lambda resources reference `${ecr_repo}:latest` with `lifecycle { ignore_changes = [image_uri, environment] }`, so the image must already exist before Terraform creates the Lambda. Putting build-and-push first eliminates the chicken-and-egg trap on fresh AWS accounts. `update-lambda` then sets env vars and pins the function code to `:${{ github.sha }}` for traceability. This eliminates races between separate infra and app workflows that shared SSM params.
 - **Path filtering**: `dorny/paths-filter@v3` — only deploy when the service's files change
